@@ -636,6 +636,46 @@ function EA_System_EventEntry:SetupText(hitTargetObjectNumber, hitAmount, textTy
         end
         if WindowSetScale then WindowSetScale(wName, scale) end
         WindowSetRelativeScale(wName, scale)
+        -- Match crit: pink holder bounds, blue center, cyan label bounds (for layout debugging).
+        if self.m_FlashHolderName
+           and self.m_AnimationData
+           and self.m_AnimationData.flashHolderMode
+        then
+            if WindowUtils and WindowUtils.ForceProcessAnchors then WindowUtils.ForceProcessAnchors(wName) end
+            local ok, tw, th = pcall(LabelGetTextDimensions, wName)
+            local w = (ok and tw and tw > 0) and tw or 80
+            local h = (ok and th and th > 0) and th or 24
+            WindowSetDimensions(wName, w, h)
+            if WindowUtils and WindowUtils.ForceProcessAnchors then WindowUtils.ForceProcessAnchors(wName) end
+            local holderBg = self.m_FlashHolderName .. "DebugHolderBounds"
+            if not DoesWindowExist(holderBg) then
+                CreateWindowFromTemplate(holderBg, "EA_FullResizeImage_WhiteTransparent", self.m_FlashHolderName)
+                WindowSetAlpha(holderBg, 0.20)
+                WindowSetTintColor(holderBg, 255, 0, 200)
+                WindowClearAnchors(holderBg)
+            end
+            WindowSetDimensions(holderBg, w, h)
+            WindowSetOffsetFromParent(holderBg, -w / 2, -h / 2)
+
+            local holderCenter = self.m_FlashHolderName .. "DebugHolderCenter"
+            if not DoesWindowExist(holderCenter) then
+                CreateWindowFromTemplate(holderCenter, "EA_FullResizeImage_WhiteTransparent", self.m_FlashHolderName)
+                WindowSetDimensions(holderCenter, 6, 6)
+                WindowSetAlpha(holderCenter, 0.9)
+                WindowSetTintColor(holderCenter, 0, 120, 255)
+                WindowSetOffsetFromParent(holderCenter, -3, -3)
+            end
+
+            local labelBg = self.m_FlashHolderName .. "DebugLabelBounds"
+            if not DoesWindowExist(labelBg) then
+                CreateWindowFromTemplate(labelBg, "EA_FullResizeImage_WhiteTransparent", self.m_FlashHolderName)
+                WindowSetAlpha(labelBg, 0.25)
+                WindowSetTintColor(labelBg, 0, 200, 255)
+                WindowClearAnchors(labelBg)
+                WindowAddAnchor(labelBg, "topleft", wName, "topleft", 0, 0)
+                WindowAddAnchor(labelBg, "bottomright", wName, "bottomright", 0, 0)
+            end
+        end
     end
 
     local t = LabelGetText(wName)

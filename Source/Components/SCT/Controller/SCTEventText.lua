@@ -455,7 +455,10 @@ function EA_System_EventEntry:Update(elapsedTime, simulationSpeed)
         local stepY = (self.m_AnimationData.target.y - self.m_AnimationData.start.y) * animationStep
         self.m_AnimationData.current.x = self.m_AnimationData.current.x + stepX
         self.m_AnimationData.current.y = self.m_AnimationData.current.y + stepY
-        WindowSetOffsetFromParent(self.m_FlashHolderName, self.m_AnimationData.current.x, self.m_AnimationData.current.y)
+        -- m_AnimationData is still the stock top-left path; label is center-anchored, so shift the holder by half size to match stock placement.
+        local hw = self.m_NonCritHolderHalfW or 0
+        local hh = self.m_NonCritHolderHalfH or 0
+        WindowSetOffsetFromParent(self.m_FlashHolderName, self.m_AnimationData.current.x + hw, self.m_AnimationData.current.y + hh)
         local wName = self:GetName()
         if WindowUtils and WindowUtils.ForceProcessAnchors then WindowUtils.ForceProcessAnchors(wName) end
         self.m_LifeSpan = self.m_LifeSpan + simulationTime
@@ -675,6 +678,9 @@ function EA_System_EventEntry:SetupText(hitTargetObjectNumber, hitAmount, textTy
                 WindowAddAnchor(labelBg, "topleft", wName, "topleft", 0, 0)
                 WindowAddAnchor(labelBg, "bottomright", wName, "bottomright", 0, 0)
             end
+            -- Stock SCT uses top-left offsets; center-anchored label needs holder at top-left + (w/2, h/2) to match.
+            self.m_NonCritHolderHalfW = w * 0.5
+            self.m_NonCritHolderHalfH = h * 0.5
         end
     end
 
@@ -960,6 +966,11 @@ function EA_System_EventTracker:Update(elapsedTime)
                         end
                     end
                     frame:SetupText(self.m_TargetObject, eventData.amount, eventData.type)
+                    if holderName and not self.m_IsCritTracker and frame.m_NonCritHolderHalfW then
+                        WindowSetOffsetFromParent(holderName,
+                            animData.start.x + frame.m_NonCritHolderHalfW,
+                            animData.start.y + frame.m_NonCritHolderHalfH)
+                    end
                     if frame.m_IsCritical and holderName and frame.m_CritAnimMode ~= "none" then
                         frame.m_CritPhase = "lanemove"
                         frame.m_CritPhaseElapsed = 0

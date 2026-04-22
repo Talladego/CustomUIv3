@@ -185,12 +185,12 @@ function CustomUI.SCT.GetSettings()
     v.customColor.outgoing = v.customColor.outgoing or {}
     v.customColor.incoming = v.customColor.incoming or {}
 
-    -- Critical hit presentation: "none" | "shake" | "flash" (default shake).
+    -- Critical hit presentation: "none" | "shake" | "flash" (UI label: Pulse; keep value "flash" for compatibility).
     if v.critAnimation ~= "none" and v.critAnimation ~= "shake" and v.critAnimation ~= "flash" then
         v.critAnimation = "shake"
     end
 
-    -- Multiplier for crit grow/shake/flash phase timing; discrete ticks (1.0 = stock).
+    -- Multiplier for crit grow/shake/flash(Pulse) phase timing; discrete ticks (1.0 = stock).
     if type(v.critAnimationSpeed) ~= "number" or v.critAnimationSpeed ~= v.critAnimationSpeed then
         v.critAnimationSpeed = 1.0
     end

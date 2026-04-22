@@ -74,8 +74,8 @@ local CRIT_SHAKE_AMPLITUDE      = 8
 local CRIT_SHAKE_FREQUENCY      = 30
 local CRIT_SHAKE_VERTICAL_SCALE = 0.5
 local CRIT_FONT_VISUAL_RATIO    = 1.33
-local CRIT_COLOR_LERP_DURATION  = 1.00 -- white → target color during shake / flash osc
--- Size oscillation (Flash crit mode), after grow
+local CRIT_COLOR_LERP_DURATION  = 1.00 -- white → target color during shake / pulse osc
+-- Size oscillation (Pulse crit mode; setting value "flash"), after grow
 local CRIT_OSC_DURATION         = 0.75
 local CRIT_OSC_FREQUENCY        = 12
 local CRIT_OSC_SCALE_DELTA      = 0.14 -- peak ±14% at start of osc, fades to 0
@@ -179,7 +179,7 @@ function EA_System_EventEntry:Update(elapsedTime, simulationSpeed)
             local s = (self.m_CritStartScale or 1.0) + ((self.m_CritEndScale or 1.0) - (self.m_CritStartScale or 1.0)) * ease
             if WindowSetScale then WindowSetScale(wName, s) end
             WindowSetRelativeScale(wName, s)
-            -- Flash holder mode: do not use offsets; keep strict center→center anchoring.
+            -- Pulse (flash) holder mode: do not use offsets; keep strict center→center anchoring.
             if self.m_AnimationData and self.m_AnimationData.flashHolderMode then
                 if WindowUtils and WindowUtils.ForceProcessAnchors then WindowUtils.ForceProcessAnchors(wName) end
             else
@@ -346,7 +346,7 @@ function EA_System_EventEntry:Update(elapsedTime, simulationSpeed)
         end
     end
 
-    -- Flash holder mode: keep strict center→center anchoring while fading.
+    -- Pulse (flash) holder mode: keep strict center→center anchoring while fading.
     -- Do not run the generic drift code below (it uses offsets and causes the topleft artifact).
     if self.m_AnimationData and self.m_AnimationData.flashHolderMode then
         self.m_LifeSpan = self.m_LifeSpan + simulationTime
@@ -418,7 +418,7 @@ function EA_System_EventEntry:SetupText(hitTargetObjectNumber, hitAmount, textTy
             WindowSetRelativeScale(wName, scale)
             WindowSetOffsetFromParent(self:GetName(), self.m_AnimationData.start.x, self.m_AnimationData.start.y)
         else
-            -- Shake / Flash: grow phase then shake/osc.
+            -- Shake / Pulse(flash): grow phase then shake/osc.
             self.m_CritPhase              = "grow"
             self.m_CritPhaseElapsed       = 0
             self.m_CritGrowDuration       = CRIT_GROW_DURATION
@@ -438,7 +438,7 @@ function EA_System_EventEntry:SetupText(hitTargetObjectNumber, hitAmount, textTy
                     self.m_CritFlashBaseW = tw
                     self.m_CritFlashBaseH = th
                 end
-                -- Flash holder mode: center label on holder origin and keep it stationary (no float).
+                -- Pulse (flash) holder mode: center label on holder origin and keep it stationary (no float).
                 if self.m_AnimationData and self.m_AnimationData.flashHolderMode then
                     -- Strict anchor model: cyan center anchored to pink center.
                     -- Make cyan window match glyph extents so center anchor is meaningful.
@@ -684,7 +684,7 @@ function EA_System_EventTracker:Update(elapsedTime)
                 local parentForLabel = self.m_Anchor
                 local animForLabel   = animData
 
-                -- Flash crits: use a holder window under the world anchor.
+                -- Pulse (flash) crits: use a holder window under the world anchor.
                 -- Holder is positioned in the crit lane; label is centered on holder and pulses around holder-center.
                 local holderName
                 if self.m_IsCritTracker and self.m_CritAnimMode == "flash" then

@@ -156,7 +156,12 @@ function EA_System_EventEntry:Create(windowName, parentWindow, animationData)
             eventFrame.m_AnimationData.flashHolderMode = true
         end
     end
-    WindowSetOffsetFromParent(windowName, animationData.start.x, animationData.start.y)
+    -- flashHolderMode: parent holds start→target motion; label is center-anchored at (0,0) on parent.
+    if animationData.flashHolderMode then
+        WindowSetOffsetFromParent(windowName, 0, 0)
+    else
+        WindowSetOffsetFromParent(windowName, animationData.start.x, animationData.start.y)
+    end
     return eventFrame
 end
 
@@ -440,8 +445,29 @@ function EA_System_EventEntry:Update(elapsedTime, simulationSpeed)
         end
     end
 
-    -- Holder crits: label is anchored to holder; do not run generic drift on the label.
-    if self.m_AnimationData and self.m_AnimationData.flashHolderMode and self.m_FlashHolderName then
+    -- Non-crit holder: drift runs on the holder; label is center-anchored at 0,0 and scales in place.
+    if self.m_AnimationData
+       and self.m_AnimationData.flashHolderMode
+       and self.m_FlashHolderName
+       and not self.m_IsCritical
+    then
+        local stepX = (self.m_AnimationData.target.x - self.m_AnimationData.start.x) * animationStep
+        local stepY = (self.m_AnimationData.target.y - self.m_AnimationData.start.y) * animationStep
+        self.m_AnimationData.current.x = self.m_AnimationData.current.x + stepX
+        self.m_AnimationData.current.y = self.m_AnimationData.current.y + stepY
+        WindowSetOffsetFromParent(self.m_FlashHolderName, self.m_AnimationData.current.x, self.m_AnimationData.current.y)
+        local wName = self:GetName()
+        if WindowUtils and WindowUtils.ForceProcessAnchors then WindowUtils.ForceProcessAnchors(wName) end
+        self.m_LifeSpan = self.m_LifeSpan + simulationTime
+        return self.m_LifeSpan
+    end
+
+    -- Holder crits: after crit animation phases, label does not use generic drift (motion was on the holder / phases).
+    if self.m_AnimationData
+       and self.m_AnimationData.flashHolderMode
+       and self.m_FlashHolderName
+       and self.m_IsCritical
+    then
         self.m_LifeSpan = self.m_LifeSpan + simulationTime
         return self.m_LifeSpan
     end
@@ -595,6 +621,19 @@ function EA_System_EventEntry:SetupText(hitTargetObjectNumber, hitAmount, textTy
         end
     else
         LabelSetFont(wName, SctLabelFontName(), WindowUtils.FONT_DEFAULT_TEXT_LINESPACING)
+        -- Non-crit + holder: center-anchor label on holder so the size slider scales in place (no top-left pivot drift).
+        if self.m_FlashHolderName
+           and self.m_AnimationData
+           and self.m_AnimationData.flashHolderMode
+        then
+            local ok, tw, th = pcall(LabelGetTextDimensions, wName)
+            local w = (ok and tw and tw > 0) and tw or 80
+            local h = (ok and th and th > 0) and th or 24
+            WindowSetDimensions(wName, w, h)
+            WindowClearAnchors(wName)
+            WindowAddAnchor(wName, "center", WindowGetParent(wName), "center", 0, 0)
+            if LabelSetTextAlign then LabelSetTextAlign(wName, "center") end
+        end
         if WindowSetScale then WindowSetScale(wName, scale) end
         WindowSetRelativeScale(wName, scale)
     end
@@ -847,21 +886,38 @@ function EA_System_EventTracker:Update(elapsedTime)
                         maximumDisplayTime = animData.maximumDisplayTime,
                         flashHolderMode    = true,
                     }
+                elseif not self.m_IsCritTracker then
+                    -- Non-crit: holder gets stock start→target drift; label is center-anchored on the holder and scales in place.
+                    holderName = self.m_Anchor .. "Holder" .. self.m_DisplayedEvents:End()
+                    if not DoesWindowExist(holderName) then
+                        CreateWindowFromTemplate(holderName, "EA_Window_EventTextAnchor", self.m_Anchor)
+                    end
+                    WindowSetOffsetFromParent(holderName, animData.start.x, animData.start.y)
+                    parentForLabel = holderName
+                    animForLabel = {
+                        start              = { x = animData.start.x,  y = animData.start.y  },
+                        target             = { x = animData.target.x,  y = animData.target.y  },
+                        current            = { x = animData.start.x,  y = animData.start.y  },
+                        maximumDisplayTime = animData.maximumDisplayTime,
+                        flashHolderMode    = true,
+                    }
                 end
 
                 local frame         = EA_System_EventEntry:Create(newName, parentForLabel, animForLabel)
                 if frame and frame.GetName then
                     if holderName then
                         frame.m_FlashHolderName = holderName
-                        local laneX = self.m_CritLaneOffsetX or 0
-                        frame.m_CritLaneStartX = animData.start.x - laneX
-                        frame.m_CritLaneTargetX = animData.start.x
-                        frame.m_CritLaneY = animData.start.y
-                        frame.m_CritLaneMoveDuration = CRIT_LANE_TRAVEL_DURATION
-                        frame.m_FlashHolderBaseX = animData.start.x
-                        frame.m_FlashHolderBaseY = animData.start.y
-                        frame.m_CritFloatDeltaY = animData.target.y - animData.start.y
-                        frame.m_CritFloatDuration = CRIT_FLOAT_DURATION
+                        if self.m_IsCritTracker then
+                            local laneX = self.m_CritLaneOffsetX or 0
+                            frame.m_CritLaneStartX = animData.start.x - laneX
+                            frame.m_CritLaneTargetX = animData.start.x
+                            frame.m_CritLaneY = animData.start.y
+                            frame.m_CritLaneMoveDuration = CRIT_LANE_TRAVEL_DURATION
+                            frame.m_FlashHolderBaseX = animData.start.x
+                            frame.m_FlashHolderBaseY = animData.start.y
+                            frame.m_CritFloatDeltaY = animData.target.y - animData.start.y
+                            frame.m_CritFloatDuration = CRIT_FLOAT_DURATION
+                        end
                     end
                     frame:SetupText(self.m_TargetObject, eventData.amount, eventData.type)
                     if frame.m_IsCritical and holderName and frame.m_CritAnimMode ~= "none" then

@@ -190,9 +190,13 @@ function CustomUI.SCT.GetSettings()
     -- - "shake"
     -- - "pulse" (old value was "flash" before Flash(color) existed)
     -- - "flash" (new: color flicker between white and target color)
-    if v.critAnimation == "flash" then
-        -- Migration: previously "flash" meant what is now called Pulse.
-        v.critAnimation = "pulse"
+    -- One-time migration: older builds used "flash" to mean what is now "pulse".
+    -- Once migrated, allow the new "flash" mode to be selected and persist.
+    if v.sctCritAnimV3 ~= true then
+        if v.critAnimation == "flash" then
+            v.critAnimation = "pulse"
+        end
+        v.sctCritAnimV3 = true
     end
     if v.critAnimation ~= "none" and v.critAnimation ~= "shake" and v.critAnimation ~= "pulse" and v.critAnimation ~= "flash" then
         v.critAnimation = "shake"

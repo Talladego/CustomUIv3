@@ -423,7 +423,12 @@ function EA_System_EventEntry:Update(elapsedTime, simulationSpeed)
                 local bx = self.m_CritLaneTargetX or (self.m_FlashHolderBaseX or 0)
                 local by = self.m_CritLaneY or (self.m_FlashHolderBaseY or 0)
                 local dy = self.m_CritFloatDeltaY or 0
-                WindowSetOffsetFromParent(self.m_FlashHolderName, bx, by + dy * ease)
+                if self.m_CritFloatRefY == nil then
+                    self.m_CritFloatRefY = by
+                end
+                local hy = by + dy * ease
+                self.m_CritFloatCurY = hy
+                WindowSetOffsetFromParent(self.m_FlashHolderName, bx, hy)
                 if WindowUtils and WindowUtils.ForceProcessAnchors then WindowUtils.ForceProcessAnchors(wName) end
             end
             if self.m_CritPhaseElapsed >= dur then
@@ -620,6 +625,13 @@ function EA_System_EventEntry:SetupText(hitTargetObjectNumber, hitAmount, textTy
 end
 
 function EA_System_EventEntry:IsOutOfStartingBox()
+    -- Stock behavior: compare configured drift start vs current.
+    if self.m_FlashHolderName
+       and self.m_CritFloatRefY ~= nil
+       and self.m_CritFloatCurY ~= nil
+    then
+        return math.abs((self.m_CritFloatRefY or 0) - (self.m_CritFloatCurY or 0)) > MINIMUM_EVENT_SPACING
+    end
     return (self.m_AnimationData.start.y - self.m_AnimationData.current.y) > MINIMUM_EVENT_SPACING
 end
 
@@ -736,12 +748,23 @@ function EA_System_EventTracker:Create(anchorWindowName, targetObjectNumber, opt
         m_IsCritTracker      = (opts and opts.isCrit) and true or false,
         m_CritLaneOffsetX    = (opts and opts.critLaneOffsetX) or 0,
         m_CritAnimMode       = (opts and opts.critAnimMode) or nil,
+        m_CritQueueSeq       = 0,
     }
     setmetatable(newTracker, self)
     -- Keep the anchor continuously attached to the world object.
     -- MoveWindowToWorldObject is a one-shot move and will then appear screen-relative.
     AttachWindowToWorldObject(anchorWindowName, targetObjectNumber)
     return newTracker
+end
+
+function EA_System_EventTracker:AddEvent(eventData)
+    if self.m_IsCritTracker then
+        self.m_CritQueueSeq = (self.m_CritQueueSeq or 0) + 1
+        local n = self.m_CritQueueSeq
+        eventData = eventData or {}
+        eventData.critLaneOffsetX = ((n % 2) == 0) and 80 or -80
+    end
+    self.m_PendingEvents:PushBack(eventData)
 end
 
 function EA_System_EventTracker:Update(elapsedTime)
@@ -766,6 +789,15 @@ function EA_System_EventTracker:Update(elapsedTime)
             local newName = self.m_Anchor .. "Event" .. self.m_DisplayedEvents:End()
             if not DoesWindowExist(newName) then
                 local eventData     = self.m_PendingEvents:PopFront()
+                if self.m_IsCritTracker then
+                    local sct = CustomUI.SCT.GetSettings()
+                    local critAnim = sct and sct.critAnimation or "shake"
+                    if critAnim ~= "none" and critAnim ~= "shake" and critAnim ~= "pulse" and critAnim ~= "flash" then
+                        critAnim = "shake"
+                    end
+                    self.m_CritAnimMode    = critAnim
+                    self.m_CritLaneOffsetX = (eventData and eventData.critLaneOffsetX) or 0
+                end
                 local animData      = self:InitializeAnimationData(eventType)
                 animData.target.y   = animData.target.y - ((self.m_PendingEvents:End() - self.m_PendingEvents:Begin() + 1) * MINIMUM_EVENT_SPACING)
                 local parentForLabel = self.m_Anchor
@@ -891,10 +923,6 @@ function EA_System_EventTracker:InitializeAnimationData(displayType)
     }
 end
 
-function EA_System_EventTracker:AddEvent(eventData)
-    self.m_PendingEvents:PushBack(eventData)
-end
-
 function EA_System_EventTracker:Destroy()
     while self.m_DisplayedEvents:Front() ~= nil do
         self.m_DisplayedEvents:PopFront():Destroy()
@@ -918,7 +946,6 @@ local _stock = {
 EA_System_EventText = EA_System_EventText or {}
 EA_System_EventText.EventTrackers     = EA_System_EventText.EventTrackers     or {}
 EA_System_EventText.EventTrackersCrit = EA_System_EventText.EventTrackersCrit or {}
-EA_System_EventText.CritTrackerSeq    = EA_System_EventText.CritTrackerSeq    or 0
 
 
 function CustomUI.SCT.Activate()
@@ -1034,19 +1061,14 @@ function CustomUI.SCT._AddCombatEventText(hitTargetObjectNumber, hitAmount, text
     local isCrit    = (textType == GameData.CombatEvent.CRITICAL) or (textType == GameData.CombatEvent.ABILITY_CRITICAL)
 
     if isCrit then
-        EA_System_EventText.CritTrackerSeq = EA_System_EventText.CritTrackerSeq + 1
-        local id         = EA_System_EventText.CritTrackerSeq
-        local anchorName = "EA_System_EventTextAnchorCrit" .. hitTargetObjectNumber .. "_" .. id
-        CreateWindowFromTemplate(anchorName, "EA_Window_EventTextAnchor", "EA_Window_EventTextContainer")
-        local laneOffset = ((id % 2) == 0) and 80 or -80
-        local critAnim = (sct and sct.critAnimation) or "shake"
-        local tracker    = EA_System_EventTracker:Create(anchorName, hitTargetObjectNumber, {
-            isCrit = true,
-            critLaneOffsetX = laneOffset,
-            critAnimMode = critAnim,
-        })
-        EA_System_EventText.EventTrackersCrit[id] = tracker
-        tracker:AddEvent(eventData)
+        if EA_System_EventText.EventTrackersCrit[hitTargetObjectNumber] == nil then
+            local anchorName = "EA_System_EventTextAnchorCrit" .. hitTargetObjectNumber
+            CreateWindowFromTemplate(anchorName, "EA_Window_EventTextAnchor", "EA_Window_EventTextContainer")
+            EA_System_EventText.EventTrackersCrit[hitTargetObjectNumber] = EA_System_EventTracker:Create(anchorName, hitTargetObjectNumber, {
+                isCrit = true,
+            })
+        end
+        EA_System_EventText.EventTrackersCrit[hitTargetObjectNumber]:AddEvent(eventData)
         return
     end
 

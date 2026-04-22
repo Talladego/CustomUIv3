@@ -1,6 +1,7 @@
 ----------------------------------------------------------------
 -- CustomUI.SCT — Event text runtime
 if not CustomUI.SCT then CustomUI.SCT = {} end
+CustomUI.SCT.m_sctLayoutDebug = false -- pink/cyan/blue/red SCT layout overlays (SetSctLayoutDebug / ToggleSctLayoutDebug)
 -- Ported from ScrollingCombatTextSettings/easystem_eventtext.
 -- Requires SCTSettings.lua to be loaded first.
 ----------------------------------------------------------------
@@ -90,6 +91,10 @@ local CRIT_FLOAT_DURATION       = 0.75
 ----------------------------------------------------------------
 -- Debug helpers (must be defined early; used by tracker Update)
 ----------------------------------------------------------------
+
+local function SctLayoutDebugIsOn()
+    return not not (CustomUI.SCT and CustomUI.SCT.m_sctLayoutDebug)
+end
 
 local function SCTLog(msg)
     if type(d) == "function" then d("[SCT] " .. tostring(msg)) end
@@ -579,8 +584,8 @@ function EA_System_EventEntry:SetupText(hitTargetObjectNumber, hitAmount, textTy
                 self.m_AnimationData.target.x  = 0
                 self.m_AnimationData.target.y  = 0
 
-                -- Holder visuals: pink bounds + blue center marker.
-                if self.m_FlashHolderName then
+                -- Holder visuals: pink bounds + blue center marker (opt-in: CustomUI.SCT.SetSctLayoutDebug / ToggleSctLayoutDebug).
+                if SctLayoutDebugIsOn() and self.m_FlashHolderName then
                     local holderBg = self.m_FlashHolderName .. "DebugHolderBounds"
                     if not DoesWindowExist(holderBg) then
                         CreateWindowFromTemplate(holderBg, "EA_FullResizeImage_WhiteTransparent", self.m_FlashHolderName)
@@ -609,8 +614,8 @@ function EA_System_EventEntry:SetupText(hitTargetObjectNumber, hitAmount, textTy
             else
                 if WindowUtils and WindowUtils.ForceProcessAnchors then WindowUtils.ForceProcessAnchors(wName) end
             end
-            -- 3) Cyan label bounds (always for flash holder mode).
-            if self.m_AnimationData and self.m_AnimationData.flashHolderMode and self.m_FlashHolderName then
+            -- 3) Cyan label bounds (flash holder mode, opt-in layout debug).
+            if SctLayoutDebugIsOn() and self.m_AnimationData and self.m_AnimationData.flashHolderMode and self.m_FlashHolderName then
                 local labelBg = self.m_FlashHolderName .. "DebugLabelBounds"
                 if not DoesWindowExist(labelBg) then
                     CreateWindowFromTemplate(labelBg, "EA_FullResizeImage_WhiteTransparent", self.m_FlashHolderName)
@@ -639,7 +644,6 @@ function EA_System_EventEntry:SetupText(hitTargetObjectNumber, hitAmount, textTy
         end
         if WindowSetScale then WindowSetScale(wName, scale) end
         WindowSetRelativeScale(wName, scale)
-        -- Match crit: pink holder bounds, blue center, cyan label bounds (for layout debugging).
         if self.m_FlashHolderName
            and self.m_AnimationData
            and self.m_AnimationData.flashHolderMode
@@ -650,37 +654,39 @@ function EA_System_EventEntry:SetupText(hitTargetObjectNumber, hitAmount, textTy
             local h = (ok and th and th > 0) and th or 24
             WindowSetDimensions(wName, w, h)
             if WindowUtils and WindowUtils.ForceProcessAnchors then WindowUtils.ForceProcessAnchors(wName) end
-            local holderBg = self.m_FlashHolderName .. "DebugHolderBounds"
-            if not DoesWindowExist(holderBg) then
-                CreateWindowFromTemplate(holderBg, "EA_FullResizeImage_WhiteTransparent", self.m_FlashHolderName)
-                WindowSetAlpha(holderBg, 0.20)
-                WindowSetTintColor(holderBg, 255, 0, 200)
-                WindowClearAnchors(holderBg)
-            end
-            WindowSetDimensions(holderBg, w, h)
-            WindowSetOffsetFromParent(holderBg, -w / 2, -h / 2)
-
-            local holderCenter = self.m_FlashHolderName .. "DebugHolderCenter"
-            if not DoesWindowExist(holderCenter) then
-                CreateWindowFromTemplate(holderCenter, "EA_FullResizeImage_WhiteTransparent", self.m_FlashHolderName)
-                WindowSetDimensions(holderCenter, 6, 6)
-                WindowSetAlpha(holderCenter, 0.9)
-                WindowSetTintColor(holderCenter, 0, 120, 255)
-                WindowSetOffsetFromParent(holderCenter, -3, -3)
-            end
-
-            local labelBg = self.m_FlashHolderName .. "DebugLabelBounds"
-            if not DoesWindowExist(labelBg) then
-                CreateWindowFromTemplate(labelBg, "EA_FullResizeImage_WhiteTransparent", self.m_FlashHolderName)
-                WindowSetAlpha(labelBg, 0.25)
-                WindowSetTintColor(labelBg, 0, 200, 255)
-                WindowClearAnchors(labelBg)
-                WindowAddAnchor(labelBg, "topleft", wName, "topleft", 0, 0)
-                WindowAddAnchor(labelBg, "bottomright", wName, "bottomright", 0, 0)
-            end
             -- Stock SCT uses top-left offsets; center-anchored label needs holder at top-left + (w/2, h/2) to match.
             self.m_NonCritHolderHalfW = w * 0.5
             self.m_NonCritHolderHalfH = h * 0.5
+            if SctLayoutDebugIsOn() then
+                local holderBg = self.m_FlashHolderName .. "DebugHolderBounds"
+                if not DoesWindowExist(holderBg) then
+                    CreateWindowFromTemplate(holderBg, "EA_FullResizeImage_WhiteTransparent", self.m_FlashHolderName)
+                    WindowSetAlpha(holderBg, 0.20)
+                    WindowSetTintColor(holderBg, 255, 0, 200)
+                    WindowClearAnchors(holderBg)
+                end
+                WindowSetDimensions(holderBg, w, h)
+                WindowSetOffsetFromParent(holderBg, -w / 2, -h / 2)
+
+                local holderCenter = self.m_FlashHolderName .. "DebugHolderCenter"
+                if not DoesWindowExist(holderCenter) then
+                    CreateWindowFromTemplate(holderCenter, "EA_FullResizeImage_WhiteTransparent", self.m_FlashHolderName)
+                    WindowSetDimensions(holderCenter, 6, 6)
+                    WindowSetAlpha(holderCenter, 0.9)
+                    WindowSetTintColor(holderCenter, 0, 120, 255)
+                    WindowSetOffsetFromParent(holderCenter, -3, -3)
+                end
+
+                local labelBg = self.m_FlashHolderName .. "DebugLabelBounds"
+                if not DoesWindowExist(labelBg) then
+                    CreateWindowFromTemplate(labelBg, "EA_FullResizeImage_WhiteTransparent", self.m_FlashHolderName)
+                    WindowSetAlpha(labelBg, 0.25)
+                    WindowSetTintColor(labelBg, 0, 200, 255)
+                    WindowClearAnchors(labelBg)
+                    WindowAddAnchor(labelBg, "topleft", wName, "topleft", 0, 0)
+                    WindowAddAnchor(labelBg, "bottomright", wName, "bottomright", 0, 0)
+                end
+            end
         end
     end
 
@@ -896,13 +902,15 @@ function EA_System_EventTracker:Update(elapsedTime)
                     if not DoesWindowExist(holderName) then
                         CreateWindowFromTemplate(holderName, "EA_Window_EventTextAnchor", self.m_Anchor)
                     end
-                    -- 1) World marker: fixed red square at anchor origin.
-                    local worldPoint = self.m_Anchor .. "DebugWorldPoint"
-                    if not DoesWindowExist(worldPoint) then
-                        CreateWindowFromTemplate(worldPoint, "EA_FullResizeImage_RedTransparent", self.m_Anchor)
-                        WindowSetDimensions(worldPoint, 6, 6)
-                        WindowSetAlpha(worldPoint, 0.9)
-                        WindowSetOffsetFromParent(worldPoint, -3, -3)
+                    -- 1) World marker: fixed red square at anchor origin (opt-in layout debug).
+                    if SctLayoutDebugIsOn() then
+                        local worldPoint = self.m_Anchor .. "DebugWorldPoint"
+                        if not DoesWindowExist(worldPoint) then
+                            CreateWindowFromTemplate(worldPoint, "EA_FullResizeImage_RedTransparent", self.m_Anchor)
+                            WindowSetDimensions(worldPoint, 6, 6)
+                            WindowSetAlpha(worldPoint, 0.9)
+                            WindowSetOffsetFromParent(worldPoint, -3, -3)
+                        end
                     end
 
                     -- 2) Start holder at base position (no lane offset), then the entry anim moves it into the crit lane.
@@ -1054,6 +1062,52 @@ EA_System_EventText = EA_System_EventText or {}
 EA_System_EventText.EventTrackers     = EA_System_EventText.EventTrackers     or {}
 EA_System_EventText.EventTrackersCrit = EA_System_EventText.EventTrackersCrit or {}
 
+local function SctApplyAllLayoutDebugVisibility(show)
+    if not EA_System_EventText or not WindowSetShowing then return end
+    local vis = (show == true)
+    local function onTracker(tracker)
+        if not tracker or not tracker.m_Anchor then return end
+        local wp = tracker.m_Anchor .. "DebugWorldPoint"
+        if DoesWindowExist and DoesWindowExist(wp) then
+            pcall(function() WindowSetShowing(wp, vis) end)
+        end
+        local de = tracker.m_DisplayedEvents
+        if not de then return end
+        for i = de:Begin(), de:End() do
+            local fr = de[i]
+            if fr and fr.m_FlashHolderName then
+                for _, suf in ipairs({ "DebugHolderBounds", "DebugHolderCenter", "DebugLabelBounds" }) do
+                    local wn = fr.m_FlashHolderName .. suf
+                    if DoesWindowExist and DoesWindowExist(wn) then
+                        pcall(function() WindowSetShowing(wn, vis) end)
+                    end
+                end
+            end
+        end
+    end
+    for _, tr in pairs(EA_System_EventText.EventTrackers or {}) do
+        onTracker(tr)
+    end
+    for _, tr in pairs(EA_System_EventText.EventTrackersCrit or {}) do
+        onTracker(tr)
+    end
+end
+
+-- Layout debug: default off. Pink/cyan/blue holder overlays + red world-anchor dot (when created).
+function CustomUI.SCT.SctLayoutDebugEnabled()
+    return SctLayoutDebugIsOn()
+end
+
+function CustomUI.SCT.SetSctLayoutDebug(show)
+    if not CustomUI.SCT then CustomUI.SCT = {} end
+    CustomUI.SCT.m_sctLayoutDebug = (show == true)
+    SctApplyAllLayoutDebugVisibility(CustomUI.SCT.m_sctLayoutDebug)
+    return CustomUI.SCT.m_sctLayoutDebug
+end
+
+function CustomUI.SCT.ToggleSctLayoutDebug()
+    return CustomUI.SCT.SetSctLayoutDebug(not SctLayoutDebugIsOn())
+end
 
 function CustomUI.SCT.Activate()
     local enabled = CustomUI.IsComponentEnabled and CustomUI.IsComponentEnabled("SCT")

@@ -85,6 +85,7 @@ local CRIT_COLORFLASH_DURATION  = 0.75
 local CRIT_COLORFLASH_FREQUENCY = 12
 
 local CRIT_LANE_TRAVEL_DURATION = 0.15
+local CRIT_FLOAT_DURATION       = 0.75
 
 ----------------------------------------------------------------
 -- Debug helpers (must be defined early; used by tracker Update)
@@ -176,6 +177,24 @@ function EA_System_EventEntry:Update(elapsedTime, simulationSpeed)
         self.m_CritPhaseElapsed = (self.m_CritPhaseElapsed or 0) + simulationTime * critTimeMult
         local wName = self:GetName()
 
+        if self.m_CritPhase == "lanemove" then
+            local dur = self.m_CritLaneMoveDuration or CRIT_LANE_TRAVEL_DURATION
+            local t = dur > 0 and math.min(1, self.m_CritPhaseElapsed / dur) or 1
+            local ease = 1 - (1 - t) * (1 - t)
+            if self.m_FlashHolderName then
+                local sx = self.m_CritLaneStartX or (self.m_FlashHolderBaseX or 0)
+                local tx = self.m_CritLaneTargetX or (self.m_FlashHolderBaseX or 0)
+                local y  = self.m_CritLaneY or (self.m_FlashHolderBaseY or 0)
+                WindowSetOffsetFromParent(self.m_FlashHolderName, sx + (tx - sx) * ease, y)
+            end
+            self.m_LifeSpan = self.m_LifeSpan + simulationTime
+            if self.m_CritPhaseElapsed >= dur then
+                self.m_CritPhaseElapsed = 0
+                self.m_CritPhase = "grow"
+            end
+            return self.m_LifeSpan
+        end
+
         if self.m_CritPhase == "grow" then
             local duration = self.m_CritGrowDuration or CRIT_GROW_DURATION
             local t = duration > 0 and math.min(1, self.m_CritPhaseElapsed / duration) or 0
@@ -214,9 +233,10 @@ function EA_System_EventEntry:Update(elapsedTime, simulationSpeed)
                 elseif animMode == "shake" then
                     self.m_CritPhase = "shake"
                 else
-                    self.m_CritPhase = nil
+                    self.m_CritPhase = "float"
                 end
             end
+            self.m_LifeSpan = self.m_LifeSpan + simulationTime
             return self.m_LifeSpan
 
         elseif self.m_CritPhase == "shake" then
@@ -247,7 +267,8 @@ function EA_System_EventEntry:Update(elapsedTime, simulationSpeed)
                 math.floor(255 + (tg - 255) * lerp + 0.5),
                 math.floor(255 + (tb - 255) * lerp + 0.5))
             if self.m_CritPhaseElapsed >= duration then
-                self.m_CritPhase = nil
+                self.m_CritPhase = "float"
+                self.m_CritPhaseElapsed = 0
                 LabelSetTextColor(self:GetName(), tr, tg, tb)
                 if self.m_AnimationData and self.m_AnimationData.flashHolderMode and self.m_FlashHolderName then
                     local bx = self.m_FlashHolderBaseX or 0
@@ -260,6 +281,7 @@ function EA_System_EventEntry:Update(elapsedTime, simulationSpeed)
                 self.m_AnimationData.current.x = self.m_AnimationData.start.x
                 self.m_AnimationData.current.y = self.m_AnimationData.start.y
             end
+            self.m_LifeSpan = self.m_LifeSpan + simulationTime
             return self.m_LifeSpan
 
         elseif self.m_CritPhase == "flashosc" then
@@ -341,7 +363,8 @@ function EA_System_EventEntry:Update(elapsedTime, simulationSpeed)
                 math.floor(255 + (tg - 255) * lerp + 0.5),
                 math.floor(255 + (tb - 255) * lerp + 0.5))
             if self.m_CritPhaseElapsed >= duration then
-                self.m_CritPhase = nil
+                self.m_CritPhase = "float"
+                self.m_CritPhaseElapsed = 0
                 self.m_CritFlashBaseW = nil
                 self.m_CritFlashBaseH = nil
                 self.m_CritFlashCenterScreenX = nil
@@ -363,6 +386,7 @@ function EA_System_EventEntry:Update(elapsedTime, simulationSpeed)
                 self.m_AnimationData.current.x = startX
                 self.m_AnimationData.current.y = startY
             end
+            self.m_LifeSpan = self.m_LifeSpan + simulationTime
             return self.m_LifeSpan
 
         elseif self.m_CritPhase == "colorflash" then
@@ -390,7 +414,8 @@ function EA_System_EventEntry:Update(elapsedTime, simulationSpeed)
                 math.floor(tb + (255 - tb) * a + 0.5))
 
             if self.m_CritPhaseElapsed >= duration then
-                self.m_CritPhase = nil
+                self.m_CritPhase = "float"
+                self.m_CritPhaseElapsed = 0
                 LabelSetTextColor(self:GetName(), tr, tg, tb)
                 if self.m_AnimationData and self.m_AnimationData.flashHolderMode then
                     if WindowUtils and WindowUtils.ForceProcessAnchors then WindowUtils.ForceProcessAnchors(wName) end
@@ -400,13 +425,31 @@ function EA_System_EventEntry:Update(elapsedTime, simulationSpeed)
                 self.m_AnimationData.current.x = self.m_AnimationData.start.x
                 self.m_AnimationData.current.y = self.m_AnimationData.start.y
             end
+            self.m_LifeSpan = self.m_LifeSpan + simulationTime
+            return self.m_LifeSpan
+
+        elseif self.m_CritPhase == "float" then
+            local dur = self.m_CritFloatDuration or CRIT_FLOAT_DURATION
+            local t = dur > 0 and math.min(1, self.m_CritPhaseElapsed / dur) or 1
+            local ease = 1 - (1 - t) * (1 - t)
+            if self.m_FlashHolderName then
+                local bx = self.m_CritLaneTargetX or (self.m_FlashHolderBaseX or 0)
+                local by = self.m_CritLaneY or (self.m_FlashHolderBaseY or 0)
+                local dy = self.m_CritFloatDeltaY or 0
+                WindowSetOffsetFromParent(self.m_FlashHolderName, bx, by + dy * ease)
+                if WindowUtils and WindowUtils.ForceProcessAnchors then WindowUtils.ForceProcessAnchors(wName) end
+            end
+            if self.m_CritPhaseElapsed >= dur then
+                self.m_CritPhase = nil
+                self.m_CritPhaseElapsed = 0
+            end
+            self.m_LifeSpan = self.m_LifeSpan + simulationTime
             return self.m_LifeSpan
         end
     end
 
-    -- Pulse (flash) holder mode: keep strict center→center anchoring while fading.
-    -- Do not run the generic drift code below (it uses offsets and causes the topleft artifact).
-    if self.m_AnimationData and self.m_AnimationData.flashHolderMode then
+    -- Holder crits: label is anchored to holder; do not run generic drift on the label.
+    if self.m_AnimationData and self.m_AnimationData.flashHolderMode and self.m_FlashHolderName then
         self.m_LifeSpan = self.m_LifeSpan + simulationTime
         return self.m_LifeSpan
     end
@@ -492,7 +535,7 @@ function EA_System_EventEntry:SetupText(hitTargetObjectNumber, hitAmount, textTy
             -- For holder-based crit modes (Pulse/Shake), capture rendered extents so center anchoring matches glyphs.
             self.m_CritFlashBaseW         = nil
             self.m_CritFlashBaseH         = nil
-            if self.m_AnimationData and self.m_AnimationData.flashHolderMode and (critAnim == "pulse" or critAnim == "shake") then
+            if self.m_AnimationData and self.m_AnimationData.flashHolderMode and (critAnim == "pulse" or critAnim == "shake" or critAnim == "flash") then
                 local ok, tw, th = pcall(LabelGetTextDimensions, wName)
                 if ok and tw and th and tw > 0 and th > 0 then
                     self.m_CritFlashBaseW = tw
@@ -740,10 +783,10 @@ function EA_System_EventTracker:Update(elapsedTime)
                 local parentForLabel = self.m_Anchor
                 local animForLabel   = animData
 
-                -- Pulse + holder-shake crits: use a holder window under the world anchor.
-                -- Holder is positioned in the crit lane; label is centered on holder.
+                -- Crits: use a holder window under the world anchor.
+                -- Holder handles move-to-lane + float; label stays center-anchored and does visual animation.
                 local holderName
-                if self.m_IsCritTracker and (self.m_CritAnimMode == "pulse" or self.m_CritAnimMode == "shake") then
+                if self.m_IsCritTracker and (self.m_CritAnimMode == "pulse" or self.m_CritAnimMode == "shake" or self.m_CritAnimMode == "flash") then
                     holderName = self.m_Anchor .. "Holder" .. self.m_DisplayedEvents:End()
                     if not DoesWindowExist(holderName) then
                         CreateWindowFromTemplate(holderName, "EA_Window_EventTextAnchor", self.m_Anchor)
@@ -757,13 +800,23 @@ function EA_System_EventTracker:Update(elapsedTime)
                         WindowSetOffsetFromParent(worldPoint, -3, -3)
                     end
 
-                    -- 2) Move holder to crit lane immediately (no extra travel phase).
-                    WindowSetOffsetFromParent(holderName, animData.start.x, animData.start.y)
+                    -- 2) Start holder at base position (no lane offset), then the entry anim moves it into the crit lane.
+                    local laneX = self.m_CritLaneOffsetX or 0
+                    local startX = animData.start.x - laneX
+                    WindowSetOffsetFromParent(holderName, startX, animData.start.y)
                     parentForLabel = holderName
 
                     -- 3) Label: holder-local (no float). We'll finalize centered offsets in SetupText after measuring glyph extents.
-                    -- Fade after the crit animation completes (Pulse osc or Shake).
-                    local fadeDelay = CRIT_GROW_DURATION + ((self.m_CritAnimMode == "pulse") and CRIT_OSC_DURATION or CRIT_SHAKE_DURATION)
+                    -- Fade after: lane move + grow + anim + float.
+                    local animDur = 0
+                    if self.m_CritAnimMode == "pulse" then
+                        animDur = CRIT_OSC_DURATION
+                    elseif self.m_CritAnimMode == "shake" then
+                        animDur = CRIT_SHAKE_DURATION
+                    elseif self.m_CritAnimMode == "flash" then
+                        animDur = CRIT_COLORFLASH_DURATION
+                    end
+                    local fadeDelay = CRIT_LANE_TRAVEL_DURATION + CRIT_GROW_DURATION + animDur + CRIT_FLOAT_DURATION
                     animData.fadeDelay = fadeDelay
                     animData.maximumDisplayTime = fadeDelay + animData.fadeDuration + 0.10
 
@@ -780,10 +833,21 @@ function EA_System_EventTracker:Update(elapsedTime)
                 if frame and frame.GetName then
                     if holderName then
                         frame.m_FlashHolderName = holderName
+                        local laneX = self.m_CritLaneOffsetX or 0
+                        frame.m_CritLaneStartX = animData.start.x - laneX
+                        frame.m_CritLaneTargetX = animData.start.x
+                        frame.m_CritLaneY = animData.start.y
+                        frame.m_CritLaneMoveDuration = CRIT_LANE_TRAVEL_DURATION
                         frame.m_FlashHolderBaseX = animData.start.x
                         frame.m_FlashHolderBaseY = animData.start.y
+                        frame.m_CritFloatDeltaY = animData.target.y - animData.start.y
+                        frame.m_CritFloatDuration = CRIT_FLOAT_DURATION
                     end
                     frame:SetupText(self.m_TargetObject, eventData.amount, eventData.type)
+                    if frame.m_IsCritical and holderName and frame.m_CritAnimMode ~= "none" then
+                        frame.m_CritPhase = "lanemove"
+                        frame.m_CritPhaseElapsed = 0
+                    end
                     WindowSetShowing(frame:GetName(), true)
                     WindowStartAlphaAnimation(frame:GetName(), Window.AnimationType.EASE_OUT,
                         1, 0, animData.fadeDuration, false, animData.fadeDelay, 0)

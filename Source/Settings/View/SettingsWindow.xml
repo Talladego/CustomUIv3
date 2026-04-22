@@ -1,0 +1,138 @@
+<Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <Windows>
+
+        <!-- Tab button template — EA_Button_Tab with our own handlers instead of stock SettingsWindowTabbed ones. -->
+        <Button name="CustomUISettingsWindowTabButton" inherits="EA_Button_Tab">
+            <Size>
+                <AbsPoint x="124" y="35" />
+            </Size>
+            <EventHandlers>
+                <EventHandler event="OnLButtonUp" function="CustomUI.SettingsWindow.OnTabClicked" />
+            </EventHandlers>
+        </Button>
+
+        <!-- Bottom button template — mirrors stock SettingsWindowTabbedButton. -->
+        <Button name="CustomUISettingsWindowButton" inherits="EA_Button_DefaultResizeable" layer="default">
+            <Size>
+                <AbsPoint x="160" y="39" />
+            </Size>
+        </Button>
+
+        <!-- Main settings window. Tab buttons and content windows are created at runtime. -->
+        <Window name="CustomUISettingsWindow" movable="true" savesettings="true" layer="secondary"
+                handleinput="true">
+            <Size>
+                <AbsPoint x="900" y="600" />
+            </Size>
+            <Anchors>
+                <Anchor point="center" relativePoint="center" />
+            </Anchors>
+            <EventHandlers>
+                <EventHandler event="OnInitialize" function="CustomUI.SettingsWindow.OnInitialize" />
+                <EventHandler event="OnShown"      function="CustomUI.SettingsWindow.OnShown" />
+                <EventHandler event="OnHidden"     function="WindowUtils.OnHidden" />
+            </EventHandlers>
+            <Windows>
+
+                <Window name="$parentBackground" inherits="EA_Window_DefaultBackgroundFrame" />
+
+                <Window name="$parentTitleBar" inherits="EA_TitleBar_Default" />
+
+                <Button name="$parentClose" inherits="EA_Button_DefaultWindowClose">
+                    <EventHandlers>
+                        <EventHandler event="OnLButtonUp" function="CustomUI.SettingsWindow.OnCancel" />
+                    </EventHandlers>
+                </Button>
+
+                <!-- Button bar background at the bottom. -->
+                <Window name="$parentButtonBackground" inherits="EA_Window_DefaultButtonBottomFrame"
+                        layer="background">
+                    <Size>
+                        <AbsPoint x="0" y="75" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="bottomleft"  relativePoint="bottomleft"  />
+                        <Anchor point="bottomright" relativePoint="bottomright" />
+                    </Anchors>
+                </Window>
+
+                <!-- Tab button strip — children created at runtime. Hidden until tabs are registered. -->
+                <Window name="$parentTabButtons" hidden="true">
+                    <Size>
+                        <AbsPoint x="900" y="35" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="bottomleft"  relativePoint="topleft"  relativeTo="$parentTitleBar" />
+                        <Anchor point="bottomright" relativePoint="topright" relativeTo="$parentTitleBar" />
+                    </Anchors>
+                    <Windows>
+                        <!-- Left cap: second anchor set in Lua to leftmost tab's topleft. -->
+                        <Window name="$parentSeparatorLeft" inherits="EA_Window_TabSeparatorLeftSide" handleinput="false" layer="background" popable="false">
+                            <Anchors>
+                                <Anchor point="bottomleft" relativePoint="bottomleft">
+                                    <AbsPoint x="0" y="-6" />
+                                </Anchor>
+                            </Anchors>
+                        </Window>
+                        <!-- Right cap: second anchor set in Lua to rightmost tab's topright. -->
+                        <Window name="$parentSeparatorRight" inherits="EA_Window_TabSeparatorRightSide" handleinput="false" layer="background" popable="false">
+                            <Anchors>
+                                <Anchor point="bottomright" relativePoint="bottomright">
+                                    <AbsPoint x="0" y="-6" />
+                                </Anchor>
+                            </Anchors>
+                        </Window>
+                    </Windows>
+                </Window>
+
+                <!-- Content socket — stretches between tab strip and button bar. -->
+                <Window name="CustomUISettingsWindowSocket">
+                    <Anchors>
+                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentTabButtons">
+                            <AbsPoint x="15" y="15" />
+                        </Anchor>
+                        <Anchor point="topright" relativePoint="bottomright" relativeTo="$parentButtonBackground">
+                            <AbsPoint x="-5" y="10" />
+                        </Anchor>
+                    </Anchors>
+                </Window>
+
+                <!-- Bottom buttons: Cancel anchored left, Reset/Apply chain right. -->
+                <Button name="$parentCancelButton" inherits="CustomUISettingsWindowButton">
+                    <Anchors>
+                        <Anchor point="bottomleft" relativePoint="bottomleft" relativeTo="CustomUISettingsWindow">
+                            <AbsPoint x="15" y="-10" />
+                        </Anchor>
+                    </Anchors>
+                    <EventHandlers>
+                        <EventHandler event="OnLButtonUp" function="CustomUI.SettingsWindow.OnCancel" />
+                    </EventHandlers>
+                </Button>
+
+                <Button name="$parentResetButton" inherits="CustomUISettingsWindowButton">
+                    <Anchors>
+                        <Anchor point="right" relativePoint="left" relativeTo="$parentCancelButton">
+                            <AbsPoint x="5" y="0" />
+                        </Anchor>
+                    </Anchors>
+                    <EventHandlers>
+                        <EventHandler event="OnLButtonUp" function="CustomUI.SettingsWindow.OnReset" />
+                    </EventHandlers>
+                </Button>
+
+                <Button name="$parentApplyButton" inherits="CustomUISettingsWindowButton">
+                    <Anchors>
+                        <Anchor point="right" relativePoint="left" relativeTo="$parentResetButton">
+                            <AbsPoint x="5" y="0" />
+                        </Anchor>
+                    </Anchors>
+                    <EventHandlers>
+                        <EventHandler event="OnLButtonUp" function="CustomUI.SettingsWindow.OnApply" />
+                    </EventHandlers>
+                </Button>
+
+            </Windows>
+        </Window>
+
+    </Windows>
+</Interface>

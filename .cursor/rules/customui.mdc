@@ -1,0 +1,67 @@
+---
+description: CustomUI addon — architecture, settings, quality backlog, and RoR-Interface reference
+alwaysApply: true
+---
+
+# CustomUI (Return of Reckoning addon)
+
+Modular addon that replaces/enhances stock UI behind `/cui` and per-component settings. Root namespace: `CustomUI`; components live under `CustomUI.<Name>`. **Save Lua/XML as UTF-8 without BOM.**
+
+## Architecture
+
+- **Pattern:** Controller/View split — state, lifecycle, hooks, and `CustomUI.RegisterComponent` adapter in `Controller/`; rendering helpers and XML-bound handlers in `View/` only when needed (omit empty View lua).
+- **Visibility:** After `RegisterWindow` in `Initialize()`, call `LayoutEditor.UserHide(windowName)`. In `Enable`: `UserShow` CustomUI window, `UserHide` stock replacement. In `Disable`: reverse. See README for `PlayerPetWindow` / `PetWindow.UpdatePetProxy` hook rationale (stock can force-show pet health).
+- **Manifest:** `CustomUI.mod` — explicit load order: core/shared first, then Settings, then components (controller then xml). Prefer **manifest-only** `.mod`: avoid `<CreateWindow>` pre-creates for component windows unless documented exception (engine persistence); create from templates in each component `Initialize()` instead.
+- **Buff keys:** `abilityId` = stable server ID (grouping variants). `effectIndex` = per-cast slot — use for compression/dedup across casters, **not** for logical buff grouping.
+- **Anchors:** `Point` = on the **target** window (anchor to); `RelativePoint` = on the **element being positioned**. Easy to invert.
+
+## New component checklist
+
+1. Namespace `CustomUI.<Name>`; controller owns adapter and `RegisterComponent`.
+2. XML events → namespaced functions (e.g. `CustomUI.<Name>.Initialize`).
+3. `UserHide` immediately after `RegisterWindow` in `Initialize`.
+4. **Settings UI:** Prefer the standalone **CustomUISettingsWindow** addon for all tab XML and event handlers. Components stay **agnostic**: expose `GetSettings()` (and helpers like row descriptors / `SliderPosToScale` on `CustomUI.<Name>`) only — **no** `RegisterTab`, no paths into a specific settings window. In-addon `View/<Name>Tab.xml` and `CustomUI.<Name>.Tab` Lua are **LEGACY** (commented in `CustomUI.mod` and sources); keep only for compatibility — **do not add new settings UI there**.
+
+## Settings window (summary)
+
+- **Shipped UX:** **CustomUISettingsWindow** (separate mod, depends on CustomUI) owns `/cui` tabbed UI; tabs call into components for data only.
+- **Legacy (optional):** Old in-addon tabs (`*Tab.xml` / `CustomUI.<Name>.Tab`) and commented `RegisterTab` lines; not the primary settings path. Components must not assume this when integrating with CustomUISettingsWindow.
+
+## Slash commands
+
+`/customui` or `/cui` — open settings. Also: `status`, `components`, `enable|disable|toggle <name>`, `ufdebug on|off|status`, `help`.
+
+## Code quality backlog (prioritize when touching related code)
+
+**High**
+
+- `PetWindow.UpdatePetProxy` wrapper: forward `...`, preserve returns, isolate stock call with `pcall`, log failures, re-apply hide after.
+
+**Medium**
+
+- Symmetric lifecycle: every `WindowRegisterEventHandler` → matching unregister in `Shutdown`/`Disable`, or register in `Enable` only.
+- Guard `GameData` / `GameData.Player` in view helpers that read player state (early load / harness).
+- `UnitFrames`: reduce polling — react on transitions/signals, not constant visibility polls.
+- Gate dev-only files (e.g. test harnesses) behind a dev flag or exclude from release manifest.
+
+**Low**
+
+- Prefer deterministic iteration where `pairs` makes order matter (BuffTracker groups).
+- Consider merging Blacklist/Whitelist boilerplate.
+
+**Validation gaps:** no full enable/disable regression harness; hook install/uninstall across reloads under-tested.
+
+## RoR-Interface workspace (reference only)
+
+When the sibling **RoR-Interface** repo is available, use it for API and stock UI lookup — **do not** treat it as part of the CustomUI deliverable.
+
+- **Entry:** `docs/INDEX.md`, then:
+  - Engine vs UI functions: `docs/api/engine-functions.md`, `docs/api/ui-functions.md`
+  - Signatures + origin: `docs/api/function-signatures.md`
+  - Constants: `docs/api/gamedata-constants.md`, `docs/api/systemdata-constants.md`
+  - XML: `docs/xml/templates.md`, `docs/xml/global-tables.md`
+- **Default UI source:** `interface/default/` (`ea_*`, `easystem_*`, `eatemplate_*`, `ror_*`); **`interfacecore/`** for `Frame`, layout editor, lifecycle.
+- **Conventions:** `.mod` dependencies and order; `SystemData.*` / `GameData.*` constants; `WindowRegisterEventHandler`; `FrameManager`; layout editor for movable windows; `ModuleAddSavedVariable` / `CharacterSettingsGetData` for saved state.
+- **LuaLS:** optional stubs under RoR-Interface `lua-stubs/engine/` — point `.luarc.json` at them if using typed tooling.
+
+For implementation details and tables not repeated here, read **`README.md`**, **`issues.md`**, and **`plan.md`** in this repo.

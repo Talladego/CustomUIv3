@@ -1,0 +1,26 @@
+<Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../../../Interface.xsd">
+    <Scripts>
+        <Script file="Source/Components/PlayerStatusWindow/Controller/PlayerPetWindowController.lua" />
+    </Scripts>
+    <Windows>
+
+        <!-- Player Pet window — moveable replacement for the stock PetHealthWindow.
+             Dimensions match the PlayerPetUnitFrame template (180x90).
+             Default position: exact stock PetHealthWindow anchor. -->
+        <Window name="CustomUIPlayerPetWindow" movable="false" savesettings="true">
+            <Size>
+                <AbsPoint x="180" y="90" />
+            </Size>
+            <Anchors>
+                <Anchor point="bottomright" relativePoint="topleft" relativeTo="PlayerWindowPortrait">
+                    <AbsPoint x="-42" y="-8" />
+                </Anchor>
+            </Anchors>
+            <EventHandlers>
+                <EventHandler event="OnInitialize" function="CustomUI.PlayerPetWindow.Initialize" />
+                <EventHandler event="OnShutdown"   function="CustomUI.PlayerPetWindow.Shutdown" />
+            </EventHandlers>
+        </Window>
+
+    </Windows>
+</Interface>

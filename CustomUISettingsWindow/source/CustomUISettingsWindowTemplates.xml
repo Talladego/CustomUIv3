@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Custom tab strip: do not use EA_Templates_SettingsWindowTabButton — it calls SettingsWindowTabbed.* and fights this window. -->
+<Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <Windows>
+        <Button name="CustomUI_Templates_SettingsWindowTabButton" inherits="EA_Button_Tab">
+            <Size>
+                <AbsPoint x="124" y="35" />
+            </Size>
+            <EventHandlers>
+                <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabbed.OnLButtonUpTab" />
+                <EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabbed.OnMouseOverTab" />
+            </EventHandlers>
+            <TextOffset x="0" y="0" />
+        </Button>
+
+        <!-- Mirrors EA_SettingsWindow TooltipCheckButton (templates_settingswindowtabbed.xml): same EA_LabelCheckButton
+             base + OnMouseOver hook. Stock wires OnMouseOver to SettingsWindowTabbed.OnMouseOverTooltipElement (UserSettingsStrings);
+             Custom UI uses a local handler so this window stays independent of stock SettingsWindowTabbed. -->
+        <Window name="CustomUI_Templates_TooltipCheckButton" inherits="EA_LabelCheckButton" handleinput="true">
+            <EventHandlers>
+                <EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverFilterCheckButton" />
+            </EventHandlers>
+        </Window>
+    </Windows>
+</Interface>

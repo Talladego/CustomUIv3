@@ -1,0 +1,9 @@
+<Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <Windows>
+
+        <!-- Placeholder root window for the SCT component. -->
+        <Window name="CustomUISCTWindow" movable="false" savesettings="false" hidden="true">
+        </Window>
+
+    </Windows>
+</Interface>

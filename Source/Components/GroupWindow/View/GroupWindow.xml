@@ -1,0 +1,96 @@
+<Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../../../Interface.xsd">
+    <Scripts>
+        <Script file="Source/Components/GroupWindow/Controller/GroupWindowController.lua" />
+    </Scripts>
+    <Windows>
+
+        <Window name="CustomUIGroupWindow" savesettings="true" skipinput="true">
+            <Size>
+                <AbsPoint x="240" y="600" />
+            </Size>
+            <Anchors>
+                <Anchor point="bottomleft" relativePoint="topleft" relativeTo="PlayerWindowPortraitFrame">
+                    <AbsPoint x="0" y="48" />
+                </Anchor>
+            </Anchors>
+            <EventHandlers>
+                <EventHandler event="OnInitialize" function="CustomUI.GroupWindow.Initialize" />
+                <EventHandler event="OnShutdown"   function="CustomUI.GroupWindow.Shutdown" />
+                <EventHandler event="OnHidden"     function="CustomUI.GroupWindow.OnHidden" />
+                <EventHandler event="OnUpdate"     function="CustomUI.GroupWindow.Update" />
+            </EventHandlers>
+            <Windows>
+                <Window name="$parentMember1" inherits="GroupMemberUnitFrame" skipinput="false" alpha="1.0">
+                    <EventHandlers>
+                        <EventHandler event="OnMouseOver" function="CustomUI.GroupWindow.OnMemberMouseOver" />
+                        <EventHandler event="OnMouseOverEnd" function="CustomUI.GroupWindow.OnMemberMouseOverEnd" />
+                        <EventHandler event="OnRButtonUp" function="CustomUI.GroupWindow.OnMemberRightClick" />
+                        <EventHandler event="OnLButtonUp" function="CustomUI.GroupWindow.OnMemberLeftClick" />
+                    </EventHandlers>
+                    <Anchors>
+                        <Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+                            <AbsPoint x="0" y="3" />
+                        </Anchor>
+                    </Anchors>
+                </Window>
+
+                <Window name="$parentMember2" inherits="GroupMemberUnitFrame" skipinput="false" alpha="1.0">
+                    <EventHandlers>
+                        <EventHandler event="OnMouseOver" function="CustomUI.GroupWindow.OnMemberMouseOver" />
+                        <EventHandler event="OnMouseOverEnd" function="CustomUI.GroupWindow.OnMemberMouseOverEnd" />
+                        <EventHandler event="OnRButtonUp" function="CustomUI.GroupWindow.OnMemberRightClick" />
+                        <EventHandler event="OnLButtonUp" function="CustomUI.GroupWindow.OnMemberLeftClick" />
+                    </EventHandlers>
+                    <Anchors>
+                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentMember1PortraitFrame">
+                            <AbsPoint x="0" y="3" />
+                        </Anchor>
+                    </Anchors>
+                </Window>
+
+                <Window name="$parentMember3" inherits="GroupMemberUnitFrame" skipinput="false" alpha="1.0">
+                    <EventHandlers>
+                        <EventHandler event="OnMouseOver" function="CustomUI.GroupWindow.OnMemberMouseOver" />
+                        <EventHandler event="OnMouseOverEnd" function="CustomUI.GroupWindow.OnMemberMouseOverEnd" />
+                        <EventHandler event="OnRButtonUp" function="CustomUI.GroupWindow.OnMemberRightClick" />
+                        <EventHandler event="OnLButtonUp" function="CustomUI.GroupWindow.OnMemberLeftClick" />
+                    </EventHandlers>
+                    <Anchors>
+                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentMember2PortraitFrame">
+                            <AbsPoint x="0" y="3" />
+                        </Anchor>
+                    </Anchors>
+                </Window>
+
+                <Window name="$parentMember4" inherits="GroupMemberUnitFrame" skipinput="false" alpha="1.0">
+                    <EventHandlers>
+                        <EventHandler event="OnMouseOver" function="CustomUI.GroupWindow.OnMemberMouseOver" />
+                        <EventHandler event="OnMouseOverEnd" function="CustomUI.GroupWindow.OnMemberMouseOverEnd" />
+                        <EventHandler event="OnRButtonUp" function="CustomUI.GroupWindow.OnMemberRightClick" />
+                        <EventHandler event="OnLButtonUp" function="CustomUI.GroupWindow.OnMemberLeftClick" />
+                    </EventHandlers>
+                    <Anchors>
+                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentMember3PortraitFrame">
+                            <AbsPoint x="0" y="3" />
+                        </Anchor>
+                    </Anchors>
+                </Window>
+
+                <Window name="$parentMember5" inherits="GroupMemberUnitFrame" skipinput="false" alpha="1.0">
+                    <EventHandlers>
+                        <EventHandler event="OnMouseOver" function="CustomUI.GroupWindow.OnMemberMouseOver" />
+                        <EventHandler event="OnMouseOverEnd" function="CustomUI.GroupWindow.OnMemberMouseOverEnd" />
+                        <EventHandler event="OnRButtonUp" function="CustomUI.GroupWindow.OnMemberRightClick" />
+                        <EventHandler event="OnLButtonUp" function="CustomUI.GroupWindow.OnMemberLeftClick" />
+                    </EventHandlers>
+                    <Anchors>
+                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentMember4PortraitFrame">
+                            <AbsPoint x="0" y="3" />
+                        </Anchor>
+                    </Anchors>
+                </Window>
+            </Windows>
+        </Window>
+
+    </Windows>
+</Interface>

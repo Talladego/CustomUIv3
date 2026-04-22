@@ -1,0 +1,31 @@
+<Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../../../Interface.xsd">
+    <Scripts>
+        <Script file="Source/Components/TargetWindow/Controller/TargetWindowController.lua" />
+    </Scripts>
+    <Windows>
+
+        <Window name="CustomUITargetWindowTemplate" inherits="TargetUnitFrameAnchor" movable="false" savesettings="true">
+            <EventHandlers>
+                <EventHandler event="OnShutdown" function="CustomUI.TargetWindow.OnShutdown" />
+                <EventHandler event="OnUpdate"   function="CustomUI.TargetWindow.OnUpdate" />
+            </EventHandlers>
+        </Window>
+
+        <Window name="CustomUIHostileTargetWindow"  inherits="CustomUITargetWindowTemplate">
+            <Anchors>
+                <Anchor point="topright" relativePoint="topleft" relativeTo="CustomUIPlayerStatusWindow">
+                    <AbsPoint x="0" y="0" />
+                </Anchor>
+            </Anchors>
+        </Window>
+
+        <Window name="CustomUIFriendlyTargetWindow" inherits="CustomUITargetWindowTemplate">
+            <Anchors>
+                <Anchor point="bottomleft" relativePoint="topleft" relativeTo="CustomUIHostileTargetWindow">
+                    <AbsPoint x="0" y="0" />
+                </Anchor>
+            </Anchors>
+        </Window>
+
+    </Windows>
+</Interface>

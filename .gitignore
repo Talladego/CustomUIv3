@@ -1,0 +1,29 @@
+# CustomUI .gitignore — ignore local artifacts and game logs
+
+# OS
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+*.code-workspace
+
+# Logs and temp
+*.log
+*.tmp
+logs/
+
+# Build / export artifacts
+NO_DEHASH/
+__pycache__/
+
+# Backup files
+*.bak
+*.old
+
+# Windows thumbnail cache
+ehthumbs.db
+
+# Ignore user-specific settings
+*.user
+

@@ -1,0 +1,177 @@
+<Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../Interface.xsd">
+  <Scripts>
+    <Script file="Source/CustomUISettingsWindowTabGroupIcons.lua"/>
+  </Scripts>
+  <Windows>
+
+    <!-- Action Bar Settings -->
+
+    <Window name="EA_Window_SettingsActionBarLayoutButton" inherits="EA_Window_DefaultLabelToggleCircle">
+        <EventHandlers>
+            <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabGroupIcons.OnActionBarLayoutSelect" />
+        </EventHandlers>
+    </Window>
+
+    <Window name="EA_Window_SettingsActionBarCustomization">
+        <Size>
+            <AbsPoint x="820" y="40" />
+        </Size>
+        <Windows>
+            <Label name="$parentName" inherits="TooltipItemTitle">
+                <Size>
+                    <AbsPoint x="75" y="40" />
+                </Size>
+                <Anchors>
+                    <Anchor point="left" relativePoint="left">
+                        <AbsPoint x="10" y="0" />
+                    </Anchor>
+                </Anchors>
+                <Color r="255" g="255" b="255" a="255" />
+            </Label>
+            <Button name="$parentMakeVertical" inherits="TooltipGenericCheckButton" >
+                <Anchors>
+                    <Anchor point="right" relativePoint="left" relativeTo="$parentName" >
+                        <AbsPoint x="35" y="0" />
+                    </Anchor>
+                </Anchors>
+                <EventHandlers>
+                    <EventHandler event="OnInitialize" function="EA_GenericCheckButton.Initialize" />
+                    <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabGroupIcons.ToggleMakeVertical" />
+                </EventHandlers>
+            </Button>
+            <ComboBox name="$parentRows" inherits="EA_ComboBox_DefaultResizableTiny" >
+                <Anchors>
+                    <Anchor point="right" relativePoint="left" relativeTo="$parentMakeVertical" >
+                        <AbsPoint x="110" y="0" />
+                    </Anchor>
+                </Anchors>
+                <EventHandlers>
+                    <EventHandler event="OnSelChanged" function="CustomUISettingsWindowTabGroupIcons.SelectRows" />
+                </EventHandlers>
+            </ComboBox>
+            <ComboBox name="$parentNumberButtons" inherits="EA_ComboBox_DefaultResizableTiny" >
+                <Anchors>
+                    <Anchor point="right" relativePoint="left" relativeTo="$parentRows" >
+                        <AbsPoint x="80" y="0" />
+                    </Anchor>
+                </Anchors>
+                <EventHandlers>
+                    <EventHandler event="OnSelChanged" function="CustomUISettingsWindowTabGroupIcons.SelectNumButtons" />
+                </EventHandlers>
+            </ComboBox>
+            <ComboBox name="$parentVisibility" inherits="EA_ComboBox_DefaultResizable" >
+                <Anchors>
+                    <Anchor point="right" relativePoint="left" relativeTo="$parentNumberButtons" >
+                        <AbsPoint x="50" y="0" />
+                    </Anchor>
+                </Anchors>
+                <EventHandlers>
+                    <EventHandler event="OnSelChanged" function="CustomUISettingsWindowTabGroupIcons.SelectVisibility" />
+                </EventHandlers>
+            </ComboBox>
+        </Windows>
+    </Window>
+
+    <!--*******************************************************************-->
+    <!--                      Whole Window Definition                      -->
+    <!--*******************************************************************-->
+    <Window name="CustomUISettingsWindowTabGroupIcons" movable="false" >
+      <Anchors>
+        <Anchor point="topleft" relativePoint="topleft" relativeTo="CustomUISettingsWindowTabbedSocket">
+          <AbsPoint x="0" y="0"/>
+        </Anchor>
+        <Anchor point="bottomright" relativePoint="bottomright" relativeTo="CustomUISettingsWindowTabbedSocket">
+          <AbsPoint x="0" y="0"/>
+        </Anchor>
+      </Anchors>
+      <EventHandlers>
+        <EventHandler event="OnInitialize" function="CustomUISettingsWindowTabGroupIcons.Initialize"/>
+      </EventHandlers>
+      <Windows>
+
+        <!-- Scrolling Window -->
+        <ScrollWindow name="$parentContents" childscrollwindow="SWTabGroupIconsContentsScrollChild" scrollbar="SWTabGroupIconsContentsScrollbar" lineheight="18"  autoHideScrollBar="true">
+            <Anchors>
+                <Anchor point="topleft" relativePoint="topleft" >
+                </Anchor>
+                <Anchor point="bottomright" relativePoint="bottomright" >
+                </Anchor>
+            </Anchors>
+            <Windows>
+                <VerticalScrollbar name="$parentScrollbar" inherits="EA_ScrollBar_DefaultVerticalChain" layer="popup">
+                    <Anchors>
+                        <Anchor point="topright" relativePoint="topright">
+                            <AbsPoint x="0" y="0"/>
+                        </Anchor>
+                        <Anchor point="bottomright" relativePoint="bottomright">
+                            <AbsPoint x="0" y="0"/>
+                        </Anchor>
+                    </Anchors>
+                </VerticalScrollbar>
+                
+                <Window name="$parentScrollChild">
+                    <Anchors>
+                        <Anchor point="topleft" relativePoint="topleft" >
+                            <AbsPoint x="0" y="0" />
+                        </Anchor>
+                        <Anchor point="topleft" relativePoint="topright" relativeTo="$parentScrollbar" >
+                            <AbsPoint x="0" y="0" />
+                        </Anchor>
+                    </Anchors>
+                    <Windows> <!-- Tab-specific content goes in here -->
+
+                        <!-- General -->
+                        <Window name="$parentGeneral" >
+                            <Size>
+                                <AbsPoint x="500" y="100" />
+                            </Size>
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft" >
+                                  <AbsPoint x="0" y="0"/>
+                                </Anchor>
+                                <Anchor point="topright" relativePoint="topright" >
+                                  <AbsPoint x="0" y="0"/>
+                                </Anchor>
+                            </Anchors>
+                            <Windows>
+                                <FullResizeImage name="$parentBackground" inherits="SettingsSectionBackground" />
+                                <Label name="$parentTitle" inherits="EA_Settings_SectionTitle">
+                                    <Size>
+                                        <AbsPoint x="400" y="25" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="10" y="10" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+
+                                <Window name="$parentGroupIconsEnabled" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="40" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabGroupIcons.OnToggleGroupIcons" />
+                                    </EventHandlers>
+                                </Window>
+
+                            </Windows>
+                        </Window>
+						<!-- end General -->
+                                    
+                       
+                        
+                        
+                    </Windows>
+                </Window> <!-- Scroll Child -->
+            </Windows>
+        </ScrollWindow>
+        
+        
+      </Windows> <!-- End of Whole Window Children -->
+    </Window>    <!-- End of Whole Window Definition  -->
+  </Windows>     <!-- End of Settings Window Tab Interface -->
+</Interface>

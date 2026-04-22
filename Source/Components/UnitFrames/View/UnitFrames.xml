@@ -1,0 +1,225 @@
+<Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../../../Interface.xsd">
+    <Scripts>
+        <Script file="Source/Components/UnitFrames/Controller/UnitFramesController.lua" />
+    </Scripts>
+    <Windows>
+
+        <Window name="CustomUIBGMember" popable="false">
+            <Size>
+                <AbsPoint x="139" y="55"/>
+            </Size>
+            <EventHandlers>
+                <EventHandler event="OnLButtonUp" function="CustomUI.UnitFrames.OnMemberLeftClick" />
+                <EventHandler event="OnRButtonUp" function="CustomUI.UnitFrames.OnMemberRightClick" />
+            </EventHandlers>
+            <Windows>
+                <FullResizeImage name="$parentBackground" inherits="EA_FullResizeImage_TintableSolidBackground" alpha="0.25">
+                    <Anchors>
+                        <Anchor point="topleft" relativePoint="topleft" relativeTo="">
+                            <AbsPoint x="0" y="0"/>
+                        </Anchor>
+                        <Anchor point="bottomright" relativePoint="bottomright" relativeTo="">
+                            <AbsPoint x="0" y="0"/>
+                        </Anchor>
+                    </Anchors>
+                    <TintColor r="0" g="0" b="0" />
+                </FullResizeImage>
+
+                <DynamicImage name="$parentDeathIcon" inherits="DeathImage" layer="background" alpha="0.75" texturescale="0.5">
+                    <Size>
+                        <AbsPoint x="44" y="44" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="top" relativePoint="top" relativeTo="$parent">
+                            <AbsPoint x="0" y="5" />
+                        </Anchor>
+                    </Anchors>
+                </DynamicImage>
+
+                <Label name="$parentLabelName" font="font_heading_unitframe_con" textalign="center" layer="secondary" handleinput="false">
+                    <Size>
+                        <AbsPoint x="135" y="20" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="top" relativePoint="top" relativeTo="$parent">
+                            <AbsPoint x="0" y="0"/>
+                        </Anchor>
+                    </Anchors>
+                </Label>
+
+                <Label name="$parentLabelHealth" font="font_heading_unitframe_con" textalign="center" layer="secondary" handleinput="false">
+                    <Size>
+                        <AbsPoint x="135" y="20" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="bottom" relativePoint="top" relativeTo="$parentLabelName">
+                            <AbsPoint x="0" y="0"/>
+                        </Anchor>
+                    </Anchors>
+                </Label>
+
+                <StatusBar name="$parentHPBar" inherits="UnitFrameFriendlyHealthStatusSmallBar" popable="false" layer="background" interpolate="true">
+                    <Size>
+                        <AbsPoint x="135" y="55" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="top" relativePoint="top" relativeTo="$parent">
+                            <AbsPoint x="0" y="0" />
+                        </Anchor>
+                    </Anchors>
+                </StatusBar>
+
+                <StatusBar name="$parentAPBar" inherits="UnitFrameAPStatusBar" popable="false" layer="background" interpolate="true">
+                    <Size>
+                        <AbsPoint x="135" y="8" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="bottomleft" relativePoint="bottomleft" relativeTo="$parent">
+                            <AbsPoint x="0" y="-2" />
+                        </Anchor>
+                    </Anchors>
+                </StatusBar>
+
+                <DynamicImage name="$parentCareerIcon" textureScale="1.0" handleinput="true" layer="default">
+                    <Size>
+                        <AbsPoint x="32" y="32" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="left" relativePoint="left" relativeTo="$parentHPBar">
+                            <AbsPoint x="0" y="0" />
+                        </Anchor>
+                    </Anchors>
+                    <EventHandlers>
+                        <EventHandler event="OnMouseOver" function="CustomUI.UnitFrames.OnMouseOverCareerIcon" />
+                    </EventHandlers>
+                </DynamicImage>
+            </Windows>
+        </Window>
+
+        <Window name="CustomUIBGGroup" popable="false" movable="false" layer="default">
+            <Size>
+                <AbsPoint x="139" y="330"/>
+            </Size>
+            <Windows>
+                <Window name="$parentMember1" inherits="CustomUIBGMember">
+                    <Anchors>
+                        <Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+                            <AbsPoint x="0" y="0" />
+                        </Anchor>
+                    </Anchors>
+                </Window>
+                <Window name="$parentMember2" inherits="CustomUIBGMember">
+                    <Anchors>
+                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentMember1">
+                            <AbsPoint x="0" y="0" />
+                        </Anchor>
+                    </Anchors>
+                </Window>
+                <Window name="$parentMember3" inherits="CustomUIBGMember">
+                    <Anchors>
+                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentMember2">
+                            <AbsPoint x="0" y="0" />
+                        </Anchor>
+                    </Anchors>
+                </Window>
+                <Window name="$parentMember4" inherits="CustomUIBGMember">
+                    <Anchors>
+                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentMember3">
+                            <AbsPoint x="0" y="0" />
+                        </Anchor>
+                    </Anchors>
+                </Window>
+                <Window name="$parentMember5" inherits="CustomUIBGMember">
+                    <Anchors>
+                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentMember4">
+                            <AbsPoint x="0" y="0" />
+                        </Anchor>
+                    </Anchors>
+                </Window>
+                <Window name="$parentMember6" inherits="CustomUIBGMember">
+                    <Anchors>
+                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentMember5">
+                            <AbsPoint x="0" y="0" />
+                        </Anchor>
+                    </Anchors>
+                </Window>
+
+                <DynamicImage name="$parentGroupLeaderIcon" inherits="GroupLeaderCrown">
+                    <Anchors>
+                        <Anchor point="top" relativePoint="bottom" relativeTo="$parent">
+                            <AbsPoint x="0" y="2" />
+                        </Anchor>
+                    </Anchors>
+                </DynamicImage>
+
+                <DynamicImage name="$parentMainAssistIcon" inherits="MainAssistCrown">
+                    <Anchors>
+                        <Anchor point="top" relativePoint="bottom" relativeTo="$parent">
+                            <AbsPoint x="0" y="2" />
+                        </Anchor>
+                    </Anchors>
+                </DynamicImage>
+            </Windows>
+        </Window>
+
+        <Window name="CustomUIUnitFramesRoot" movable="false" layer="default">
+            <Size>
+                <AbsPoint x="10" y="10" />
+            </Size>
+            <EventHandlers>
+                <EventHandler event="OnInitialize" function="CustomUI.UnitFrames.InitializeWindow" />
+                <EventHandler event="OnShutdown" function="CustomUI.UnitFrames.ShutdownWindow" />
+                <EventHandler event="OnUpdate" function="CustomUI.UnitFrames.Update" />
+            </EventHandlers>
+        </Window>
+
+        <Window name="CustomUIUnitFramesGroup1Window" inherits="CustomUIBGGroup" savesettings="true">
+            <Anchors>
+                <Anchor point="bottomleft" relativePoint="topleft" relativeTo="PlayerWindow">
+                    <AbsPoint x="0" y="60" />
+                </Anchor>
+            </Anchors>
+        </Window>
+
+        <Window name="CustomUIUnitFramesGroup2Window" inherits="CustomUIBGGroup" savesettings="true">
+            <Anchors>
+                <Anchor point="bottomleft" relativePoint="topleft" relativeTo="CustomUIUnitFramesGroup1Window">
+                    <AbsPoint x="0" y="15" />
+                </Anchor>
+            </Anchors>
+        </Window>
+
+        <Window name="CustomUIUnitFramesGroup3Window" inherits="CustomUIBGGroup" savesettings="true">
+            <Anchors>
+                <Anchor point="topright" relativePoint="topleft" relativeTo="CustomUIUnitFramesGroup1Window">
+                    <AbsPoint x="5" y="0" />
+                </Anchor>
+            </Anchors>
+        </Window>
+
+        <Window name="CustomUIUnitFramesGroup4Window" inherits="CustomUIBGGroup" savesettings="true">
+            <Anchors>
+                <Anchor point="bottomleft" relativePoint="topleft" relativeTo="CustomUIUnitFramesGroup3Window">
+                    <AbsPoint x="0" y="15" />
+                </Anchor>
+            </Anchors>
+        </Window>
+
+        <Window name="CustomUIUnitFramesGroup5Window" inherits="CustomUIBGGroup" savesettings="true">
+            <Anchors>
+                <Anchor point="topright" relativePoint="topleft" relativeTo="CustomUIUnitFramesGroup3Window">
+                    <AbsPoint x="5" y="0" />
+                </Anchor>
+            </Anchors>
+        </Window>
+
+        <Window name="CustomUIUnitFramesGroup6Window" inherits="CustomUIBGGroup" savesettings="true">
+            <Anchors>
+                <Anchor point="bottomleft" relativePoint="topleft" relativeTo="CustomUIUnitFramesGroup5Window">
+                    <AbsPoint x="0" y="15" />
+                </Anchor>
+            </Anchors>
+        </Window>
+
+    </Windows>
+</Interface>

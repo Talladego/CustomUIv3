@@ -1,0 +1,40 @@
+<Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <Windows>
+
+        <!--
+            GroupIcon world-object window template.
+            Created at runtime via CreateWindowFromTemplate into "Root".
+            Outer window is resized to accommodate offset; inner Content
+            is anchored with the offset applied in Lua.
+        -->
+        <Window name="CustomUIGroupIcon">
+            <Size>
+                <AbsPoint x="40" y="40" />
+            </Size>
+            <Windows>
+                <Window name="$parentContent" handleinput="true">
+                    <Size>
+                        <AbsPoint x="40" y="40" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="topleft" relativePoint="topleft" />
+                    </Anchors>
+                    <Windows>
+                        <DynamicImage name="$parentIcon" handleinput="false">
+                            <Size>
+                                <AbsPoint x="40" y="40" />
+                            </Size>
+                            <Anchors>
+                                <Anchor point="center" relativePoint="center" />
+                            </Anchors>
+                        </DynamicImage>
+                    </Windows>
+                    <EventHandlers>
+                        <EventHandler event="OnLButtonDown" function="CustomUI.GroupIcons.OnIconClicked" />
+                    </EventHandlers>
+                </Window>
+            </Windows>
+        </Window>
+
+    </Windows>
+</Interface>

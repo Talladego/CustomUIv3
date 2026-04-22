@@ -1,0 +1,1585 @@
+<Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../Interface.xsd">
+  <Scripts>
+    <Script file="Source/CustomUISettingsWindowTabSCT.lua"/>
+  </Scripts>
+  <Windows>
+
+    <!--*******************************************************************-->
+    <!--                      Whole Window Definition                      -->
+    <!--*******************************************************************-->
+    <Window name="CustomUISettingsWindowTabSCT" movable="false" >
+      <Anchors>
+        <Anchor point="topleft" relativePoint="topleft" relativeTo="CustomUISettingsWindowTabbedSocket">
+          <AbsPoint x="0" y="0"/>
+        </Anchor>
+        <Anchor point="bottomright" relativePoint="bottomright" relativeTo="CustomUISettingsWindowTabbedSocket">
+          <AbsPoint x="0" y="0"/>
+        </Anchor>
+      </Anchors>
+      <EventHandlers>
+        <EventHandler event="OnInitialize" function="CustomUISettingsWindowTabSCT.Initialize"/>
+        <!-- DebugPointer: polls SystemData.MouseOverWindow / ActiveWindow each frame while tab is shown (see .lua). -->
+        <EventHandler event="OnUpdate" function="CustomUISettingsWindowTabSCT.OnUpdateDebugPointer"/>
+      </EventHandlers>
+      <Windows>
+
+        <!-- Scrolling Window -->
+        <ScrollWindow name="$parentContents" childscrollwindow="SWTabSCTContentsScrollChild" scrollbar="SWTabSCTContentsScrollbar" lineheight="18" autoHideScrollBar="true">
+            <Anchors>
+                <Anchor point="topleft" relativePoint="topleft" >
+                </Anchor>
+                <Anchor point="bottomright" relativePoint="bottomright" >
+                </Anchor>
+            </Anchors>
+            <Windows>
+                <VerticalScrollbar name="$parentScrollbar" inherits="EA_ScrollBar_DefaultVerticalChain" layer="popup">
+                    <Anchors>
+                        <Anchor point="topright" relativePoint="topright">
+                            <AbsPoint x="0" y="0"/>
+                        </Anchor>
+                        <Anchor point="bottomright" relativePoint="bottomright">
+                            <AbsPoint x="0" y="0"/>
+                        </Anchor>
+                    </Anchors>
+                </VerticalScrollbar>
+                
+                <Window name="$parentScrollChild">
+                    <Anchors>
+                        <Anchor point="topleft" relativePoint="topleft" >
+                            <AbsPoint x="0" y="0" />
+                        </Anchor>
+                        <Anchor point="topleft" relativePoint="topright" relativeTo="$parentScrollbar" >
+                            <AbsPoint x="0" y="0" />
+                        </Anchor>
+                    </Anchors>
+                    <Windows> <!-- Tab-specific content goes in here -->
+
+                        <!-- Begin General -->
+                        <Window name="$parentGeneral" >
+                            <Size>
+                                <AbsPoint x="500" y="160" />
+                            </Size>
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft" >
+                                  <AbsPoint x="0" y="0"/>
+                                </Anchor>
+                                <Anchor point="topright" relativePoint="topright" >
+                                  <AbsPoint x="0" y="0"/>
+                                </Anchor>
+                            </Anchors>
+                            <Windows>
+                                <FullResizeImage name="$parentBackground" inherits="SettingsSectionBackground" handleinput="false" layer="background" />
+                                <Label name="$parentTitle" inherits="EA_Settings_SectionTitle">
+                                    <Size>
+                                        <AbsPoint x="400" y="25" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="10" y="10" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+
+                                <Window name="$parentSCTEnabled" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="38" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnToggleSCT" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <!-- Crit controls: README Pattern A — sibling relativeTo in this engine fails silently; pin to General with fixed offsets. -->
+                                <Label name="$parentCritAnimationLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+                                    <Size>
+                                        <AbsPoint x="220" y="20" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="86" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+
+                                <Window name="$parentCritAnimNone" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+                                    <Size>
+                                        <AbsPoint x="100" y="25" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="270" y="86" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnCritAnimationModeChanged" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Window name="$parentCritAnimShake" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+                                    <Size>
+                                        <AbsPoint x="100" y="25" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="380" y="86" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnCritAnimationModeChanged" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Window name="$parentCritAnimFlash" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+                                    <Size>
+                                        <AbsPoint x="100" y="25" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="490" y="86" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnCritAnimationModeChanged" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <!-- Next row: y = Crit row (86) + 37, matching c_SCT_ROW_HEIGHT in CustomUISettingsWindowTabSCT.lua -->
+                                <Label name="$parentAnimationSpeedLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+                                    <Size>
+                                        <AbsPoint x="200" y="20" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="123" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+                                <!-- Left edge with CritAnimNone (x=270) so the track lines up the crit checkbox column. -->
+                                <SliderBar name="$parentCritAnimSpeed" inherits="EA_Default_SliderBar" handleinput="true" numticks="5">
+                                    <Size>
+                                        <AbsPoint x="300" y="25" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="270" y="123" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnCritAnimationSpeedChanged" />
+                                    </EventHandlers>
+                                </SliderBar>
+
+                            </Windows>
+                        </Window>
+						<!-- End General -->
+
+                        <!-- Begin Appearance (SCT / floating combat & point text) -->
+                        <Window name="$parentSCT">
+                            <!-- Same horizontal stretch as $parentGeneral: dual anchors to ScrollChild. A single anchor + fixed Width (850) left the section narrower than General so right-edge controls (e.g. Incoming color) sat outside the section background. -->
+                            <Size>
+                                <AbsPoint x="850" y="657" />
+                            </Size>
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft">
+                                    <AbsPoint x="0" y="170" />
+                                </Anchor>
+                                <Anchor point="topright" relativePoint="topright">
+                                    <AbsPoint x="0" y="170" />
+                                </Anchor>
+                            </Anchors>
+                            <Windows>
+                                <FullResizeImage name="$parentBackground" inherits="SettingsSectionBackground" handleinput="false" layer="background" />
+                                <Label name="$parentTitle" inherits="EA_Settings_SectionTitle">
+                                    <Size>
+                                        <AbsPoint x="400" y="25" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+                                            <AbsPoint x="10" y="10" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+
+								<Window name="$parentRowTextFont">
+									<Size>
+										<AbsPoint x="850" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+											<AbsPoint x="0" y="45" />
+										</Anchor>
+										<Anchor point="topright" relativePoint="topright" relativeTo="$parent">
+											<AbsPoint x="0" y="45" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+										<Label name="$parentTextFontLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+											<Size>
+												<AbsPoint x="120" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="45" y="2" />
+												</Anchor>
+											</Anchors>
+										</Label>
+										<ComboBox name="$parentCombo" inherits="EA_ComboBox_DefaultResizable" handleinput="true" layer="default">
+											<Size>
+												<AbsPoint x="400" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="170" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSelChanged" function="CustomUISettingsWindowTabSCT.OnSctTextFontChanged" />
+											</EventHandlers>
+										</ComboBox>
+									</Windows>
+								</Window>
+
+								<!-- Column headers: Show / Size / Color above Outgoing and Incoming (aligned to first data row). -->
+								<Window name="$parentRowSctColumnHeaders">
+									<Size>
+										<AbsPoint x="850" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+											<AbsPoint x="0" y="45" />
+										</Anchor>
+										<Anchor point="topright" relativePoint="topright" relativeTo="$parent">
+											<AbsPoint x="0" y="45" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+										<Label name="$parentOutShowHdr" font="font_default_text_small" textalign="left" handleinput="false" layer="background">
+											<Size>
+												<AbsPoint x="118" y="18" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="45" y="2" />
+												</Anchor>
+											</Anchors>
+										</Label>
+										<Label name="$parentOutSizeHdr" font="font_default_text_small" textalign="left" handleinput="false" layer="background">
+											<Size>
+												<AbsPoint x="175" y="18" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="163" y="2" />
+												</Anchor>
+											</Anchors>
+										</Label>
+										<Label name="$parentOutColorHdr" font="font_default_text_small" textalign="left" handleinput="false" layer="background">
+											<Size>
+												<AbsPoint x="64" y="18" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="358" y="2" />
+												</Anchor>
+											</Anchors>
+										</Label>
+										<Label name="$parentInShowHdr" font="font_default_text_small" textalign="left" handleinput="false" layer="background">
+											<Size>
+												<AbsPoint x="118" y="18" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="478" y="2" />
+												</Anchor>
+											</Anchors>
+										</Label>
+										<Label name="$parentInSizeHdr" font="font_default_text_small" textalign="left" handleinput="false" layer="background">
+											<Size>
+												<AbsPoint x="175" y="18" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="596" y="2" />
+												</Anchor>
+											</Anchors>
+										</Label>
+										<!-- Left edge matches InColorSwatch (InSize right 771 + 20px gap). Section width 850 so "Color" fits after 791. -->
+										<Label name="$parentInColorHdr" font="font_default_text_small" textalign="left" handleinput="false" layer="background">
+											<Size>
+												<AbsPoint x="59" y="18" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="791" y="2" />
+												</Anchor>
+											</Anchors>
+										</Label>
+									</Windows>
+								</Window>
+
+								<!-- Begin Hit Row (first data row; below column headers). -->
+								<Window name="$parentRowHit">
+									<Size>
+										<AbsPoint x="850" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+											<AbsPoint x="0" y="45" />
+										</Anchor>
+										<Anchor point="topright" relativePoint="topright" relativeTo="$parent">
+											<AbsPoint x="0" y="45" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+											<!-- Begin Hit Outgoing -->
+										<Window name="$parentOutShow" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+											<Size>
+												<AbsPoint x="118" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="45" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnFilterChanged" />
+											</EventHandlers>
+										</Window>
+
+										<SliderBar name="$parentOutSize" inherits="EA_Default_SliderBar" handleinput="true" numticks="5">
+											<Size>
+												<AbsPoint x="175" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutShow">
+													<AbsPoint x="0" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+											</EventHandlers>
+										</SliderBar>
+										
+										<FullResizeImage name="$parentOutColorSwatch" inherits="EA_FullResizeImage_WhiteTransparent" handleinput="true" layer="default" alpha="1.0">
+											<Size>
+												<AbsPoint x="20" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutSize">
+													<AbsPoint x="20" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnSctColorSwatchClick" />
+											</EventHandlers>
+										</FullResizeImage>
+										<!-- End Hit Outgoing -->
+										
+										<!-- Begin Hit Incoming -->
+										<Window name="$parentInShow" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+											<Size>
+												<AbsPoint x="118" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutColorSwatch">
+													<AbsPoint x="100" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnFilterChanged" />
+											</EventHandlers>
+										</Window>
+
+										<SliderBar name="$parentInSize" inherits="EA_Default_SliderBar" handleinput="true" numticks="5">
+											<Size>
+												<AbsPoint x="175" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentInShow">
+													<AbsPoint x="0" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+											</EventHandlers>
+										</SliderBar>
+										
+										<FullResizeImage name="$parentInColorSwatch" inherits="EA_FullResizeImage_WhiteTransparent" handleinput="true" layer="default" alpha="1.0">
+											<Size>
+												<AbsPoint x="20" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentInSize">
+													<AbsPoint x="20" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnSctColorSwatchClick" />
+											</EventHandlers>
+										</FullResizeImage>
+										<!-- End Hit Incoming -->
+
+ 									</Windows>
+								</Window>
+								<!-- End Hit Row -->
+
+								<!-- Begin Ability Row -->
+								<Window name="$parentRowAbility">
+									<Size>
+										<AbsPoint x="850" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowHit">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowHit">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+
+											<!-- Begin Ability Outgoing -->
+										<Window name="$parentOutShow" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+											<Size>
+												<AbsPoint x="118" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="45" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnFilterChanged" />
+											</EventHandlers>
+										</Window>
+
+										<SliderBar name="$parentOutSize" inherits="EA_Default_SliderBar" handleinput="true" numticks="5">
+											<Size>
+												<AbsPoint x="175" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutShow">
+													<AbsPoint x="0" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+											</EventHandlers>
+										</SliderBar>
+										
+										<FullResizeImage name="$parentOutColorSwatch" inherits="EA_FullResizeImage_WhiteTransparent" handleinput="true" layer="default" alpha="1.0">
+											<Size>
+												<AbsPoint x="20" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutSize">
+													<AbsPoint x="20" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnSctColorSwatchClick" />
+											</EventHandlers>
+										</FullResizeImage>
+										<!-- End Ability Outgoing -->
+										
+										<!-- Begin Ability Incoming -->
+										<Window name="$parentInShow" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+											<Size>
+												<AbsPoint x="118" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutColorSwatch">
+													<AbsPoint x="100" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnFilterChanged" />
+											</EventHandlers>
+										</Window>
+
+										<SliderBar name="$parentInSize" inherits="EA_Default_SliderBar" handleinput="true" numticks="5">
+											<Size>
+												<AbsPoint x="175" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentInShow">
+													<AbsPoint x="0" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+											</EventHandlers>
+										</SliderBar>
+										
+										<FullResizeImage name="$parentInColorSwatch" inherits="EA_FullResizeImage_WhiteTransparent" handleinput="true" layer="default" alpha="1.0">
+											<Size>
+												<AbsPoint x="20" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentInSize">
+													<AbsPoint x="20" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnSctColorSwatchClick" />
+											</EventHandlers>
+										</FullResizeImage>
+										<!-- End Ability Incoming -->
+										
+ 									</Windows>
+								</Window>
+								<!-- End Ability Row -->
+
+								<!-- Begin Heal Row -->
+								<Window name="$parentRowHeal">
+									<Size>
+										<AbsPoint x="850" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowAbility">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowAbility">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+
+											<!-- Begin Heal Outgoing -->
+										<Window name="$parentOutShow" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+											<Size>
+												<AbsPoint x="118" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="45" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnFilterChanged" />
+											</EventHandlers>
+										</Window>
+
+										<SliderBar name="$parentOutSize" inherits="EA_Default_SliderBar" handleinput="true" numticks="5">
+											<Size>
+												<AbsPoint x="175" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutShow">
+													<AbsPoint x="0" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+											</EventHandlers>
+										</SliderBar>
+
+										<FullResizeImage name="$parentOutColorSwatch" inherits="EA_FullResizeImage_WhiteTransparent" handleinput="true" layer="default" alpha="1.0">
+											<Size>
+												<AbsPoint x="20" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutSize">
+													<AbsPoint x="20" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnSctColorSwatchClick" />
+											</EventHandlers>
+										</FullResizeImage>
+										<!-- End Heal Outgoing -->
+
+										<!-- Begin Heal Incoming -->
+										<Window name="$parentInShow" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+											<Size>
+												<AbsPoint x="118" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutColorSwatch">
+													<AbsPoint x="100" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnFilterChanged" />
+											</EventHandlers>
+										</Window>
+
+										<SliderBar name="$parentInSize" inherits="EA_Default_SliderBar" handleinput="true" numticks="5">
+											<Size>
+												<AbsPoint x="175" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentInShow">
+													<AbsPoint x="0" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+											</EventHandlers>
+										</SliderBar>
+
+										<FullResizeImage name="$parentInColorSwatch" inherits="EA_FullResizeImage_WhiteTransparent" handleinput="true" layer="default" alpha="1.0">
+											<Size>
+												<AbsPoint x="20" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentInSize">
+													<AbsPoint x="20" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnSctColorSwatchClick" />
+											</EventHandlers>
+										</FullResizeImage>
+										<!-- End Heal Incoming -->
+
+									</Windows>
+								</Window>
+								<!-- End Heal Row -->
+
+								<!-- Begin Block Row -->
+								<Window name="$parentRowBlock">
+									<Size>
+										<AbsPoint x="850" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowHeal">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowHeal">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+
+											<!-- Begin Block Outgoing -->
+										<Window name="$parentOutShow" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+											<Size>
+												<AbsPoint x="118" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="45" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnFilterChanged" />
+											</EventHandlers>
+										</Window>
+
+										<SliderBar name="$parentOutSize" inherits="EA_Default_SliderBar" handleinput="true" numticks="5">
+											<Size>
+												<AbsPoint x="175" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutShow">
+													<AbsPoint x="0" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+											</EventHandlers>
+										</SliderBar>
+
+										<FullResizeImage name="$parentOutColorSwatch" inherits="EA_FullResizeImage_WhiteTransparent" handleinput="true" layer="default" alpha="1.0">
+											<Size>
+												<AbsPoint x="20" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutSize">
+													<AbsPoint x="20" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnSctColorSwatchClick" />
+											</EventHandlers>
+										</FullResizeImage>
+										<!-- End Block Outgoing -->
+
+										<!-- Begin Block Incoming -->
+										<Window name="$parentInShow" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+											<Size>
+												<AbsPoint x="118" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutColorSwatch">
+													<AbsPoint x="100" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnFilterChanged" />
+											</EventHandlers>
+										</Window>
+
+										<SliderBar name="$parentInSize" inherits="EA_Default_SliderBar" handleinput="true" numticks="5">
+											<Size>
+												<AbsPoint x="175" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentInShow">
+													<AbsPoint x="0" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+											</EventHandlers>
+										</SliderBar>
+
+										<FullResizeImage name="$parentInColorSwatch" inherits="EA_FullResizeImage_WhiteTransparent" handleinput="true" layer="default" alpha="1.0">
+											<Size>
+												<AbsPoint x="20" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentInSize">
+													<AbsPoint x="20" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnSctColorSwatchClick" />
+											</EventHandlers>
+										</FullResizeImage>
+										<!-- End Block Incoming -->
+
+									</Windows>
+								</Window>
+								<!-- End Block Row -->
+
+								<!-- Begin Parry Row -->
+								<Window name="$parentRowParry">
+									<Size>
+										<AbsPoint x="850" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowBlock">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowBlock">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+
+											<!-- Begin Parry Outgoing -->
+										<Window name="$parentOutShow" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+											<Size>
+												<AbsPoint x="118" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="45" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnFilterChanged" />
+											</EventHandlers>
+										</Window>
+
+										<SliderBar name="$parentOutSize" inherits="EA_Default_SliderBar" handleinput="true" numticks="5">
+											<Size>
+												<AbsPoint x="175" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutShow">
+													<AbsPoint x="0" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+											</EventHandlers>
+										</SliderBar>
+
+										<FullResizeImage name="$parentOutColorSwatch" inherits="EA_FullResizeImage_WhiteTransparent" handleinput="true" layer="default" alpha="1.0">
+											<Size>
+												<AbsPoint x="20" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutSize">
+													<AbsPoint x="20" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnSctColorSwatchClick" />
+											</EventHandlers>
+										</FullResizeImage>
+										<!-- End Parry Outgoing -->
+
+										<!-- Begin Parry Incoming -->
+										<Window name="$parentInShow" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+											<Size>
+												<AbsPoint x="118" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutColorSwatch">
+													<AbsPoint x="100" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnFilterChanged" />
+											</EventHandlers>
+										</Window>
+
+										<SliderBar name="$parentInSize" inherits="EA_Default_SliderBar" handleinput="true" numticks="5">
+											<Size>
+												<AbsPoint x="175" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentInShow">
+													<AbsPoint x="0" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+											</EventHandlers>
+										</SliderBar>
+
+										<FullResizeImage name="$parentInColorSwatch" inherits="EA_FullResizeImage_WhiteTransparent" handleinput="true" layer="default" alpha="1.0">
+											<Size>
+												<AbsPoint x="20" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentInSize">
+													<AbsPoint x="20" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnSctColorSwatchClick" />
+											</EventHandlers>
+										</FullResizeImage>
+										<!-- End Parry Incoming -->
+
+									</Windows>
+								</Window>
+								<!-- End Parry Row -->
+
+								<!-- Begin Evade Row -->
+								<Window name="$parentRowEvade">
+									<Size>
+										<AbsPoint x="850" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowParry">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowParry">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+
+											<!-- Begin Evade Outgoing -->
+										<Window name="$parentOutShow" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+											<Size>
+												<AbsPoint x="118" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="45" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnFilterChanged" />
+											</EventHandlers>
+										</Window>
+
+										<SliderBar name="$parentOutSize" inherits="EA_Default_SliderBar" handleinput="true" numticks="5">
+											<Size>
+												<AbsPoint x="175" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutShow">
+													<AbsPoint x="0" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+											</EventHandlers>
+										</SliderBar>
+
+										<FullResizeImage name="$parentOutColorSwatch" inherits="EA_FullResizeImage_WhiteTransparent" handleinput="true" layer="default" alpha="1.0">
+											<Size>
+												<AbsPoint x="20" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutSize">
+													<AbsPoint x="20" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnSctColorSwatchClick" />
+											</EventHandlers>
+										</FullResizeImage>
+										<!-- End Evade Outgoing -->
+
+										<!-- Begin Evade Incoming -->
+										<Window name="$parentInShow" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+											<Size>
+												<AbsPoint x="118" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutColorSwatch">
+													<AbsPoint x="100" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnFilterChanged" />
+											</EventHandlers>
+										</Window>
+
+										<SliderBar name="$parentInSize" inherits="EA_Default_SliderBar" handleinput="true" numticks="5">
+											<Size>
+												<AbsPoint x="175" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentInShow">
+													<AbsPoint x="0" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+											</EventHandlers>
+										</SliderBar>
+
+										<FullResizeImage name="$parentInColorSwatch" inherits="EA_FullResizeImage_WhiteTransparent" handleinput="true" layer="default" alpha="1.0">
+											<Size>
+												<AbsPoint x="20" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentInSize">
+													<AbsPoint x="20" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnSctColorSwatchClick" />
+											</EventHandlers>
+										</FullResizeImage>
+										<!-- End Evade Incoming -->
+
+									</Windows>
+								</Window>
+								<!-- End Evade Row -->
+
+								<!-- Begin Disrupt Row -->
+								<Window name="$parentRowDisrupt">
+									<Size>
+										<AbsPoint x="850" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowEvade">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowEvade">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+
+											<!-- Begin Disrupt Outgoing -->
+										<Window name="$parentOutShow" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+											<Size>
+												<AbsPoint x="118" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="45" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnFilterChanged" />
+											</EventHandlers>
+										</Window>
+
+										<SliderBar name="$parentOutSize" inherits="EA_Default_SliderBar" handleinput="true" numticks="5">
+											<Size>
+												<AbsPoint x="175" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutShow">
+													<AbsPoint x="0" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+											</EventHandlers>
+										</SliderBar>
+
+										<FullResizeImage name="$parentOutColorSwatch" inherits="EA_FullResizeImage_WhiteTransparent" handleinput="true" layer="default" alpha="1.0">
+											<Size>
+												<AbsPoint x="20" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutSize">
+													<AbsPoint x="20" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnSctColorSwatchClick" />
+											</EventHandlers>
+										</FullResizeImage>
+										<!-- End Disrupt Outgoing -->
+
+										<!-- Begin Disrupt Incoming -->
+										<Window name="$parentInShow" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+											<Size>
+												<AbsPoint x="118" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutColorSwatch">
+													<AbsPoint x="100" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnFilterChanged" />
+											</EventHandlers>
+										</Window>
+
+										<SliderBar name="$parentInSize" inherits="EA_Default_SliderBar" handleinput="true" numticks="5">
+											<Size>
+												<AbsPoint x="175" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentInShow">
+													<AbsPoint x="0" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+											</EventHandlers>
+										</SliderBar>
+
+										<FullResizeImage name="$parentInColorSwatch" inherits="EA_FullResizeImage_WhiteTransparent" handleinput="true" layer="default" alpha="1.0">
+											<Size>
+												<AbsPoint x="20" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentInSize">
+													<AbsPoint x="20" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnSctColorSwatchClick" />
+											</EventHandlers>
+										</FullResizeImage>
+										<!-- End Disrupt Incoming -->
+
+									</Windows>
+								</Window>
+								<!-- End Disrupt Row -->
+
+								<!-- Begin Absorb Row -->
+								<Window name="$parentRowAbsorb">
+									<Size>
+										<AbsPoint x="850" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowDisrupt">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowDisrupt">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+
+											<!-- Begin Absorb Outgoing -->
+										<Window name="$parentOutShow" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+											<Size>
+												<AbsPoint x="118" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="45" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnFilterChanged" />
+											</EventHandlers>
+										</Window>
+
+										<SliderBar name="$parentOutSize" inherits="EA_Default_SliderBar" handleinput="true" numticks="5">
+											<Size>
+												<AbsPoint x="175" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutShow">
+													<AbsPoint x="0" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+											</EventHandlers>
+										</SliderBar>
+
+										<FullResizeImage name="$parentOutColorSwatch" inherits="EA_FullResizeImage_WhiteTransparent" handleinput="true" layer="default" alpha="1.0">
+											<Size>
+												<AbsPoint x="20" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutSize">
+													<AbsPoint x="20" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnSctColorSwatchClick" />
+											</EventHandlers>
+										</FullResizeImage>
+										<!-- End Absorb Outgoing -->
+
+										<!-- Begin Absorb Incoming -->
+										<Window name="$parentInShow" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+											<Size>
+												<AbsPoint x="118" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutColorSwatch">
+													<AbsPoint x="100" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnFilterChanged" />
+											</EventHandlers>
+										</Window>
+
+										<SliderBar name="$parentInSize" inherits="EA_Default_SliderBar" handleinput="true" numticks="5">
+											<Size>
+												<AbsPoint x="175" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentInShow">
+													<AbsPoint x="0" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+											</EventHandlers>
+										</SliderBar>
+
+										<FullResizeImage name="$parentInColorSwatch" inherits="EA_FullResizeImage_WhiteTransparent" handleinput="true" layer="default" alpha="1.0">
+											<Size>
+												<AbsPoint x="20" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentInSize">
+													<AbsPoint x="20" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnSctColorSwatchClick" />
+											</EventHandlers>
+										</FullResizeImage>
+										<!-- End Absorb Incoming -->
+
+									</Windows>
+								</Window>
+								<!-- End Absorb Row -->
+
+								<!-- Begin Immune Row -->
+								<Window name="$parentRowImmune">
+									<Size>
+										<AbsPoint x="850" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowAbsorb">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowAbsorb">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+
+											<!-- Begin Immune Outgoing -->
+										<Window name="$parentOutShow" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+											<Size>
+												<AbsPoint x="118" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="45" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnFilterChanged" />
+											</EventHandlers>
+										</Window>
+
+										<SliderBar name="$parentOutSize" inherits="EA_Default_SliderBar" handleinput="true" numticks="5">
+											<Size>
+												<AbsPoint x="175" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutShow">
+													<AbsPoint x="0" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+											</EventHandlers>
+										</SliderBar>
+
+										<FullResizeImage name="$parentOutColorSwatch" inherits="EA_FullResizeImage_WhiteTransparent" handleinput="true" layer="default" alpha="1.0">
+											<Size>
+												<AbsPoint x="20" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutSize">
+													<AbsPoint x="20" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnSctColorSwatchClick" />
+											</EventHandlers>
+										</FullResizeImage>
+										<!-- End Immune Outgoing -->
+
+										<!-- Begin Immune Incoming -->
+										<Window name="$parentInShow" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+											<Size>
+												<AbsPoint x="118" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutColorSwatch">
+													<AbsPoint x="100" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnFilterChanged" />
+											</EventHandlers>
+										</Window>
+
+										<SliderBar name="$parentInSize" inherits="EA_Default_SliderBar" handleinput="true" numticks="5">
+											<Size>
+												<AbsPoint x="175" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentInShow">
+													<AbsPoint x="0" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+											</EventHandlers>
+										</SliderBar>
+
+										<FullResizeImage name="$parentInColorSwatch" inherits="EA_FullResizeImage_WhiteTransparent" handleinput="true" layer="default" alpha="1.0">
+											<Size>
+												<AbsPoint x="20" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentInSize">
+													<AbsPoint x="20" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnSctColorSwatchClick" />
+											</EventHandlers>
+										</FullResizeImage>
+										<!-- End Immune Incoming -->
+
+									</Windows>
+								</Window>
+								<!-- End Immune Row -->
+								
+						        <Window name="$parentRowHorizontalBar">
+									<Size>
+										<AbsPoint x="850" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowImmune">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowImmune">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+									</Anchors>
+
+																			<HorizontalResizeImage name="$parentHorizontalBar" inherits="EA_BrownHorizontalRule">
+											<Anchors>
+												<Anchor point="topleft"  relativePoint="topleft"  relativeTo="$parent"><AbsPoint x="10" y="0" /></Anchor>
+												<Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="0" /></Anchor>
+											</Anchors>
+										</HorizontalResizeImage>
+								</Window>
+
+								<!-- Column headers: Show / Size / Color above Outgoing for XP, Renown, Influence (outgoing only). -->
+								<Window name="$parentRowSctPointColumnHeaders">
+									<Size>
+										<AbsPoint x="850" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowHorizontalBar">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowHorizontalBar">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+										<Label name="$parentOutShowHdr" font="font_default_text_small" textalign="left" handleinput="false" layer="background">
+											<Size>
+												<AbsPoint x="118" y="18" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="45" y="2" />
+												</Anchor>
+											</Anchors>
+										</Label>
+										<Label name="$parentOutSizeHdr" font="font_default_text_small" textalign="left" handleinput="false" layer="background">
+											<Size>
+												<AbsPoint x="175" y="18" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="163" y="2" />
+												</Anchor>
+											</Anchors>
+										</Label>
+										<Label name="$parentOutColorHdr" font="font_default_text_small" textalign="left" handleinput="false" layer="background">
+											<Size>
+												<AbsPoint x="64" y="18" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="358" y="2" />
+												</Anchor>
+											</Anchors>
+										</Label>
+									</Windows>
+								</Window>
+
+								
+								<!-- Begin Xp Row -->
+								<Window name="$parentRowXP">
+									<Size>
+										<AbsPoint x="850" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowSctPointColumnHeaders">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowSctPointColumnHeaders">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+
+											<!-- Begin Xp -->
+										<Window name="$parentOutShow" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+											<Size>
+												<AbsPoint x="118" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="45" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnFilterChanged" />
+											</EventHandlers>
+										</Window>
+
+										<SliderBar name="$parentOutSize" inherits="EA_Default_SliderBar" handleinput="true" numticks="5">
+											<Size>
+												<AbsPoint x="175" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutShow">
+													<AbsPoint x="0" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+											</EventHandlers>
+										</SliderBar>
+
+										<FullResizeImage name="$parentOutColorSwatch" inherits="EA_FullResizeImage_WhiteTransparent" handleinput="true" layer="default" alpha="1.0">
+											<Size>
+												<AbsPoint x="20" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutSize">
+													<AbsPoint x="20" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnSctColorSwatchClick" />
+											</EventHandlers>
+										</FullResizeImage>
+										<!-- End Xp -->
+
+									</Windows>
+								</Window>
+								<!-- End Xp Row -->
+
+								<!-- Begin Renown Row -->
+								<Window name="$parentRowRenown">
+									<Size>
+										<AbsPoint x="850" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowXP">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowXP">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+
+											<!-- Begin Renown -->
+										<Window name="$parentOutShow" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+											<Size>
+												<AbsPoint x="118" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="45" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnFilterChanged" />
+											</EventHandlers>
+										</Window>
+
+										<SliderBar name="$parentOutSize" inherits="EA_Default_SliderBar" handleinput="true" numticks="5">
+											<Size>
+												<AbsPoint x="175" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutShow">
+													<AbsPoint x="0" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+											</EventHandlers>
+										</SliderBar>
+
+										<FullResizeImage name="$parentOutColorSwatch" inherits="EA_FullResizeImage_WhiteTransparent" handleinput="true" layer="default" alpha="1.0">
+											<Size>
+												<AbsPoint x="20" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutSize">
+													<AbsPoint x="20" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnSctColorSwatchClick" />
+											</EventHandlers>
+										</FullResizeImage>
+										<!-- End Renown -->
+
+									</Windows>
+								</Window>
+								<!-- End Renown Row -->
+
+								<!-- Begin Influence Row -->
+								<Window name="$parentRowInfluence">
+									<Size>
+										<AbsPoint x="850" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowRenown">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowRenown">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+
+											<!-- Begin Influence -->
+										<Window name="$parentOutShow" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+											<Size>
+												<AbsPoint x="118" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="45" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnFilterChanged" />
+											</EventHandlers>
+										</Window>
+
+										<SliderBar name="$parentOutSize" inherits="EA_Default_SliderBar" handleinput="true" numticks="5">
+											<Size>
+												<AbsPoint x="175" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutShow">
+													<AbsPoint x="0" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+											</EventHandlers>
+										</SliderBar>
+
+										<FullResizeImage name="$parentOutColorSwatch" inherits="EA_FullResizeImage_WhiteTransparent" handleinput="true" layer="default" alpha="1.0">
+											<Size>
+												<AbsPoint x="20" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="right" relativePoint="left" relativeTo="$parentOutSize">
+													<AbsPoint x="20" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnSctColorSwatchClick" />
+											</EventHandlers>
+										</FullResizeImage>
+										<!-- End Influence -->
+
+									</Windows>
+								</Window>
+								<!-- End Influence Row -->
+
+
+								<!-- End SCT settings -->
+
+                            </Windows>
+                        </Window>
+						<!-- End Appearance -->
+
+                                
+                    </Windows>
+                </Window> <!-- Scroll Child -->
+            </Windows>
+        </ScrollWindow>
+
+        <!-- SctColorPickerHost: CustomUISettingsWindowTabbed.xml (stack order above footer). -->
+
+      </Windows> <!-- End of Whole Window Children -->
+    </Window>    <!-- End of Whole Window Definition  -->
+  </Windows>     <!-- End of Settings Window Tab Chat -->
+</Interface>

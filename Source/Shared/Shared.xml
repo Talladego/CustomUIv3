@@ -1,0 +1,13 @@
+<Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <Windows>
+
+        <!-- Blank container used by CustomUI.BuffTracker as the slot parent window.
+             Created at runtime via CreateWindowFromTemplate(name, "CustomUIBuffContainerTemplate", parent). -->
+        <Window name="CustomUIBuffContainerTemplate" movable="false" savesettings="false" handleinput="true">
+            <Size>
+                <AbsPoint x="1" y="1" />
+            </Size>
+        </Window>
+
+    </Windows>
+</Interface>

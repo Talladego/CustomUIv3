@@ -1,0 +1,46 @@
+<Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../../../Interface.xsd">
+    <Scripts>
+        <Script file="Source/Components/TargetHUD/Controller/TargetHUDController.lua" />
+    </Scripts>
+    <Windows>
+
+        <Window name="CustomUITargetHUDTemplate" movable="false" savesettings="false">
+            <Size>
+                <AbsPoint x="155" y="23" />
+            </Size>
+            <EventHandlers>
+                <EventHandler event="OnShutdown" function="CustomUI.TargetHUD.OnShutdown" />
+                <EventHandler event="OnUpdate"   function="CustomUI.TargetHUD.OnUpdate" />
+            </EventHandlers>
+            <Windows>
+
+                <Window name="$parentHealthBar" inherits="EA_Window_DefaultFrameStatusBar" handleinput="false">
+                    <Size>
+                        <AbsPoint x="155" y="23" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="bottomleft" relativePoint="bottomleft" relativeTo="$parent" />
+                        <Anchor point="bottomright" relativePoint="bottomright" relativeTo="$parent" />
+                    </Anchors>
+                </Window>
+
+                <Label name="$parentTargetName" font="font_heading_unitframe_large_name" maxchars="24"
+                       textalign="center" autoresizewidth="false" ellipsisOnCrop="true" layer="overlay">
+                    <Size>
+                        <AbsPoint x="155" y="23" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="top" relativePoint="bottom" relativeTo="$parentHealthBar">
+                            <AbsPoint x="0" y="0" />
+                        </Anchor>
+                    </Anchors>
+                </Label>
+
+            </Windows>
+        </Window>
+
+        <Window name="CustomUIHostileTargetHUD"  inherits="CustomUITargetHUDTemplate" movable="false" savesettings="false" />
+        <Window name="CustomUIFriendlyTargetHUD" inherits="CustomUITargetHUDTemplate" movable="false" savesettings="false" />
+
+    </Windows>
+</Interface>

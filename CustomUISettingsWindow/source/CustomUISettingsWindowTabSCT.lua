@@ -348,6 +348,7 @@ local function SyncCritAnimationButtons(mode)
     local p = CritAnimButtonPrefix()
     local isNone = (mode == "none")
     local isShake = (mode == "shake")
+    local isPulse = (mode == "pulse")
     local isFlash = (mode == "flash")
     if DoesWindowExist(p .. "CritAnimNoneButton") then
         ButtonSetPressedFlag(p .. "CritAnimNoneButton", isNone)
@@ -356,7 +357,10 @@ local function SyncCritAnimationButtons(mode)
         ButtonSetPressedFlag(p .. "CritAnimShakeButton", isShake)
     end
     if DoesWindowExist(p .. "CritAnimFlashButton") then
-        ButtonSetPressedFlag(p .. "CritAnimFlashButton", isFlash)
+        ButtonSetPressedFlag(p .. "CritAnimFlashButton", isPulse)
+    end
+    if DoesWindowExist(p .. "CritAnimColorFlashButton") then
+        ButtonSetPressedFlag(p .. "CritAnimColorFlashButton", isFlash)
     end
 end
 
@@ -629,11 +633,12 @@ function CustomUISettingsWindowTabSCT.Initialize()
     LabelSetText( c_SCROLL_CHILD .. "GeneralAnimationSpeedLabel", L"Animation Speed" )
     LabelSetText( c_SCROLL_CHILD .. "GeneralCritAnimNoneLabel", L"None" )
     LabelSetText( c_SCROLL_CHILD .. "GeneralCritAnimShakeLabel", L"Shake" )
-    -- UI label only: keep saved setting value "flash" for compatibility.
-    LabelSetText( c_SCROLL_CHILD .. "GeneralCritAnimFlashLabel", L"Pulse" )
+    LabelSetText( c_SCROLL_CHILD .. "GeneralCritAnimFlashLabel",      L"Pulse" )
+    LabelSetText( c_SCROLL_CHILD .. "GeneralCritAnimColorFlashLabel", L"Flash" )
     ButtonSetCheckButtonFlag( c_SCROLL_CHILD .. "GeneralCritAnimNoneButton", true )
     ButtonSetCheckButtonFlag( c_SCROLL_CHILD .. "GeneralCritAnimShakeButton", true )
     ButtonSetCheckButtonFlag( c_SCROLL_CHILD .. "GeneralCritAnimFlashButton", true )
+    ButtonSetCheckButtonFlag( c_SCROLL_CHILD .. "GeneralCritAnimColorFlashButton", true )
 
     LabelSetText( c_SCT_PREFIX .. "Title", L"Appearance" )
     LabelSetText( c_SCT_PREFIX .. "RowTextFontTextFontLabel", L"Font" )
@@ -712,8 +717,12 @@ function CustomUISettingsWindowTabSCT.OnCritAnimationModeChanged()
         if w == nil or w == "" then
             break
         end
-        if string.find(w, "CritAnimFlash", 1, true) then
+        if string.find(w, "CritAnimColorFlash", 1, true) then
             mode = "flash"
+            break
+        end
+        if string.find(w, "CritAnimFlash", 1, true) then
+            mode = "pulse"
             break
         end
         if string.find(w, "CritAnimShake", 1, true) then

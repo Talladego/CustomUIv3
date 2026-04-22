@@ -80,6 +80,10 @@ local CRIT_OSC_DURATION         = 0.75
 local CRIT_OSC_FREQUENCY        = 12
 local CRIT_OSC_SCALE_DELTA      = 0.14 -- peak ±14% at start of osc, fades to 0
 
+-- Color-only flash (new Flash crit mode), after grow
+local CRIT_COLORFLASH_DURATION  = 0.75
+local CRIT_COLORFLASH_FREQUENCY = 12
+
 local CRIT_LANE_TRAVEL_DURATION = 0.15
 
 ----------------------------------------------------------------
@@ -203,8 +207,10 @@ function EA_System_EventEntry:Update(elapsedTime, simulationSpeed)
                     WindowSetOffsetFromParent(self:GetName(), self.m_AnimationData.start.x, self.m_AnimationData.start.y)
                 end
                 local animMode = self.m_CritAnimMode or "shake"
-                if animMode == "flash" then
+                if animMode == "pulse" then
                     self.m_CritPhase = "flashosc"
+                elseif animMode == "flash" then
+                    self.m_CritPhase = "colorflash"
                 elseif animMode == "shake" then
                     self.m_CritPhase = "shake"
                 else
@@ -343,6 +349,43 @@ function EA_System_EventEntry:Update(elapsedTime, simulationSpeed)
                 self.m_AnimationData.current.y = startY
             end
             return self.m_LifeSpan
+
+        elseif self.m_CritPhase == "colorflash" then
+            local duration = self.m_CritColorFlashDuration or CRIT_COLORFLASH_DURATION
+            local t = duration > 0 and math.min(1, self.m_CritPhaseElapsed / duration) or 0
+
+            local endScale = self.m_CritEndScale or 1.0
+            if WindowSetScale then WindowSetScale(wName, endScale) end
+            WindowSetRelativeScale(wName, endScale)
+
+            if self.m_AnimationData and self.m_AnimationData.flashHolderMode then
+                if WindowUtils and WindowUtils.ForceProcessAnchors then WindowUtils.ForceProcessAnchors(wName) end
+            else
+                WindowSetOffsetFromParent(self:GetName(), self.m_AnimationData.start.x, self.m_AnimationData.start.y)
+            end
+
+            local tr, tg, tb = self.m_TextTargetColorR or 255, self.m_TextTargetColorG or 255, self.m_TextTargetColorB or 255
+            local f = self.m_CritColorFlashFrequency or CRIT_COLORFLASH_FREQUENCY
+            local osc = 0.5 + 0.5 * math.sin(2 * math.pi * f * self.m_CritPhaseElapsed) -- 0..1
+            local env = 1 - t
+            local a = osc * env -- fade to stable at end
+            LabelSetTextColor(self:GetName(),
+                math.floor(tr + (255 - tr) * a + 0.5),
+                math.floor(tg + (255 - tg) * a + 0.5),
+                math.floor(tb + (255 - tb) * a + 0.5))
+
+            if self.m_CritPhaseElapsed >= duration then
+                self.m_CritPhase = nil
+                LabelSetTextColor(self:GetName(), tr, tg, tb)
+                if self.m_AnimationData and self.m_AnimationData.flashHolderMode then
+                    if WindowUtils and WindowUtils.ForceProcessAnchors then WindowUtils.ForceProcessAnchors(wName) end
+                else
+                    WindowSetOffsetFromParent(self:GetName(), self.m_AnimationData.start.x, self.m_AnimationData.start.y)
+                end
+                self.m_AnimationData.current.x = self.m_AnimationData.start.x
+                self.m_AnimationData.current.y = self.m_AnimationData.start.y
+            end
+            return self.m_LifeSpan
         end
     end
 
@@ -405,7 +448,7 @@ function EA_System_EventEntry:SetupText(hitTargetObjectNumber, hitAmount, textTy
 
     if isCrit then
         local critAnim = sct.critAnimation or "shake"
-        if critAnim ~= "none" and critAnim ~= "shake" and critAnim ~= "flash" then
+        if critAnim ~= "none" and critAnim ~= "shake" and critAnim ~= "pulse" and critAnim ~= "flash" then
             critAnim = "shake"
         end
         self.m_CritAnimMode = critAnim
@@ -418,7 +461,7 @@ function EA_System_EventEntry:SetupText(hitTargetObjectNumber, hitAmount, textTy
             WindowSetRelativeScale(wName, scale)
             WindowSetOffsetFromParent(self:GetName(), self.m_AnimationData.start.x, self.m_AnimationData.start.y)
         else
-            -- Shake / Pulse(flash): grow phase then shake/osc.
+            -- Shake / Pulse / Flash: grow phase then shake/osc/colorflash.
             self.m_CritPhase              = "grow"
             self.m_CritPhaseElapsed       = 0
             self.m_CritGrowDuration       = CRIT_GROW_DURATION
@@ -427,12 +470,14 @@ function EA_System_EventEntry:SetupText(hitTargetObjectNumber, hitAmount, textTy
             self.m_CritShakeFrequency     = CRIT_SHAKE_FREQUENCY
             self.m_CritShakeVerticalScale = CRIT_SHAKE_VERTICAL_SCALE
             self.m_CritOscDuration        = CRIT_OSC_DURATION
+            self.m_CritColorFlashDuration = CRIT_COLORFLASH_DURATION
+            self.m_CritColorFlashFrequency = CRIT_COLORFLASH_FREQUENCY
             self.m_CritStartScale         = scale / CRIT_FONT_VISUAL_RATIO
             self.m_CritEndScale           = scale
-            -- For flash, capture rendered extents once at endScale so center-pivot math matches the glyphs.
+            -- For Pulse, capture rendered extents once at endScale so center-pivot math matches the glyphs.
             self.m_CritFlashBaseW         = nil
             self.m_CritFlashBaseH         = nil
-            if critAnim == "flash" then
+            if critAnim == "pulse" then
                 local ok, tw, th = pcall(LabelGetTextDimensions, wName)
                 if ok and tw and th and tw > 0 and th > 0 then
                     self.m_CritFlashBaseW = tw
@@ -684,10 +729,10 @@ function EA_System_EventTracker:Update(elapsedTime)
                 local parentForLabel = self.m_Anchor
                 local animForLabel   = animData
 
-                -- Pulse (flash) crits: use a holder window under the world anchor.
+                -- Pulse crits: use a holder window under the world anchor.
                 -- Holder is positioned in the crit lane; label is centered on holder and pulses around holder-center.
                 local holderName
-                if self.m_IsCritTracker and self.m_CritAnimMode == "flash" then
+                if self.m_IsCritTracker and self.m_CritAnimMode == "pulse" then
                     holderName = self.m_Anchor .. "Holder" .. self.m_DisplayedEvents:End()
                     if not DoesWindowExist(holderName) then
                         CreateWindowFromTemplate(holderName, "EA_Window_EventTextAnchor", self.m_Anchor)

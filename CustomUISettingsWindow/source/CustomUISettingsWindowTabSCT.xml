@@ -149,6 +149,22 @@
                                     </EventHandlers>
                                 </Window>
 
+                                <!-- New crit mode: Flash (color flicker). Keep CritAnimFlash window for Pulse to preserve existing names. -->
+                                <Window name="$parentCritAnimColorFlash" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+                                    <Size>
+                                        <AbsPoint x="100" y="25" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="600" y="86" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnCritAnimationModeChanged" />
+                                    </EventHandlers>
+                                </Window>
+
                                 <!-- Next row: y = Crit row (86) + 37, matching c_SCT_ROW_HEIGHT in CustomUISettingsWindowTabSCT.lua -->
                                 <Label name="$parentAnimationSpeedLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
                                     <Size>

@@ -229,7 +229,15 @@ function EA_System_EventEntry:Update(elapsedTime, simulationSpeed)
             local freq = self.m_CritShakeFrequency or CRIT_SHAKE_FREQUENCY
             local dx = amp * math.sin(2 * math.pi * freq * self.m_CritPhaseElapsed)
             local dy = (amp * (self.m_CritShakeVerticalScale or CRIT_SHAKE_VERTICAL_SCALE)) * math.cos(2 * math.pi * freq * self.m_CritPhaseElapsed)
-            WindowSetOffsetFromParent(self:GetName(), self.m_AnimationData.start.x + dx, self.m_AnimationData.start.y + dy)
+            if self.m_AnimationData and self.m_AnimationData.flashHolderMode and self.m_FlashHolderName then
+                -- Holder-based shake: keep label centered on holder; shake the holder around its lane position.
+                local bx = self.m_FlashHolderBaseX or 0
+                local by = self.m_FlashHolderBaseY or 0
+                WindowSetOffsetFromParent(self.m_FlashHolderName, bx + dx, by + dy)
+                if WindowUtils and WindowUtils.ForceProcessAnchors then WindowUtils.ForceProcessAnchors(wName) end
+            else
+                WindowSetOffsetFromParent(self:GetName(), self.m_AnimationData.start.x + dx, self.m_AnimationData.start.y + dy)
+            end
             -- Color flash: white → target color
             local tr, tg, tb = self.m_TextTargetColorR or 255, self.m_TextTargetColorG or 255, self.m_TextTargetColorB or 255
             local flashT = CRIT_COLOR_LERP_DURATION > 0 and math.min(1, self.m_CritPhaseElapsed / CRIT_COLOR_LERP_DURATION) or 1
@@ -241,7 +249,14 @@ function EA_System_EventEntry:Update(elapsedTime, simulationSpeed)
             if self.m_CritPhaseElapsed >= duration then
                 self.m_CritPhase = nil
                 LabelSetTextColor(self:GetName(), tr, tg, tb)
-                WindowSetOffsetFromParent(self:GetName(), self.m_AnimationData.start.x, self.m_AnimationData.start.y)
+                if self.m_AnimationData and self.m_AnimationData.flashHolderMode and self.m_FlashHolderName then
+                    local bx = self.m_FlashHolderBaseX or 0
+                    local by = self.m_FlashHolderBaseY or 0
+                    WindowSetOffsetFromParent(self.m_FlashHolderName, bx, by)
+                    if WindowUtils and WindowUtils.ForceProcessAnchors then WindowUtils.ForceProcessAnchors(wName) end
+                else
+                    WindowSetOffsetFromParent(self:GetName(), self.m_AnimationData.start.x, self.m_AnimationData.start.y)
+                end
                 self.m_AnimationData.current.x = self.m_AnimationData.start.x
                 self.m_AnimationData.current.y = self.m_AnimationData.start.y
             end
@@ -729,10 +744,10 @@ function EA_System_EventTracker:Update(elapsedTime)
                 local parentForLabel = self.m_Anchor
                 local animForLabel   = animData
 
-                -- Pulse crits: use a holder window under the world anchor.
-                -- Holder is positioned in the crit lane; label is centered on holder and pulses around holder-center.
+                -- Pulse + holder-shake crits: use a holder window under the world anchor.
+                -- Holder is positioned in the crit lane; label is centered on holder.
                 local holderName
-                if self.m_IsCritTracker and self.m_CritAnimMode == "pulse" then
+                if self.m_IsCritTracker and (self.m_CritAnimMode == "pulse" or self.m_CritAnimMode == "shake") then
                     holderName = self.m_Anchor .. "Holder" .. self.m_DisplayedEvents:End()
                     if not DoesWindowExist(holderName) then
                         CreateWindowFromTemplate(holderName, "EA_Window_EventTextAnchor", self.m_Anchor)
@@ -751,8 +766,8 @@ function EA_System_EventTracker:Update(elapsedTime)
                     parentForLabel = holderName
 
                     -- 3) Label: holder-local (no float). We'll finalize centered offsets in SetupText after measuring glyph extents.
-                    -- Fade after pulse completes.
-                    local fadeDelay = CRIT_GROW_DURATION + CRIT_OSC_DURATION
+                    -- Fade after the crit animation completes (Pulse osc or Shake).
+                    local fadeDelay = CRIT_GROW_DURATION + ((self.m_CritAnimMode == "pulse") and CRIT_OSC_DURATION or CRIT_SHAKE_DURATION)
                     animData.fadeDelay = fadeDelay
                     animData.maximumDisplayTime = fadeDelay + animData.fadeDuration + 0.10
 
@@ -769,6 +784,8 @@ function EA_System_EventTracker:Update(elapsedTime)
                 if frame and frame.GetName then
                     if holderName then
                         frame.m_FlashHolderName = holderName
+                        frame.m_FlashHolderBaseX = animData.start.x
+                        frame.m_FlashHolderBaseY = animData.start.y
                     end
                     frame:SetupText(self.m_TargetObject, eventData.amount, eventData.type)
                     WindowSetShowing(frame:GetName(), true)

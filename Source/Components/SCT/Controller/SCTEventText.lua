@@ -489,54 +489,50 @@ function EA_System_EventEntry:SetupText(hitTargetObjectNumber, hitAmount, textTy
             self.m_CritColorFlashFrequency = CRIT_COLORFLASH_FREQUENCY
             self.m_CritStartScale         = scale / CRIT_FONT_VISUAL_RATIO
             self.m_CritEndScale           = scale
-            -- For Pulse, capture rendered extents once at endScale so center-pivot math matches the glyphs.
+            -- For holder-based crit modes (Pulse/Shake), capture rendered extents so center anchoring matches glyphs.
             self.m_CritFlashBaseW         = nil
             self.m_CritFlashBaseH         = nil
-            if critAnim == "pulse" then
+            if self.m_AnimationData and self.m_AnimationData.flashHolderMode and (critAnim == "pulse" or critAnim == "shake") then
                 local ok, tw, th = pcall(LabelGetTextDimensions, wName)
                 if ok and tw and th and tw > 0 and th > 0 then
                     self.m_CritFlashBaseW = tw
                     self.m_CritFlashBaseH = th
                 end
-                -- Pulse (flash) holder mode: center label on holder origin and keep it stationary (no float).
-                if self.m_AnimationData and self.m_AnimationData.flashHolderMode then
-                    -- Strict anchor model: cyan center anchored to pink center.
-                    -- Make cyan window match glyph extents so center anchor is meaningful.
-                    local w = self.m_CritFlashBaseW or 80
-                    local h = self.m_CritFlashBaseH or 24
-                    WindowSetDimensions(wName, w, h)
-                    WindowClearAnchors(wName)
-                    WindowAddAnchor(wName, "center", WindowGetParent(wName), "center", 0, 0)
-                    if LabelSetTextAlign then LabelSetTextAlign(wName, "center") end
+                -- Holder mode (Pulse/Shake): strict center anchoring, no per-label offsets.
+                local w = self.m_CritFlashBaseW or 80
+                local h = self.m_CritFlashBaseH or 24
+                WindowSetDimensions(wName, w, h)
+                WindowClearAnchors(wName)
+                WindowAddAnchor(wName, "center", WindowGetParent(wName), "center", 0, 0)
+                if LabelSetTextAlign then LabelSetTextAlign(wName, "center") end
 
-                    -- Keep animation offsets at 0; anchoring drives position.
-                    self.m_AnimationData.start.x   = 0
-                    self.m_AnimationData.start.y   = 0
-                    self.m_AnimationData.current.x = 0
-                    self.m_AnimationData.current.y = 0
-                    self.m_AnimationData.target.x  = 0
-                    self.m_AnimationData.target.y  = 0
+                -- Keep animation offsets at 0; holder offset drives position.
+                self.m_AnimationData.start.x   = 0
+                self.m_AnimationData.start.y   = 0
+                self.m_AnimationData.current.x = 0
+                self.m_AnimationData.current.y = 0
+                self.m_AnimationData.target.x  = 0
+                self.m_AnimationData.target.y  = 0
 
-                    -- 2) Holder visuals: pink bounds + blue center marker.
-                    if self.m_FlashHolderName then
-                        local holderBg = self.m_FlashHolderName .. "DebugHolderBounds"
-                        if not DoesWindowExist(holderBg) then
-                            CreateWindowFromTemplate(holderBg, "EA_FullResizeImage_WhiteTransparent", self.m_FlashHolderName)
-                            WindowSetAlpha(holderBg, 0.20)
-                            WindowSetTintColor(holderBg, 255, 0, 200)
-                            WindowClearAnchors(holderBg)
-                        end
-                        WindowSetDimensions(holderBg, self.m_CritFlashBaseW or 80, self.m_CritFlashBaseH or 24)
-                        WindowSetOffsetFromParent(holderBg, -(self.m_CritFlashBaseW or 80) / 2, -(self.m_CritFlashBaseH or 24) / 2)
+                -- Holder visuals: pink bounds + blue center marker.
+                if self.m_FlashHolderName then
+                    local holderBg = self.m_FlashHolderName .. "DebugHolderBounds"
+                    if not DoesWindowExist(holderBg) then
+                        CreateWindowFromTemplate(holderBg, "EA_FullResizeImage_WhiteTransparent", self.m_FlashHolderName)
+                        WindowSetAlpha(holderBg, 0.20)
+                        WindowSetTintColor(holderBg, 255, 0, 200)
+                        WindowClearAnchors(holderBg)
+                    end
+                    WindowSetDimensions(holderBg, w, h)
+                    WindowSetOffsetFromParent(holderBg, -w / 2, -h / 2)
 
-                        local holderCenter = self.m_FlashHolderName .. "DebugHolderCenter"
-                        if not DoesWindowExist(holderCenter) then
-                            CreateWindowFromTemplate(holderCenter, "EA_FullResizeImage_WhiteTransparent", self.m_FlashHolderName)
-                            WindowSetDimensions(holderCenter, 6, 6)
-                            WindowSetAlpha(holderCenter, 0.9)
-                            WindowSetTintColor(holderCenter, 0, 120, 255)
-                            WindowSetOffsetFromParent(holderCenter, -3, -3)
-                        end
+                    local holderCenter = self.m_FlashHolderName .. "DebugHolderCenter"
+                    if not DoesWindowExist(holderCenter) then
+                        CreateWindowFromTemplate(holderCenter, "EA_FullResizeImage_WhiteTransparent", self.m_FlashHolderName)
+                        WindowSetDimensions(holderCenter, 6, 6)
+                        WindowSetAlpha(holderCenter, 0.9)
+                        WindowSetTintColor(holderCenter, 0, 120, 255)
+                        WindowSetOffsetFromParent(holderCenter, -3, -3)
                     end
                 end
             end

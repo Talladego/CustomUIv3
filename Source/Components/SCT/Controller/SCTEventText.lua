@@ -74,7 +74,7 @@ local CRIT_SHAKE_AMPLITUDE      = 8
 local CRIT_SHAKE_FREQUENCY      = 30
 local CRIT_SHAKE_VERTICAL_SCALE = 0.5
 local CRIT_FONT_VISUAL_RATIO    = 1.33
-local CRIT_COLOR_LERP_DURATION  = 1.00 -- white → target color during shake / pulse osc
+local CRIT_COLOR_LERP_DURATION  = 1.00 -- used only for color ramp effects (not for Shake/Pulse by default)
 -- Size oscillation (Pulse crit mode; setting value "flash"), after grow
 local CRIT_OSC_DURATION         = 0.75
 local CRIT_OSC_FREQUENCY        = 12
@@ -258,14 +258,7 @@ function EA_System_EventEntry:Update(elapsedTime, simulationSpeed)
             else
                 WindowSetOffsetFromParent(self:GetName(), self.m_AnimationData.start.x + dx, self.m_AnimationData.start.y + dy)
             end
-            -- Color flash: white → target color
             local tr, tg, tb = self.m_TextTargetColorR or 255, self.m_TextTargetColorG or 255, self.m_TextTargetColorB or 255
-            local flashT = CRIT_COLOR_LERP_DURATION > 0 and math.min(1, self.m_CritPhaseElapsed / CRIT_COLOR_LERP_DURATION) or 1
-            local lerp = 1 - (1 - flashT) * (1 - flashT)
-            LabelSetTextColor(self:GetName(),
-                math.floor(255 + (tr - 255) * lerp + 0.5),
-                math.floor(255 + (tg - 255) * lerp + 0.5),
-                math.floor(255 + (tb - 255) * lerp + 0.5))
             if self.m_CritPhaseElapsed >= duration then
                 self.m_CritPhase = "float"
                 self.m_CritPhaseElapsed = 0
@@ -356,12 +349,6 @@ function EA_System_EventEntry:Update(elapsedTime, simulationSpeed)
             end
 
             local tr, tg, tb = self.m_TextTargetColorR or 255, self.m_TextTargetColorG or 255, self.m_TextTargetColorB or 255
-            local flashT = CRIT_COLOR_LERP_DURATION > 0 and math.min(1, self.m_CritPhaseElapsed / CRIT_COLOR_LERP_DURATION) or 1
-            local lerp = 1 - (1 - flashT) * (1 - flashT)
-            LabelSetTextColor(self:GetName(),
-                math.floor(255 + (tr - 255) * lerp + 0.5),
-                math.floor(255 + (tg - 255) * lerp + 0.5),
-                math.floor(255 + (tb - 255) * lerp + 0.5))
             if self.m_CritPhaseElapsed >= duration then
                 self.m_CritPhase = "float"
                 self.m_CritPhaseElapsed = 0
@@ -530,7 +517,8 @@ function EA_System_EventEntry:SetupText(hitTargetObjectNumber, hitAmount, textTy
             self.m_CritOscDuration        = CRIT_OSC_DURATION
             self.m_CritColorFlashDuration = CRIT_COLORFLASH_DURATION
             self.m_CritColorFlashFrequency = CRIT_COLORFLASH_FREQUENCY
-            self.m_CritStartScale         = scale / CRIT_FONT_VISUAL_RATIO
+            -- Start scale: Pulse/Shake grow in; Flash should not "pulse" size at all.
+            self.m_CritStartScale         = (critAnim == "flash") and scale or (scale / CRIT_FONT_VISUAL_RATIO)
             self.m_CritEndScale           = scale
             -- For holder-based crit modes (Pulse/Shake), capture rendered extents so center anchoring matches glyphs.
             self.m_CritFlashBaseW         = nil

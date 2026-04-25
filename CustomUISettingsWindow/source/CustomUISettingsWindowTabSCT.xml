@@ -57,7 +57,7 @@
                         <!-- Begin General -->
                         <Window name="$parentGeneral" >
                             <Size>
-                                <AbsPoint x="500" y="160" />
+                                <AbsPoint x="500" y="100" />
                             </Size>
                             <Anchors>
                                 <Anchor point="topleft" relativePoint="topleft" >
@@ -83,7 +83,7 @@
                                 <Window name="$parentSCTEnabled" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
                                     <Anchors>
                                         <Anchor point="topleft" relativePoint="topleft">
-                                            <AbsPoint x="45" y="38" />
+                                            <AbsPoint x="45" y="40" />
                                         </Anchor>
                                     </Anchors>
                                     <EventHandlers>
@@ -91,105 +91,6 @@
                                         <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnToggleSCT" />
                                     </EventHandlers>
                                 </Window>
-
-                                <!-- Crit controls: README Pattern A — sibling relativeTo in this engine fails silently; pin to General with fixed offsets. -->
-                                <Label name="$parentCritAnimationLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
-                                    <Size>
-                                        <AbsPoint x="220" y="20" />
-                                    </Size>
-                                    <Anchors>
-                                        <Anchor point="topleft" relativePoint="topleft">
-                                            <AbsPoint x="45" y="86" />
-                                        </Anchor>
-                                    </Anchors>
-                                </Label>
-
-                                <Window name="$parentCritAnimNone" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
-                                    <Size>
-                                        <AbsPoint x="100" y="25" />
-                                    </Size>
-                                    <Anchors>
-                                        <Anchor point="topleft" relativePoint="topleft">
-                                            <AbsPoint x="270" y="86" />
-                                        </Anchor>
-                                    </Anchors>
-                                    <EventHandlers>
-                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
-                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnCritAnimationModeChanged" />
-                                    </EventHandlers>
-                                </Window>
-
-                                <Window name="$parentCritAnimShake" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
-                                    <Size>
-                                        <AbsPoint x="100" y="25" />
-                                    </Size>
-                                    <Anchors>
-                                        <Anchor point="topleft" relativePoint="topleft">
-                                            <AbsPoint x="380" y="86" />
-                                        </Anchor>
-                                    </Anchors>
-                                    <EventHandlers>
-                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
-                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnCritAnimationModeChanged" />
-                                    </EventHandlers>
-                                </Window>
-
-                                <Window name="$parentCritAnimFlash" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
-                                    <Size>
-                                        <AbsPoint x="100" y="25" />
-                                    </Size>
-                                    <Anchors>
-                                        <Anchor point="topleft" relativePoint="topleft">
-                                            <AbsPoint x="490" y="86" />
-                                        </Anchor>
-                                    </Anchors>
-                                    <EventHandlers>
-                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
-                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnCritAnimationModeChanged" />
-                                    </EventHandlers>
-                                </Window>
-
-                                <!-- New crit mode: Flash (color flicker). Keep CritAnimFlash window for Pulse to preserve existing names. -->
-                                <Window name="$parentCritAnimColorFlash" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
-                                    <Size>
-                                        <AbsPoint x="100" y="25" />
-                                    </Size>
-                                    <Anchors>
-                                        <Anchor point="topleft" relativePoint="topleft">
-                                            <AbsPoint x="600" y="86" />
-                                        </Anchor>
-                                    </Anchors>
-                                    <EventHandlers>
-                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
-                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnCritAnimationModeChanged" />
-                                    </EventHandlers>
-                                </Window>
-
-                                <!-- Next row: y = Crit row (86) + 37, matching c_SCT_ROW_HEIGHT in CustomUISettingsWindowTabSCT.lua -->
-                                <Label name="$parentAnimationSpeedLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
-                                    <Size>
-                                        <AbsPoint x="200" y="20" />
-                                    </Size>
-                                    <Anchors>
-                                        <Anchor point="topleft" relativePoint="topleft">
-                                            <AbsPoint x="45" y="123" />
-                                        </Anchor>
-                                    </Anchors>
-                                </Label>
-                                <!-- Left edge with CritAnimNone (x=270) so the track lines up the crit checkbox column. -->
-                                <SliderBar name="$parentCritAnimSpeed" inherits="EA_Default_SliderBar" handleinput="true" numticks="5">
-                                    <Size>
-                                        <AbsPoint x="300" y="25" />
-                                    </Size>
-                                    <Anchors>
-                                        <Anchor point="topleft" relativePoint="topleft">
-                                            <AbsPoint x="270" y="123" />
-                                        </Anchor>
-                                    </Anchors>
-                                    <EventHandlers>
-                                        <EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnCritAnimationSpeedChanged" />
-                                    </EventHandlers>
-                                </SliderBar>
 
                             </Windows>
                         </Window>
@@ -199,14 +100,14 @@
                         <Window name="$parentSCT">
                             <!-- Same horizontal stretch as $parentGeneral: dual anchors to ScrollChild. A single anchor + fixed Width (850) left the section narrower than General so right-edge controls (e.g. Incoming color) sat outside the section background. -->
                             <Size>
-                                <AbsPoint x="850" y="657" />
+                                <AbsPoint x="850" y="737" />
                             </Size>
                             <Anchors>
                                 <Anchor point="topleft" relativePoint="topleft">
-                                    <AbsPoint x="0" y="170" />
+                                    <AbsPoint x="0" y="110" />
                                 </Anchor>
                                 <Anchor point="topright" relativePoint="topright">
-                                    <AbsPoint x="0" y="170" />
+                                    <AbsPoint x="0" y="110" />
                                 </Anchor>
                             </Anchors>
                             <Windows>
@@ -221,6 +122,120 @@
                                         </Anchor>
                                     </Anchors>
                                 </Label>
+
+								<!-- Crit controls (moved from General): placed above Font row; anchored by ReanchorSctRows() -->
+								<Window name="$parentRowCritAnimation">
+									<Size>
+										<AbsPoint x="850" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+											<AbsPoint x="0" y="45" />
+										</Anchor>
+										<Anchor point="topright" relativePoint="topright" relativeTo="$parent">
+											<AbsPoint x="0" y="45" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+										<Label name="$parentCritAnimationLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+											<Size>
+												<AbsPoint x="220" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="45" y="2" />
+												</Anchor>
+											</Anchors>
+										</Label>
+
+										<Window name="$parentCritAnimShake" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+											<Size>
+												<AbsPoint x="100" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="270" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnCritAnimationModeChanged" />
+											</EventHandlers>
+										</Window>
+
+										<Window name="$parentCritAnimFlash" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+											<Size>
+												<AbsPoint x="100" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="400" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnCritAnimationModeChanged" />
+											</EventHandlers>
+										</Window>
+
+										<!-- Color flash; CritAnimFlash is Pulse to preserve save-compatible window names. -->
+										<Window name="$parentCritAnimColorFlash" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+											<Size>
+												<AbsPoint x="100" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="530" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnCritAnimationModeChanged" />
+											</EventHandlers>
+										</Window>
+									</Windows>
+								</Window>
+
+								<Window name="$parentRowCritSize">
+									<Size>
+										<AbsPoint x="850" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+											<AbsPoint x="0" y="45" />
+										</Anchor>
+										<Anchor point="topright" relativePoint="topright" relativeTo="$parent">
+											<AbsPoint x="0" y="45" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+										<Label name="$parentCritSizeLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+											<Size>
+												<AbsPoint x="200" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="45" y="2" />
+												</Anchor>
+											</Anchors>
+										</Label>
+										<SliderBar name="$parentCritSize" inherits="EA_Default_SliderBar" handleinput="true" numticks="5">
+											<Size>
+												<AbsPoint x="300" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="270" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnCritSizeChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
+											</EventHandlers>
+										</SliderBar>
+									</Windows>
+								</Window>
 
 								<Window name="$parentRowTextFont">
 									<Size>
@@ -251,13 +266,53 @@
 											</Size>
 											<Anchors>
 												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
-													<AbsPoint x="170" y="0" />
+													<AbsPoint x="270" y="0" />
 												</Anchor>
 											</Anchors>
 											<EventHandlers>
 												<EventHandler event="OnSelChanged" function="CustomUISettingsWindowTabSCT.OnSctTextFontChanged" />
 											</EventHandlers>
 										</ComboBox>
+									</Windows>
+								</Window>
+
+								<Window name="$parentRowAbilityIcon">
+									<Size>
+										<AbsPoint x="850" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+											<AbsPoint x="0" y="45" />
+										</Anchor>
+										<Anchor point="topright" relativePoint="topright" relativeTo="$parent">
+											<AbsPoint x="0" y="45" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+										<Label name="$parentAbilityIconLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+											<Size>
+												<AbsPoint x="220" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="45" y="2" />
+												</Anchor>
+											</Anchors>
+										</Label>
+										<Window name="$parentShowAbilityIcon" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+											<Size>
+												<AbsPoint x="300" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="270" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnToggleAbilityIcon" />
+											</EventHandlers>
+										</Window>
 									</Windows>
 								</Window>
 
@@ -380,6 +435,8 @@
 											</Anchors>
 											<EventHandlers>
 												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
 											</EventHandlers>
 										</SliderBar>
 										
@@ -394,6 +451,8 @@
 											</Anchors>
 											<EventHandlers>
 												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnSctColorSwatchClick" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverColorSwatch" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverColorSwatchEnd" />
 											</EventHandlers>
 										</FullResizeImage>
 										<!-- End Hit Outgoing -->
@@ -425,6 +484,8 @@
 											</Anchors>
 											<EventHandlers>
 												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
 											</EventHandlers>
 										</SliderBar>
 										
@@ -439,6 +500,8 @@
 											</Anchors>
 											<EventHandlers>
 												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnSctColorSwatchClick" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverColorSwatch" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverColorSwatchEnd" />
 											</EventHandlers>
 										</FullResizeImage>
 										<!-- End Hit Incoming -->
@@ -489,6 +552,8 @@
 											</Anchors>
 											<EventHandlers>
 												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
 											</EventHandlers>
 										</SliderBar>
 										
@@ -503,6 +568,8 @@
 											</Anchors>
 											<EventHandlers>
 												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnSctColorSwatchClick" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverColorSwatch" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverColorSwatchEnd" />
 											</EventHandlers>
 										</FullResizeImage>
 										<!-- End Ability Outgoing -->
@@ -534,6 +601,8 @@
 											</Anchors>
 											<EventHandlers>
 												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
 											</EventHandlers>
 										</SliderBar>
 										
@@ -548,6 +617,8 @@
 											</Anchors>
 											<EventHandlers>
 												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnSctColorSwatchClick" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverColorSwatch" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverColorSwatchEnd" />
 											</EventHandlers>
 										</FullResizeImage>
 										<!-- End Ability Incoming -->
@@ -598,6 +669,8 @@
 											</Anchors>
 											<EventHandlers>
 												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
 											</EventHandlers>
 										</SliderBar>
 
@@ -643,6 +716,8 @@
 											</Anchors>
 											<EventHandlers>
 												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
 											</EventHandlers>
 										</SliderBar>
 
@@ -707,6 +782,8 @@
 											</Anchors>
 											<EventHandlers>
 												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
 											</EventHandlers>
 										</SliderBar>
 
@@ -752,6 +829,8 @@
 											</Anchors>
 											<EventHandlers>
 												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
 											</EventHandlers>
 										</SliderBar>
 
@@ -816,6 +895,8 @@
 											</Anchors>
 											<EventHandlers>
 												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
 											</EventHandlers>
 										</SliderBar>
 
@@ -861,6 +942,8 @@
 											</Anchors>
 											<EventHandlers>
 												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
 											</EventHandlers>
 										</SliderBar>
 
@@ -925,6 +1008,8 @@
 											</Anchors>
 											<EventHandlers>
 												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
 											</EventHandlers>
 										</SliderBar>
 
@@ -970,6 +1055,8 @@
 											</Anchors>
 											<EventHandlers>
 												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
 											</EventHandlers>
 										</SliderBar>
 
@@ -1034,6 +1121,8 @@
 											</Anchors>
 											<EventHandlers>
 												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
 											</EventHandlers>
 										</SliderBar>
 
@@ -1079,6 +1168,8 @@
 											</Anchors>
 											<EventHandlers>
 												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
 											</EventHandlers>
 										</SliderBar>
 
@@ -1143,6 +1234,8 @@
 											</Anchors>
 											<EventHandlers>
 												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
 											</EventHandlers>
 										</SliderBar>
 
@@ -1188,6 +1281,8 @@
 											</Anchors>
 											<EventHandlers>
 												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
 											</EventHandlers>
 										</SliderBar>
 
@@ -1252,6 +1347,8 @@
 											</Anchors>
 											<EventHandlers>
 												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
 											</EventHandlers>
 										</SliderBar>
 
@@ -1297,6 +1394,8 @@
 											</Anchors>
 											<EventHandlers>
 												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
 											</EventHandlers>
 										</SliderBar>
 
@@ -1430,6 +1529,8 @@
 											</Anchors>
 											<EventHandlers>
 												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
 											</EventHandlers>
 										</SliderBar>
 
@@ -1494,6 +1595,8 @@
 											</Anchors>
 											<EventHandlers>
 												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
 											</EventHandlers>
 										</SliderBar>
 
@@ -1558,6 +1661,8 @@
 											</Anchors>
 											<EventHandlers>
 												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnSizeChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
 											</EventHandlers>
 										</SliderBar>
 

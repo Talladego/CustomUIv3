@@ -1,5 +1,6 @@
 ----------------------------------------------------------------
 -- CustomUI.Shared.BuffTracker.Blacklist
+-- **Current (shipped):** `DefaultBlacklist` table; mod-loaded. Not legacy. See README "Source/Shared".
 -- Effect IDs that are always hidden across all trackers by default.
 --
 -- Usage (from a component Controller after Create):

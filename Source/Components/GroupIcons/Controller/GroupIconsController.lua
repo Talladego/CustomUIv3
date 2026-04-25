@@ -1,21 +1,20 @@
 ----------------------------------------------------------------
--- CustomUI.GroupIcons
--- Places a small career icon on the world object of every
--- party / warband / scenario member.
---
--- Modes:
---   Party    — GetGroupData()            up to 5 members (+ self)
---   Warband  — GetBattlegroupMemberData() up to 4 parties × 6 members
---   Scenario — same as warband (SCENARIO_PLAYERS_LIST_GROUPS_UPDATED
---              shares the BATTLEGROUP_UPDATED path)
---
--- Design:
---   36 icon slots (6 parties × 6 members) are pre-allocated at init
---   and reused across group updates.  No polling — purely event-driven.
+-- CustomUI.GroupIcons — Controller
+-- Responsibilities: RegisterComponent, event-driven world icon placement, icon slot pool.
+-- No View/ Lua; window template is View/GroupIcons.xml, logic stays here. CustomUI.mod loads
+-- this file before the XML; the XML has no <Script> for the controller.
+-- Places a career icon on each party / warband / scenario member’s world object. Modes:
+-- Party (GetGroupData, up to 5 + self), Warband/Scenario (battlegroup data, 4×6 members).
+-- 36 pre-allocated icon slots, reused; no polling.
 ----------------------------------------------------------------
 
 if not CustomUI.GroupIcons then
     CustomUI.GroupIcons = {}
+end
+
+local function Dbg(msg)
+    local dbg = CustomUI.GetClientDebugLog()
+    if type(dbg) == "function" then dbg(msg) end
 end
 
 ----------------------------------------------------------------
@@ -24,8 +23,11 @@ end
 
 local c_MAX_PARTIES  = 6
 local c_MAX_MEMBERS  = 6
-local c_ICON_SIZE    = 40   -- base icon width/height in pixels
-local c_OFFSET_Y     = 50   -- vertical offset to float icon above the model
+local c_ICON_SIZE    = 40   -- DynamicImage and Content: square icon in pixels
+-- GetIconData atlas cell size in texture pixels (map tooltip / main menu pattern; do not add TexDims in XML).
+local c_ATLAS_ICON   = 64
+local c_OFFSET_Y     = 50   -- empty vertical gap (pixels) *below* the icon inside the outer window, toward the world-attach end
+local c_OUTER_H      = c_OFFSET_Y + c_ICON_SIZE   -- outer must contain icon + gap (see View/GroupIcons.xml; AttachWindowToWorldObject uses outer)
 
 ----------------------------------------------------------------
 -- GroupIcon — one reusable slot
@@ -57,18 +59,26 @@ function GroupIcon:Attach(name, worldObjNum, careerLine)
     self.worldObjNum = worldObjNum
 
     CreateWindowFromTemplate(self.windowName, "CustomUIGroupIcon", "Root")
+    if WindowSetDimensions and DoesWindowExist(self.windowName) then
+        WindowSetDimensions(self.windowName, c_ICON_SIZE, c_OUTER_H)
+    end
 
-    -- Career icon texture.
+    -- Career icon: SetTexture (offset) then SetTextureDimensions (source size). XML has no TexDims
+    -- so this is the only UV-size path — avoids 2x2 tiling from TexDims + other state fighting.
     local texture, tx, ty = GetIconData(Icons.GetCareerIconIDFromCareerLine(careerLine))
-    DynamicImageSetTexture(self.windowName .. "ContentIcon", texture, tx, ty)
+    local iconWin = self.windowName .. "ContentIcon"
+    DynamicImageSetTexture(iconWin, texture, tx, ty)
+    DynamicImageSetTextureDimensions(iconWin, c_ATLAS_ICON, c_ATLAS_ICON)
 
     -- Click to target.
     WindowSetGameActionData(self.windowName .. "Content", GameData.PlayerActions.SET_TARGET, 0, name)
     CustomUI.GroupIcons.windowToName[self.windowName .. "Content"] = name
 
-    -- Offset content so the icon floats c_OFFSET_Y pixels above the attach point.
+    -- Icon in the *top* c_ICON_SIZE strip; c_OFFSET_Y is empty space below the icon so the
+    -- world attachment (outer window bounds) lines up. Do not push Content down: that drew
+    -- outside a 40×40 outer and misaligned the texture relative to AttachWindowToWorldObject.
     WindowClearAnchors(self.windowName .. "Content")
-    WindowAddAnchor(self.windowName .. "Content", "topleft", self.windowName, "topleft", 0, c_OFFSET_Y)
+    WindowAddAnchor(self.windowName .. "Content", "topleft", self.windowName, "topleft", 0, 0)
 
     AttachWindowToWorldObject(self.windowName, worldObjNum)
 end
@@ -223,7 +233,7 @@ function GroupIconsComponent:Initialize()
 end
 
 function GroupIconsComponent:Enable()
-    d("[CustomUI.GroupIcons] Enable start.")
+    Dbg("[CustomUI.GroupIcons] Enable start.")
     WindowRegisterEventHandler("Root", SystemData.Events.GROUP_UPDATED,           "CustomUI.GroupIcons.OnGroupUpdated")
     WindowRegisterEventHandler("Root", SystemData.Events.GROUP_PLAYER_ADDED,      "CustomUI.GroupIcons.OnGroupUpdated")
     WindowRegisterEventHandler("Root", SystemData.Events.BATTLEGROUP_UPDATED,     "CustomUI.GroupIcons.OnBattlegroupUpdated")
@@ -232,7 +242,7 @@ function GroupIconsComponent:Enable()
     WindowRegisterEventHandler("Root", SystemData.Events.SCENARIO_PLAYERS_LIST_GROUPS_UPDATED, "CustomUI.GroupIcons.OnScenarioUpdated")
     WindowRegisterEventHandler("Root", SystemData.Events.PLAYER_ZONE_CHANGED,     "CustomUI.GroupIcons.OnZoneChanged")
     RefreshAll()
-    d("[CustomUI.GroupIcons] Enable complete.")
+    Dbg("[CustomUI.GroupIcons] Enable complete.")
     return true
 end
 
@@ -253,9 +263,11 @@ end
 
 CustomUI.RegisterComponent("GroupIcons", GroupIconsComponent)
 
-----------------------------------------------------------------
--- LEGACY: in-addon settings tab (View/GroupIconsTab.xml). Superseded by CustomUISettingsWindow.
-----------------------------------------------------------------
+-- ============================================================================
+-- LEGACY (removal candidate) — in-addon settings: View/GroupIconsTab.xml, CustomUI.GroupIcons.Tab
+-- Replaced by: CustomUISettingsWindow. Remove with: *Tab in CustomUI.mod, this block (no BuffFilterSection).
+-- See README "Legacy code".
+-- ============================================================================
 
 CustomUI.GroupIcons.Tab = {}
 
@@ -270,4 +282,4 @@ function CustomUI.GroupIcons.Tab.OnToggleEnable()
     ButtonSetPressedFlag(SystemData.ActiveWindow.name, newState)
 end
 
---CustomUI.SettingsWindow.RegisterTab("GroupIcons", "CustomUIGroupIconsTab", GroupIconsComponent, CustomUI.GroupIcons.Tab.OnShown)  -- LEGACY (in-addon tab)
+--CustomUI.SettingsWindow.RegisterTab("GroupIcons", "CustomUIGroupIconsTab", GroupIconsComponent, CustomUI.GroupIcons.Tab.OnShown)  -- LEGACY: remove with Tab block above

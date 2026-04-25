@@ -1,7 +1,10 @@
 ----------------------------------------------------------------
--- CustomUI.PlayerStatusWindow - View
--- Visual rendering helpers: label updates, tooltips, and input forwarding.
--- Loaded by PlayerStatusWindow.xml after the controller is already initialised.
+-- CustomUI.PlayerStatusWindow — View
+-- Responsibilities: presentation only — label text, tooltips, and thin input handlers
+--   that forward to game actions. No RegisterComponent, no long-lived state machine,
+--   no WindowRegisterEventHandler (those are in the controller). The mod loads
+--   PlayerStatusWindowController.lua before this file (via the window XML <Script>).
+-- Controllers that own lifecycle + events: ..Controller/PlayerStatusWindowController.lua
 ----------------------------------------------------------------
 
 -- Health text label
@@ -103,6 +106,21 @@ function CustomUI.PlayerStatusWindow.MouseOverRelicBonus()
         currentLine = currentLine + 1
     end
 
+    Tooltips.Finalize()
+    Tooltips.AnchorTooltip( CustomUI.PlayerStatusWindow.TOOLTIP_ANCHOR )
+end
+
+----------------------------------------------------------------
+-- Portrait (controller routes hover here; see MouseOverPortrait in controller)
+----------------------------------------------------------------
+
+function CustomUI.PlayerStatusWindow.PaintPortraitTooltip()
+    Tooltips.CreateTextOnlyTooltip( SystemData.ActiveWindow.name )
+    Tooltips.SetTooltipText( 1, 1, GameData.Player.name )
+    Tooltips.SetTooltipColorDef( 1, 1, Tooltips.COLOR_HEADING )
+    local levelString = PartyUtils.GetLevelText( GameData.Player.level, GameData.Player.battleLevel )
+    Tooltips.SetTooltipText( 2, 1, GetStringFormat( StringTables.Default.LABEL_RANK_X, { levelString } ) )
+    Tooltips.SetTooltipText( 3, 1, GetStringFormatFromTable( "HUDStrings", StringTables.HUD.LABEL_HUD_PLAYER_WINDOW_TOOLTIP_CAREER_NAME, { GameData.Player.career.name } ) )
     Tooltips.Finalize()
     Tooltips.AnchorTooltip( CustomUI.PlayerStatusWindow.TOOLTIP_ANCHOR )
 end

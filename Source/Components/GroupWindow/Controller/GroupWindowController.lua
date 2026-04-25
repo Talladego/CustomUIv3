@@ -1,10 +1,11 @@
 ----------------------------------------------------------------
--- CustomUI.GroupWindow - Controller (Increment 2)
---
--- Goals for this increment:
---  1) Keep stable lifecycle and stock hide/show behavior.
---  2) Render lightweight CustomUI-prefixed group member rows.
---  3) Avoid stock frame/window name reuse.
+-- CustomUI.GroupWindow — Controller
+-- Responsibilities: RegisterComponent, roster/status polling, event handlers, and row
+--   rendering in one place. There is no View/<Name>.lua; member rows are drawn here to keep
+--   a single file next to the stock GroupMemberUnitFrame template. If this grows, extract
+--   pure Label/Window/StatusBar calls into View/GroupWindow.lua and call from the controller.
+-- CustomUI.mod loads this file before View/GroupWindow.xml; do not <Script> this controller
+--   a second time in the XML.
 ----------------------------------------------------------------
 
 if not CustomUI.GroupWindow then
@@ -31,7 +32,6 @@ local c_MEMBER_RVR_OFFSET_Y = 25
 local c_MEMBER_RVR_RELATIVE_SCALE = 0.55
 local c_FADE_OUT_ANIM_DELAY = 2
 local c_STATUS_POLL_INTERVAL = 0.25
-local c_ENABLE_GROUP_PET_WINDOWS = false
 
 local c_MORALE_SLICE_BY_LEVEL = {
     [1] = "Morale-Mini-1",
@@ -54,14 +54,8 @@ local m_hasWorldGroup            = false
 local m_inScenarioGroup          = false
 local m_memberBuffTrackers       = {}
 local m_memberRvrIndicators      = {}
-local m_groupPetFrames           = {}
-local m_petStateByMember         = {}
 local m_memberStatusSnapshot     = {}
 local m_memberStatusSource       = {}
-local m_memberRawPetHealth       = {}
-local m_memberCachedPetHealth    = {}
-local m_renderedPetHealth        = {}
-local m_renderedPetShown         = {}
 local m_lastRosterNames          = {}
 local m_lastRosterSignature      = nil
 local m_hitPointAlerts           = {}
@@ -76,11 +70,12 @@ local m_statusPollElapsed        = 0
 ----------------------------------------------------------------
 
 local function DebugLog(message)
-    if type(d) ~= "function" then
+    local dbg = CustomUI.GetClientDebugLog()
+    if type(dbg) ~= "function" then
         return
     end
 
-    d("[CustomUI.GroupWindow] " .. tostring(message))
+    dbg("[CustomUI.GroupWindow] " .. tostring(message))
 end
 
 local function IsMemberValid(index)
@@ -174,14 +169,6 @@ local function MemberPortraitFrameName(index)
     return MemberRowName(index) .. "PortraitFrame"
 end
 
-local function MemberPetWindowName(index)
-    return "CustomUIGroupWindowPet" .. index
-end
-
-local function MemberPetUnitId(index)
-    return "GroupPet" .. index
-end
-
 local function MemberBuffWindowNamePrefix(index)
     return "CustomUIGroup" .. index .. "Buffs"
 end
@@ -220,50 +207,6 @@ local function ClampPercent(value)
         return 100
     end
     return math.floor(numberValue + 0.5)
-end
-
-local function ReadPetHealthPercent(member)
-    if member == nil or member.Pet == nil then
-        return nil
-    end
-
-    local value = tonumber(member.Pet.healthPercent)
-    if value == nil then
-        return nil
-    end
-
-    return ClampPercent(value)
-end
-
-local function HasUsablePetHealth(member)
-    local petHealth = ReadPetHealthPercent(member)
-    return petHealth ~= nil and petHealth > 0
-end
-
-local function EnsurePetFrame(index)
-    local frame = m_groupPetFrames[index]
-    if frame ~= nil then
-        return frame
-    end
-
-    frame = GroupPetUnitFrame:Create(MemberPetWindowName(index), MemberPetUnitId(index))
-    if frame == nil then
-        return nil
-    end
-
-    frame:SetParent(c_WINDOW_NAME)
-    frame:SetScale(WindowGetScale(c_WINDOW_NAME))
-    m_groupPetFrames[index] = frame
-    return frame
-end
-
-local function HidePetFrame(index)
-    local frame = m_groupPetFrames[index]
-    if frame ~= nil then
-        frame:Show(false)
-    end
-
-    m_renderedPetShown[index] = false
 end
 
 local function EnsureMemberRvrIndicator(index)
@@ -320,25 +263,6 @@ local function ShutdownMemberRvrIndicators()
     end
 end
 
-local function DestroyPetFrames()
-    for index = 1, c_MAX_GROUP_MEMBERS do
-        local frame = m_groupPetFrames[index]
-        if frame ~= nil then
-            frame:Destroy()
-            m_groupPetFrames[index] = nil
-        else
-            local petWindowName = MemberPetWindowName(index)
-            if DoesWindowExist(petWindowName) then
-                DestroyWindow(petWindowName)
-            end
-        end
-    end
-end
-
-local function LogPetStateChange(index, member, petHealthPercent, isShowingPet)
-    return
-end
-
 local function UpdateMemberAnchors()
     for index = 1, c_MAX_GROUP_MEMBERS do
         local rowWindow = MemberRowName(index)
@@ -372,10 +296,6 @@ local function BuildRosterSignature(names)
     return table.concat(names, ";")
 end
 
-local function LogRosterChanges(trigger)
-    return
-end
-
 local function BuildMemberStatusSnapshot(member)
     if member == nil or member.name == nil or member.name == L"" then
         return nil
@@ -391,7 +311,6 @@ local function BuildMemberStatusSnapshot(member)
         tostring(member.online),
         tostring(member.isDistant),
         tostring(member.isInSameRegion),
-        tostring(ReadPetHealthPercent(member)),
     }, "|")
 end
 
@@ -410,11 +329,6 @@ local function ApplyRawMemberStatus(member, status)
     member.online = status.online
     member.isDistant = status.isDistant
     member.worldObjNum = status.worldObjNum
-
-    if member.Pet == nil then
-        member.Pet = {}
-    end
-    member.Pet.healthPercent = status.petHealthPercent
 end
 
 local function TryGetRawMemberStatus(index)
@@ -474,16 +388,12 @@ end
 
 local function RefreshMemberStatus(index)
     local member = nil
-    local cachedPetHealth = nil
     if m_groupData ~= nil then
         member = m_groupData[index]
-        cachedPetHealth = ReadPetHealthPercent(member)
     end
 
     if IsHarnessActive() then
         m_memberStatusSource[index] = "harness"
-        m_memberRawPetHealth[index] = nil
-        m_memberCachedPetHealth[index] = cachedPetHealth
 
         local snapshot = BuildMemberStatusSnapshot(member)
         local didChange = (m_memberStatusSnapshot[index] ~= snapshot)
@@ -493,24 +403,18 @@ local function RefreshMemberStatus(index)
 
     if member == nil then
         member = PartyUtils.GetPartyMember(index)
-        cachedPetHealth = ReadPetHealthPercent(member)
     end
 
     local rawStatus = TryGetRawMemberStatus(index)
     if rawStatus ~= nil then
         ApplyRawMemberStatus(member, rawStatus)
         m_memberStatusSource[index] = "raw"
-        m_memberRawPetHealth[index] = tonumber(rawStatus.petHealthPercent)
     elseif member == nil then
         member = PartyUtils.GetPartyMember(index)
         m_memberStatusSource[index] = "partyutils"
-        m_memberRawPetHealth[index] = nil
     else
         m_memberStatusSource[index] = "partyutils"
-        m_memberRawPetHealth[index] = nil
     end
-
-    m_memberCachedPetHealth[index] = cachedPetHealth
 
     if m_groupData ~= nil then
         m_groupData[index] = member
@@ -522,7 +426,7 @@ local function RefreshMemberStatus(index)
     return didChange
 end
 
-local function RefreshAllMemberStatuses(trigger)
+local function RefreshAllMemberStatuses()
     RefreshGroupState()
 
     local didAnyChange = false
@@ -531,8 +435,6 @@ local function RefreshAllMemberStatuses(trigger)
             didAnyChange = true
         end
     end
-
-    LogRosterChanges(trigger)
 
     return didAnyChange
 end
@@ -713,50 +615,8 @@ local function HideAllMemberRows()
         WindowSetShowing(MemberRowName(index), false)
         m_isMouseOverMember[index] = false
         SetMemberRvrIndicatorShowing(index, false)
-        HidePetFrame(index)
-        LogPetStateChange(index, nil, nil, false)
         ResetMemberBuffs(index)
     end
-end
-
-local function UpdateMemberPetFrame(index, member)
-    if not c_ENABLE_GROUP_PET_WINDOWS then
-        HidePetFrame(index)
-        m_renderedPetHealth[index] = nil
-        return
-    end
-
-    local petHealthPercent = ReadPetHealthPercent(member)
-    local shouldShowPet = (petHealthPercent ~= nil and petHealthPercent > 0)
-
-    if not shouldShowPet then
-        HidePetFrame(index)
-        m_renderedPetHealth[index] = petHealthPercent
-        LogPetStateChange(index, member, petHealthPercent, false)
-        return
-    end
-
-    local petFrame = EnsurePetFrame(index)
-    if petFrame == nil then
-        m_renderedPetShown[index] = false
-        LogPetStateChange(index, member, petHealthPercent, false)
-        return
-    end
-
-    petFrame:SetPetPortrait()
-    petFrame:SetAnchor({
-        Point = "bottomright",
-        RelativePoint = "topleft",
-        RelativeTo = MemberPortraitFrameName(index),
-        XOffset = -42,
-        YOffset = -18,
-    })
-    petFrame:UpdateHealth(petHealthPercent)
-    petFrame:Show(true)
-    m_renderedPetHealth[index] = petHealthPercent
-    m_renderedPetShown[index] = true
-
-    LogPetStateChange(index, member, petHealthPercent, true)
 end
 
 local function ApplyMemberHealthTextLayoutOverride(index)
@@ -800,8 +660,6 @@ local function UpdateMemberRow(index)
         WindowSetShowing(rowWindow, false)
         m_isMouseOverMember[index] = false
         SetMemberRvrIndicatorShowing(index, false)
-        HidePetFrame(index)
-        LogPetStateChange(index, nil, nil, false)
         ResetMemberBuffs(index)
         return
     end
@@ -902,8 +760,6 @@ local function UpdateMemberRow(index)
     end
 
     CircleImageSetTexture(portrait, "render_scene_group_portrait" .. index, 40, 54)
-
-    UpdateMemberPetFrame(index, member)
 
     local tracker = EnsureMemberBuffTracker(index)
     if tracker ~= nil then
@@ -1051,7 +907,6 @@ function CustomUI.GroupWindow.Initialize()
         m_isFadeIn[index] = false
         m_isMouseOverMember[index] = false
         m_memberHealthTextLayoutApplied[index] = false
-        m_petStateByMember[index] = nil
         m_memberStatusSnapshot[index] = nil
         DestroyStaleMemberBuffWindows(index)
     end
@@ -1059,7 +914,7 @@ function CustomUI.GroupWindow.Initialize()
     m_statusPollElapsed = 0
 
     HideAllMemberRows()
-    RefreshAllMemberStatuses("initialize")
+    RefreshAllMemberStatuses()
     UpdateContainerVisibility()
 end
 
@@ -1067,7 +922,6 @@ function CustomUI.GroupWindow.Shutdown()
     HideAllMemberRows()
     ShutdownMemberBuffTrackers()
     ShutdownMemberRvrIndicators()
-    DestroyPetFrames()
     m_groupData = nil
     m_hasWorldGroup = false
     m_inScenarioGroup = false
@@ -1077,14 +931,9 @@ function CustomUI.GroupWindow.Shutdown()
     m_isFadeIn = {}
     m_isMouseOverMember = {}
     m_memberHealthTextLayoutApplied = {}
-    m_petStateByMember = {}
     m_memberStatusSnapshot = {}
     m_memberStatusSource = {}
     m_memberRvrIndicators = {}
-    m_memberRawPetHealth = {}
-    m_memberCachedPetHealth = {}
-    m_renderedPetHealth = {}
-    m_renderedPetShown = {}
     m_lastRosterNames = {}
     m_lastRosterSignature = nil
     m_statusPollElapsed = 0
@@ -1099,12 +948,12 @@ end
 ----------------------------------------------------------------
 
 function CustomUI.GroupWindow.OnGroupUpdated()
-    RefreshAllMemberStatuses("group-updated")
+    RefreshAllMemberStatuses()
     UpdateContainerVisibility()
 end
 
 function CustomUI.GroupWindow.OnGroupPlayerAdded()
-    RefreshAllMemberStatuses("group-player-added")
+    RefreshAllMemberStatuses()
     UpdateContainerVisibility()
 end
 
@@ -1139,10 +988,9 @@ function CustomUI.GroupWindow.OnStatusUpdated(groupMemberIndex)
 
     if groupMemberIndex ~= nil and ShouldShowContainer() then
         RefreshMemberStatus(groupMemberIndex)
-        LogRosterChanges("status-updated")
         UpdateMemberRows()
     else
-        RefreshAllMemberStatuses("status-updated")
+        RefreshAllMemberStatuses()
         UpdateContainerVisibility()
     end
 end
@@ -1165,7 +1013,7 @@ end
 
 function CustomUI.GroupWindow.OnScenarioEnd()
     m_inScenarioGroup = false
-    RefreshAllMemberStatuses("scenario-end")
+    RefreshAllMemberStatuses()
     UpdateContainerVisibility()
 end
 
@@ -1193,7 +1041,7 @@ function CustomUI.GroupWindow.Update(elapsedTime)
     m_statusPollElapsed = m_statusPollElapsed + (elapsedTime or 0)
     if m_statusPollElapsed >= c_STATUS_POLL_INTERVAL then
         m_statusPollElapsed = 0
-        RefreshAllMemberStatuses("poll")
+        RefreshAllMemberStatuses()
         if ShouldShowContainer() then
             UpdateMemberRows()
         else
@@ -1317,7 +1165,7 @@ function GroupWindowComponent:Enable()
     LayoutEditor.UserShow(self.WindowName)
 
     m_statusPollElapsed = 0
-    RefreshAllMemberStatuses("enable")
+    RefreshAllMemberStatuses()
     UpdateContainerVisibility()
 
     DebugLog("Enable complete.")
@@ -1332,15 +1180,9 @@ function GroupWindowComponent:Disable()
     HideAllMemberRows()
     ShutdownMemberBuffTrackers()
     ShutdownMemberRvrIndicators()
-    DestroyPetFrames()
-    m_petStateByMember = {}
     m_memberStatusSnapshot = {}
     m_memberStatusSource = {}
     m_memberRvrIndicators = {}
-    m_memberRawPetHealth = {}
-    m_memberCachedPetHealth = {}
-    m_renderedPetHealth = {}
-    m_renderedPetShown = {}
     m_lastRosterNames = {}
     m_lastRosterSignature = nil
     m_statusPollElapsed = 0
@@ -1377,7 +1219,7 @@ function GroupWindowComponent:ResetToDefaults()
     end
 
     if m_enabled then
-        RefreshAllMemberStatuses("reset-defaults")
+        RefreshAllMemberStatuses()
         UpdateContainerVisibility()
     end
 
@@ -1430,9 +1272,11 @@ function CustomUI.GroupWindow.ApplyBuffSettings()
     end
 end
 
-----------------------------------------------------------------
--- LEGACY: in-addon settings tab (View/GroupWindowTab.xml). Superseded by CustomUISettingsWindow.
-----------------------------------------------------------------
+-- ============================================================================
+-- LEGACY (removal candidate) — in-addon settings: View/GroupWindowTab.xml, CustomUI.GroupWindow.Tab
+-- Replaced by: CustomUISettingsWindow. Remove with: *Tab in CustomUI.mod, this block, BuffFilterSection
+--   if last user. See README "Legacy code".
+-- ============================================================================
 
 CustomUI.GroupWindow.Tab = {}
 
@@ -1457,5 +1301,5 @@ function CustomUI.GroupWindow.Tab.OnFilterChanged()
     )
 end
 
---CustomUI.SettingsWindow.RegisterTab("Group", "CustomUIGroupWindowTab", GroupWindowComponent, CustomUI.GroupWindow.Tab.OnShown)  -- LEGACY (in-addon tab)
+--CustomUI.SettingsWindow.RegisterTab("Group", "CustomUIGroupWindowTab", GroupWindowComponent, CustomUI.GroupWindow.Tab.OnShown)  -- LEGACY: remove with Tab block above
 CustomUI.RegisterComponent("GroupWindow", GroupWindowComponent)

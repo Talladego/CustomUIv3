@@ -3,6 +3,10 @@
 
         <!-- Placeholder root window for the SCT component. -->
         <Window name="CustomUISCTWindow" movable="false" savesettings="false" hidden="true">
+            <EventHandlers>
+                <EventHandler event="OnUpdate" function="CustomUI.SCT.OnUpdate" />
+                <EventHandler event="OnShutdown" function="CustomUI.SCT.OnShutdown" />
+            </EventHandlers>
         </Window>
 
     </Windows>

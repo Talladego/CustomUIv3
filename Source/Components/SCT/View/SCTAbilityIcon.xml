@@ -1,0 +1,23 @@
+<Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <Windows>
+        <Window name="CustomUI_SCTAbilityIcon" handleinput="false" popable="false">
+            <Size>
+                <AbsPoint x="24" y="24" />
+            </Size>
+            <Anchors>
+                <Anchor point="topleft" relativePoint="topleft" />
+            </Anchors>
+            <Windows>
+                <DynamicImage name="$parentIcon" handleinput="false" textureScale="1.0" filtering="true">
+                    <Size>
+                        <AbsPoint x="24" y="24" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="topleft" relativePoint="topleft" />
+                        <Anchor point="bottomright" relativePoint="bottomright" />
+                    </Anchors>
+                </DynamicImage>
+            </Windows>
+        </Window>
+    </Windows>
+</Interface>

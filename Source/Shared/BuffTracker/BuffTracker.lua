@@ -1,5 +1,7 @@
 ----------------------------------------------------------------
 -- CustomUI.Shared.BuffTracker
+-- **Current (shipped):** mod-loaded; not legacy. Used by PlayerStatusWindow, GroupWindow,
+--   TargetHUD, and TargetWindow (via TargetFrame). See README "Source/Shared".
 -- Subclasses the stock BuffFrame / BuffTracker to allow per-tracker
 -- customization of frame texture, icon size, sorting, and filtering.
 --

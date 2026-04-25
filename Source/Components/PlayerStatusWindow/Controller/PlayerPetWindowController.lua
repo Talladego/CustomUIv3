@@ -1,12 +1,11 @@
 ----------------------------------------------------------------
--- CustomUI.PlayerPetWindow - Controller
--- Moveable replacement for the stock PetHealthWindow.
--- Uses PlayerPetUnitFrame:Create() directly, bypassing UnitFrames
--- registration so the stock PetHealthWindow (ea_careerresourceswindow)
--- keeps its own slot undisturbed.
---
--- Shows when a pet is present and the component is enabled.
--- Hides when no pet exists regardless of enabled state.
+-- CustomUI.PlayerPetWindow — Controller
+-- Responsibilities: component adapter, pet frame lifecycle, PetWindow.UpdatePet hook,
+--   and event-driven updates. There is no separate View/ Lua; presentation goes through
+--   PlayerPetUnitFrame and the XML. CustomUI.mod loads this file before View/PlayerPetWindow.xml
+--   and does not re-include the controller in that XML.
+-- Moveable replacement for the stock PetHealthWindow; uses PlayerPetUnitFrame:Create() directly,
+-- bypassing UnitFrames registration. Shows when a pet exists and the component is enabled.
 ----------------------------------------------------------------
 
 if not CustomUI.PlayerPetWindow then

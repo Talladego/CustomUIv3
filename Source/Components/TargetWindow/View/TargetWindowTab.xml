@@ -1,5 +1,5 @@
 <Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-    <!-- LEGACY (in-addon settings tab): superseded by CustomUISettingsWindow. Do not add new UI here. -->
+    <!-- LEGACY (removal candidate) — in-addon *Tab; shipped UI: CustomUISettingsWindow. See README "Legacy code". Do not add new UI. -->
     <Windows>
 
         <Window name="CustomUITargetWindowTab" movable="false" savesettings="false" hidden="true">

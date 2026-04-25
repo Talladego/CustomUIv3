@@ -1,8 +1,9 @@
 ----------------------------------------------------------------
--- CustomUI.TargetHUD - Controller
--- World-attached mini target HUDs for hostile and friendly targets.
--- Static layout (health bar + name label) is defined in TargetHUD.xml.
--- Each HUD owns one BuffTracker; no TargetUnitFrame is used.
+-- CustomUI.TargetHUD — Controller
+-- Responsibilities: RegisterComponent, target events, BuffTracker per HUD, layout visibility.
+-- No View/ Lua; layout is in TargetHUD.xml. CustomUI.mod loads this controller before
+-- View/TargetHUD.xml; do not re-<Script> the controller in that XML.
+-- World-attached mini HUDs (no TargetUnitFrame); static layout in XML; BuffTracker per side.
 ----------------------------------------------------------------
 
 if not CustomUI.TargetHUD then
@@ -410,9 +411,11 @@ function TargetHUDComponent:Shutdown()
 end
 CustomUI.RegisterComponent("TargetHUD", TargetHUDComponent)
 
-----------------------------------------------------------------
--- LEGACY: in-addon settings tab (View/TargetHUDTab.xml). Superseded by CustomUISettingsWindow.
-----------------------------------------------------------------
+-- ============================================================================
+-- LEGACY (removal candidate) — in-addon settings: View/TargetHUDTab.xml, CustomUI.TargetHUD.Tab
+-- Replaced by: CustomUISettingsWindow. Remove with: *Tab in CustomUI.mod, this block, BuffFilterSection
+--   if last user. See README "Legacy code".
+-- ============================================================================
 
 CustomUI.TargetHUD.Tab = {}
 
@@ -442,4 +445,4 @@ function CustomUI.TargetHUD.Tab.OnFilterChanged()
     )
 end
 
---CustomUI.SettingsWindow.RegisterTab("TargetHUD", "CustomUITargetHUDTab", TargetHUDComponent, CustomUI.TargetHUD.Tab.OnShown)  -- LEGACY (in-addon tab)
+--CustomUI.SettingsWindow.RegisterTab("TargetHUD", "CustomUITargetHUDTab", TargetHUDComponent, CustomUI.TargetHUD.Tab.OnShown)  -- LEGACY: remove with Tab block above

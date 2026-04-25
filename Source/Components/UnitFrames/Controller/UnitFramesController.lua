@@ -1,3 +1,12 @@
+----------------------------------------------------------------
+-- CustomUI.UnitFrames — Controller
+-- Responsibilities: RegisterComponent, visibility/scenario/battlegroup events, and wiring
+--   to internal helpers (Model, Events, Renderer). Not the same as a View/ .lua: rendering
+--   is split into UnitFramesRenderer.lua by subsystem, not a separate View/ folder.
+-- CustomUI.mod loads this file after the other UnitFrames/*.lua and before View/UnitFrames.xml;
+--   the XML does not re-<Script> the controller. Internal modules stay in Controller/ by layout.
+----------------------------------------------------------------
+
 if not CustomUI then
     CustomUI = {}
 end
@@ -66,11 +75,12 @@ local function IsLayoutEditorReady()
 end
 
 local function DebugLog(message)
-    if type(d) ~= "function" then
+    local dbg = CustomUI.GetClientDebugLog()
+    if type(dbg) ~= "function" then
         return
     end
 
-    d("[CustomUI.UnitFrames] " .. tostring(message))
+    dbg("[CustomUI.UnitFrames] " .. tostring(message))
 end
 
 local function IsScenarioVerboseDebugEnabled()
@@ -986,9 +996,11 @@ function UnitFramesComponent:Shutdown()
     UnitFrames.Shutdown()
 end
 
-----------------------------------------------------------------
--- LEGACY: in-addon settings tab (View/UnitFramesTab.xml). Superseded by CustomUISettingsWindow.
-----------------------------------------------------------------
+-- ============================================================================
+-- LEGACY (removal candidate) — in-addon settings: View/UnitFramesTab.xml, CustomUI.UnitFrames.Tab
+-- Replaced by: CustomUISettingsWindow. Remove with: *Tab in CustomUI.mod, this block (no BuffFilterSection).
+-- See README "Legacy code".
+-- ============================================================================
 
 CustomUI.UnitFrames.Tab = {}
 
@@ -1004,5 +1016,5 @@ function CustomUI.UnitFrames.Tab.OnToggleEnable()
     ButtonSetPressedFlag(SystemData.ActiveWindow.name, newState)
 end
 
---CustomUI.SettingsWindow.RegisterTab("UnitFrames", "CustomUIUnitFramesTab", UnitFramesComponent, CustomUI.UnitFrames.Tab.OnShown)  -- LEGACY (in-addon tab)
+--CustomUI.SettingsWindow.RegisterTab("UnitFrames", "CustomUIUnitFramesTab", UnitFramesComponent, CustomUI.UnitFrames.Tab.OnShown)  -- LEGACY: remove with Tab block above
 CustomUI.RegisterComponent("UnitFrames", UnitFramesComponent)

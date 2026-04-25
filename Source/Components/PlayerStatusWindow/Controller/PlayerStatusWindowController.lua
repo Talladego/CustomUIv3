@@ -1,7 +1,10 @@
 ----------------------------------------------------------------
--- CustomUI.PlayerStatusWindow - Controller
--- Main entry point for the PlayerStatusWindow component.
--- Handles component lifecycle, game event processing, and state management.
+-- CustomUI.PlayerStatusWindow — Controller
+-- Responsibilities: RegisterComponent, lifecycle, WindowRegisterEventHandler, all game
+--   event and stock-frame updates, and buff/window state. Calls View/PlayerStatusWindow.lua
+--   for labels, tooltips, and static XML handlers (same CustomUI.PlayerStatusWindow namespace).
+-- This file is listed in CustomUI.mod before View/PlayerStatusWindow.xml; the XML may load
+--   only the View .lua, not a second copy of the controller.
 ----------------------------------------------------------------
 
 if not CustomUI.PlayerStatusWindow then
@@ -443,14 +446,10 @@ function CustomUI.PlayerStatusWindow.UpdateBasedOnUserSettings()
 end
 
 function CustomUI.PlayerStatusWindow.MouseOverPortrait()
-    Tooltips.CreateTextOnlyTooltip( SystemData.ActiveWindow.name )
-    Tooltips.SetTooltipText( 1, 1, GameData.Player.name )
-    Tooltips.SetTooltipColorDef( 1, 1, Tooltips.COLOR_HEADING )
-    local levelString = PartyUtils.GetLevelText( GameData.Player.level, GameData.Player.battleLevel )
-    Tooltips.SetTooltipText( 2, 1, GetStringFormat( StringTables.Default.LABEL_RANK_X, { levelString } ) )
-    Tooltips.SetTooltipText( 3, 1, GetStringFormatFromTable( "HUDStrings", StringTables.HUD.LABEL_HUD_PLAYER_WINDOW_TOOLTIP_CAREER_NAME, { GameData.Player.career.name } ) )
-    Tooltips.Finalize()
-    Tooltips.AnchorTooltip( CustomUI.PlayerStatusWindow.TOOLTIP_ANCHOR )
+    -- Tooltip content lives in View/PlayerStatusWindow.lua (PaintPortraitTooltip).
+    if type(CustomUI.PlayerStatusWindow.PaintPortraitTooltip) == "function" then
+        CustomUI.PlayerStatusWindow.PaintPortraitTooltip()
+    end
 
     isMouseOverPortrait = true
     UpdateStatusContainerVisibility()
@@ -587,9 +586,11 @@ function CustomUI.PlayerStatusWindow.ApplyBuffSettings()
     tracker:SetFilter(cfg)
 end
 
-----------------------------------------------------------------
--- LEGACY: in-addon settings tab (View/PlayerStatusWindowTab.xml). Superseded by CustomUISettingsWindow.
-----------------------------------------------------------------
+-- ============================================================================
+-- LEGACY (removal candidate) — in-addon settings: View/PlayerStatusWindowTab.xml, CustomUI.*.Tab below
+-- Replaced by: CustomUISettingsWindow. Remove with: *Tab.xml + File in CustomUI.mod, this block, then
+--   BuffFilterSection.lua if no other component still uses it. See README "Legacy code".
+-- ============================================================================
 
 CustomUI.PlayerStatusWindow.Tab = {}
 
@@ -613,5 +614,5 @@ function CustomUI.PlayerStatusWindow.Tab.OnFilterChanged()
     )
 end
 
---CustomUI.SettingsWindow.RegisterTab("Player", "CustomUIPlayerStatusWindowTab", PlayerStatusWindowComponent, CustomUI.PlayerStatusWindow.Tab.OnShown)  -- LEGACY (in-addon tab)
+--CustomUI.SettingsWindow.RegisterTab("Player", "CustomUIPlayerStatusWindowTab", PlayerStatusWindowComponent, CustomUI.PlayerStatusWindow.Tab.OnShown)  -- LEGACY: remove with Tab block above
 CustomUI.RegisterComponent( "PlayerStatusWindow", PlayerStatusWindowComponent )

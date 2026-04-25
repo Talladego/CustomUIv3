@@ -1,8 +1,9 @@
 ----------------------------------------------------------------
--- CustomUI.TargetWindow - Controller
--- Combined replacement for stock hostile/friendly target windows.
--- Uses CustomUI.TargetFrame (TargetUnitFrame subclass) for both
--- target slots while exposing one merged component toggle.
+-- CustomUI.TargetWindow — Controller
+-- Responsibilities: RegisterComponent, target events, two TargetFrame instances, and stock
+--   show/hide. There is no View/ Lua; CustomUI.TargetFrame and XML templates carry UI.
+-- CustomUI.mod loads this file before View/TargetWindow.xml; do not re-<Script> the controller in XML.
+-- Combined replacement for stock hostile + friendly target windows (one component toggle).
 ----------------------------------------------------------------
 
 if not CustomUI.TargetWindow then
@@ -578,9 +579,12 @@ function CustomUI.TargetWindow.ApplyBuffSettings()
     end
 end
 
-----------------------------------------------------------------
--- LEGACY: in-addon settings tab (View/TargetWindowTab.xml). Superseded by CustomUISettingsWindow.
-----------------------------------------------------------------
+-- ============================================================================
+-- LEGACY (removal candidate) — in-addon settings: View/TargetWindowTab.xml, CustomUI.TargetWindow.Tab
+-- Replaced by: CustomUISettingsWindow. Remove with: *Tab entry in CustomUI.mod, this block, BuffFilterSection
+--   if last user. (Single-panel target buff UI mirrors hostile→ friendly for old tabs; see OnFilterChanged.)
+-- See README "Legacy code".
+-- ============================================================================
 
 CustomUI.TargetWindow.Tab = {}
 
@@ -588,7 +592,7 @@ function CustomUI.TargetWindow.Tab.OnShown(contentName)
     ButtonSetPressedFlag(contentName .. "EnableCheckBox", CustomUI.IsComponentEnabled("TargetWindow"))
     LabelSetText(contentName .. "EnableLabel", L"Enabled")
     CustomUI.BuffFilterSection.SetupLabels(contentName)
-    -- LEGACY single panel: mirror hostile filter to friendly so old tabs keep "one rule for both".
+    -- (LEGACY tab) single panel: mirror hostile filter to friendly for old in-addon tab layout.
     CustomUI.BuffFilterSection.RefreshControls(contentName, CustomUI.TargetWindow.GetBuffFilterHostile())
 end
 
@@ -611,4 +615,4 @@ function CustomUI.TargetWindow.Tab.OnFilterChanged()
     )
 end
 
---CustomUI.SettingsWindow.RegisterTab("Target", "CustomUITargetWindowTab", TargetWindowComponent, CustomUI.TargetWindow.Tab.OnShown)  -- LEGACY (in-addon tab)
+--CustomUI.SettingsWindow.RegisterTab("Target", "CustomUITargetWindowTab", TargetWindowComponent, CustomUI.TargetWindow.Tab.OnShown)  -- LEGACY: remove with Tab block above

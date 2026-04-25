@@ -1,5 +1,5 @@
 <Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-    <!-- LEGACY (in-addon settings tab): superseded by CustomUISettingsWindow. Not loaded from CustomUI.mod — do not use. -->
+    <!-- LEGACY (removal candidate) — not loaded from CustomUI.mod; orphaned. Shipped: CustomUISettingsWindow. See README "Legacy code". -->
     <Windows>
 
         <Window name="CustomUIPlayerPetWindowTab" movable="false" savesettings="false" hidden="true">

@@ -1,10 +1,22 @@
 ----------------------------------------------------------------
--- CustomUI.SCT — Settings helpers
+-- CustomUI.SCT — Settings helpers (SCT; not a View/ .lua)
+-- Responsibilities: default schema, GetSettings, migrations, and pure helpers (colors, fonts
+--   descriptors) used by SCTEventText and CustomUISettingsWindow tabs. No RegisterComponent
+--   here, no engine hooks — data and defaults only. Call sites must not add saved-variable
+--   paths to a specific settings window; tabs live in the CustomUISettingsWindow addon.
 if not CustomUI.SCT then CustomUI.SCT = {} end
--- Shared by SCTEventText, SCTController, and external settings UIs (no window paths here).
--- SavedVariable: EA_ScrollingCombatText_Settings
--- (same key as the standalone ScrollingCombatTextSettings addon
---  for profile compatibility)
+-- Verbose trace log gate (default off). From console: CustomUI.SCT.m_debug = true
+if CustomUI.SCT.m_debug == nil then
+    CustomUI.SCT.m_debug = false
+end
+
+function CustomUI.SCT.Trace(msg)
+    if not CustomUI.SCT.m_debug then return end
+    local dbg = CustomUI.GetClientDebugLog()
+    if type(dbg) == "function" then dbg("[SCT:Trace] " .. tostring(msg)) end
+end
+
+-- Shared by SCTEventText, SCTController, and external settings UIs.
 ----------------------------------------------------------------
 
 CustomUI.SCT.COMBAT_TYPE_KEYS = { "Hit", "Ability", "Heal", "Block", "Parry", "Evade", "Disrupt", "Absorb", "Immune" }
@@ -13,10 +25,10 @@ CustomUI.SCT.POINT_TYPE_KEYS  = { "XP", "Renown", "Influence" }
 -- Discrete size ticks used by the settings UI (slider maps to these values).
 CustomUI.SCT.TICK_SCALES = { 0.75, 0.875, 1.0, 1.25, 1.75 }
 
--- Crit animation time multiplier (1.0 = stock timing). Middle tick = current default.
-CustomUI.SCT.ANIMATION_SPEED_TICKS = { 0.5, 0.75, 1.0, 1.25, 1.5 }
+-- Crit-only size multiplier. Applied on top of the per-event Size slider (multiplicative).
+CustomUI.SCT.CRIT_SIZE_TICK_SCALES = { 1.0, 1.15, 1.3, 1.5, 1.75 }
 
--- [1] = stock event-text font (see easystem_eventtext EA_Window_EventTextLabel); 2+ match wsct WSCT.LOCALS.FONTS order.
+-- [1] = event-text font (see CustomUI_EventTextLabel.xml / stock EA_Window_EventTextLabel); 2+ match wsct WSCT.LOCALS.FONTS order.
 CustomUI.SCT.TEXT_FONTS = {
     { font = "font_default_text_large",     label = L"Default" },
     { font = "font_journal_text_huge",     label = L"Cronos Pro" },
@@ -69,15 +81,15 @@ function CustomUI.SCT.SliderPosToScale(pos)
     return scales[idx]
 end
 
-function CustomUI.SCT.AnimSpeedToSliderPos(speed)
-    local scales = CustomUI.SCT.ANIMATION_SPEED_TICKS
+function CustomUI.SCT.CritSizeToSliderPos(scale)
+    local scales = CustomUI.SCT.CRIT_SIZE_TICK_SCALES
     local n = #scales
     if n <= 1 then
         return 0
     end
     local best, idx = math.huge, 1
     for i, s in ipairs(scales) do
-        local d = math.abs(speed - s)
+        local d = math.abs(scale - s)
         if d < best then
             best, idx = d, i
         end
@@ -85,8 +97,8 @@ function CustomUI.SCT.AnimSpeedToSliderPos(speed)
     return (idx - 1) / (n - 1)
 end
 
-function CustomUI.SCT.SliderPosToAnimSpeed(pos)
-    local scales = CustomUI.SCT.ANIMATION_SPEED_TICKS
+function CustomUI.SCT.SliderPosToCritSize(pos)
+    local scales = CustomUI.SCT.CRIT_SIZE_TICK_SCALES
     local n = #scales
     local idx = math.floor(pos * (n - 1) + 0.5) + 1
     idx = math.max(1, math.min(n, idx))
@@ -157,11 +169,34 @@ CustomUI.SCT.COLOR_OPTIONS = (function()
 end)()
 
 ----------------------------------------------------------------
--- GetSettings — returns the validated/migrated settings table.
--- Always returns a live reference to EA_ScrollingCombatText_Settings.
+-- Settings() — private: returns validated/migrated `CustomUI.Settings.SCT`.
+-- Direct `CustomUI.Settings.SCT` access exists only here (plan §5 / Step 1 gate).
 ----------------------------------------------------------------
 
-function CustomUI.SCT.GetSettings()
+local function isPointTypeKey(key)
+    for _, pk in ipairs(CustomUI.SCT.POINT_TYPE_KEYS) do
+        if pk == key then
+            return true
+        end
+    end
+    return false
+end
+
+local function isValidSettingsKey(key)
+    for _, k in ipairs(CustomUI.SCT.COMBAT_TYPE_KEYS) do
+        if k == key then
+            return true
+        end
+    end
+    for _, k in ipairs(CustomUI.SCT.POINT_TYPE_KEYS) do
+        if k == key then
+            return true
+        end
+    end
+    return false
+end
+
+local function Settings()
     CustomUI.Settings.SCT          = CustomUI.Settings.SCT          or {}
     local v = CustomUI.Settings.SCT
     v.outgoing = v.outgoing or { filters = {}, size = {}, color = {} }
@@ -185,20 +220,42 @@ function CustomUI.SCT.GetSettings()
     v.customColor.outgoing = v.customColor.outgoing or {}
     v.customColor.incoming = v.customColor.incoming or {}
 
-    -- Critical hit presentation:
-    -- - "none"
-    -- - "shake"
-    -- - "pulse"
-    -- - "flash" (color flicker between white and target color)
-    if v.critAnimation ~= "none" and v.critAnimation ~= "shake" and v.critAnimation ~= "pulse" and v.critAnimation ~= "flash" then
-        v.critAnimation = "shake"
+    -- Critical hit presentation (v2): independent toggles — Flash (color) can combine with Shake or Pulse; Shake and Pulse are mutually exclusive.
+    if v.critAnimV2 ~= true then
+        local o = v.critAnimation
+        v.critAnimShake = false
+        v.critAnimPulse = false
+        v.critAnimFlash = false
+        if o == "none" then
+            -- leave all off
+        elseif o == "pulse" then
+            v.critAnimPulse = true
+        elseif o == "flash" then
+            v.critAnimFlash = true
+        else
+            -- "shake", nil, or unknown (legacy default was shake)
+            v.critAnimShake = true
+        end
+        v.critAnimV2 = true
     end
+    if v.critAnimShake and v.critAnimPulse then
+        v.critAnimPulse = false
+    end
+    v.critAnimShake = v.critAnimShake == true
+    v.critAnimPulse = v.critAnimPulse == true and not v.critAnimShake
+    v.critAnimFlash = v.critAnimFlash == true
 
-    -- Multiplier for crit grow/shake/pulse/flash phase timing; discrete ticks (1.0 = stock).
-    if type(v.critAnimationSpeed) ~= "number" or v.critAnimationSpeed ~= v.critAnimationSpeed then
-        v.critAnimationSpeed = 1.0
+    -- Crit size scale (multiplicative with per-event scale). Discrete ticks.
+    if type(v.critSizeScale) ~= "number" or v.critSizeScale ~= v.critSizeScale then
+        v.critSizeScale = 1.0
     end
-    v.critAnimationSpeed = CustomUI.SCT.SliderPosToAnimSpeed(CustomUI.SCT.AnimSpeedToSliderPos(v.critAnimationSpeed))
+    v.critSizeScale = CustomUI.SCT.SliderPosToCritSize(CustomUI.SCT.CritSizeToSliderPos(v.critSizeScale))
+
+    -- Optional ability icon next to combat event text.
+    if v.showAbilityIcon == nil then
+        v.showAbilityIcon = false
+    end
+    v.showAbilityIcon = v.showAbilityIcon == true
 
     -- textFont: 1 = Default (stock), 2–9 = former 8 wsct options. Migrate old 1–8 → 2–9 when Default row was added.
     local nFonts = #CustomUI.SCT.TEXT_FONTS
@@ -215,8 +272,256 @@ function CustomUI.SCT.GetSettings()
     return v
 end
 
+-- Live settings table; same object as `Settings()` (for runtime and legacy call sites).
+function CustomUI.SCT.GetSettings()
+    return Settings()
+end
+
+----------------------------------------------------------------
+-- Public API (plan §5) — thin wrappers; CustomUISettingsWindow migrates to these in Step 2.
+----------------------------------------------------------------
+
+function CustomUI.SCT.GetCombatTypeKeys()
+    return CustomUI.SCT.COMBAT_TYPE_KEYS
+end
+
+function CustomUI.SCT.GetPointTypeKeys()
+    return CustomUI.SCT.POINT_TYPE_KEYS
+end
+
+function CustomUI.SCT.GetTextFonts()
+    return CustomUI.SCT.TEXT_FONTS
+end
+
+function CustomUI.SCT.GetColorOptions()
+    return CustomUI.SCT.COLOR_OPTIONS
+end
+
+function CustomUI.SCT.GetTickScales()
+    return CustomUI.SCT.TICK_SCALES
+end
+
+function CustomUI.SCT.GetCritTickScales()
+    return CustomUI.SCT.CRIT_SIZE_TICK_SCALES
+end
+
+function CustomUI.SCT.GetColorPaletteRevision()
+    return CustomUI.SCT.COLOR_PALETTE_REVISION
+end
+
+function CustomUI.SCT.GetColorPickerColumns()
+    return CustomUI.SCT.COLOR_PICKER_COLUMNS
+end
+
+function CustomUI.SCT.GetSize(direction, key)
+    local v = Settings()
+    if not isValidSettingsKey(key) then
+        return 1.0
+    end
+    if isPointTypeKey(key) then
+        return (v.outgoing.size and v.outgoing.size[key]) or 1.0
+    end
+    if direction ~= "outgoing" and direction ~= "incoming" then
+        return 1.0
+    end
+    return (v[direction].size and v[direction].size[key]) or 1.0
+end
+
+function CustomUI.SCT.GetColorIndex(direction, key)
+    local v = Settings()
+    if not isValidSettingsKey(key) then
+        return 1
+    end
+    if isPointTypeKey(key) and direction == "incoming" then
+        return 1
+    end
+    if direction ~= "outgoing" and direction ~= "incoming" then
+        return 1
+    end
+    local c = v[direction].color and v[direction].color[key]
+    if type(c) ~= "number" or c < 1 then
+        return 1
+    end
+    return c
+end
+
+function CustomUI.SCT.GetCustomColor(direction, key)
+    local v = Settings()
+    if not isValidSettingsKey(key) then
+        return nil
+    end
+    if isPointTypeKey(key) and direction == "incoming" then
+        return nil
+    end
+    if direction ~= "outgoing" and direction ~= "incoming" then
+        return nil
+    end
+    local t = v.customColor and v.customColor[direction] and v.customColor[direction][key]
+    if type(t) ~= "table" or t[1] == nil then
+        return nil
+    end
+    return { t[1], t[2], t[3] }
+end
+
+function CustomUI.SCT.GetFilter(direction, key)
+    local v = Settings()
+    if not isValidSettingsKey(key) then
+        return true
+    end
+    if isPointTypeKey(key) and direction == "incoming" then
+        return true
+    end
+    if direction ~= "outgoing" and direction ~= "incoming" then
+        return true
+    end
+    local fk = "show" .. key
+    local f = v[direction].filters and v[direction].filters[fk]
+    return f ~= false
+end
+
+function CustomUI.SCT.GetCritFlags()
+    local s = Settings()
+    local sh = s.critAnimShake == true
+    local pu = s.critAnimPulse == true
+    local cf = s.critAnimFlash == true
+    if sh then
+        pu = false
+    end
+    return sh, pu, cf
+end
+
+function CustomUI.SCT.GetCritSizeScale()
+    return Settings().critSizeScale or 1.0
+end
+
+function CustomUI.SCT.GetTextFontIndex()
+    return Settings().textFont or 1
+end
+
+function CustomUI.SCT.GetShowAbilityIcon()
+    return Settings().showAbilityIcon == true
+end
+
+function CustomUI.SCT.SetSize(direction, key, scale)
+    if not isValidSettingsKey(key) or type(scale) ~= "number" or scale ~= scale then
+        return
+    end
+    local v = Settings()
+    if isPointTypeKey(key) then
+        scale = CustomUI.SCT.SliderPosToScale(CustomUI.SCT.ScaleToSliderPos(scale))
+        v.outgoing.size[key] = scale
+        return
+    end
+    assert(direction == "outgoing" or direction == "incoming", "bad direction")
+    if not v[direction] or not v[direction].size then
+        return
+    end
+    scale = CustomUI.SCT.SliderPosToScale(CustomUI.SCT.ScaleToSliderPos(scale))
+    v[direction].size[key] = scale
+end
+
+function CustomUI.SCT.SetColorIndex(direction, key, idx)
+    if not isValidSettingsKey(key) or type(idx) ~= "number" then
+        return
+    end
+    if isPointTypeKey(key) and direction == "incoming" then
+        return
+    end
+    assert(direction == "outgoing" or direction == "incoming", "bad direction")
+    local v = Settings()
+    idx = math.floor(idx + 0.5)
+    local n = #(CustomUI.SCT.COLOR_OPTIONS or {})
+    if idx < 1 then
+        idx = 1
+    end
+    if idx > n then
+        idx = n
+    end
+    v[direction].color[key] = idx
+end
+
+function CustomUI.SCT.SetCustomColor(direction, key, rgb_or_nil)
+    if not isValidSettingsKey(key) then
+        return
+    end
+    if isPointTypeKey(key) and direction == "incoming" then
+        return
+    end
+    assert(direction == "outgoing" or direction == "incoming", "bad direction")
+    local v = Settings()
+    v.customColor[direction] = v.customColor[direction] or {}
+    if rgb_or_nil == nil then
+        v.customColor[direction][key] = nil
+        return
+    end
+    if type(rgb_or_nil) ~= "table" then
+        return
+    end
+    local r, g, b = rgb_or_nil[1] or rgb_or_nil.r, rgb_or_nil[2] or rgb_or_nil.g, rgb_or_nil[3] or rgb_or_nil.b
+    if type(r) ~= "number" or type(g) ~= "number" or type(b) ~= "number" then
+        return
+    end
+    v.customColor[direction][key] = {
+        math.max(0, math.min(255, math.floor(r + 0.5))),
+        math.max(0, math.min(255, math.floor(g + 0.5))),
+        math.max(0, math.min(255, math.floor(b + 0.5))),
+    }
+end
+
+function CustomUI.SCT.SetFilter(direction, key, boolVal)
+    if not isValidSettingsKey(key) then
+        return
+    end
+    if isPointTypeKey(key) and direction == "incoming" then
+        return
+    end
+    assert(direction == "outgoing" or direction == "incoming", "bad direction")
+    local v = Settings()
+    local fk = "show" .. key
+    v[direction].filters[fk] = boolVal == true
+end
+
+function CustomUI.SCT.SetCritFlags(shake, pulse, flash)
+    local v = Settings()
+    v.critAnimV2 = true
+    local sh = shake == true
+    local pu = pulse == true and not sh
+    local cf = flash == true
+    v.critAnimShake = sh
+    v.critAnimPulse = pu
+    v.critAnimFlash = cf
+end
+
+function CustomUI.SCT.SetCritSizeScale(scale)
+    if type(scale) ~= "number" or scale ~= scale then
+        return
+    end
+    local v = Settings()
+    v.critSizeScale = CustomUI.SCT.SliderPosToCritSize(CustomUI.SCT.CritSizeToSliderPos(scale))
+end
+
+function CustomUI.SCT.SetTextFontIndex(idx)
+    if type(idx) ~= "number" or idx ~= math.floor(idx) then
+        return
+    end
+    local nFonts = #CustomUI.SCT.TEXT_FONTS
+    if idx < 1 or idx > nFonts then
+        return
+    end
+    Settings().textFont = idx
+end
+
+function CustomUI.SCT.SetShowAbilityIcon(enabled)
+    Settings().showAbilityIcon = enabled == true
+end
+
+-- Returns shake, pulse, color-flash (all booleans). Shake and pulse are mutually exclusive after GetSettings().
+function CustomUI.SCT.GetCritAnimFlags()
+    return CustomUI.SCT.GetCritFlags()
+end
+
 function CustomUI.SCT.GetTextFontName()
-    local v = CustomUI.SCT.GetSettings()
+    local v = Settings()
     local idx = v.textFont
     local t = CustomUI.SCT.TEXT_FONTS
     if type(idx) ~= "number" or idx < 1 or idx > #t then
@@ -228,7 +533,7 @@ end
 
 -- All preset color indices to 1 (engine DefaultColor per event) and clear per-row custom RGB overrides.
 function CustomUI.SCT.ResetColorsToStockDefault()
-    local v = CustomUI.SCT.GetSettings()
+    local v = Settings()
     for _, k in ipairs(CustomUI.SCT.COMBAT_TYPE_KEYS) do
         v.outgoing.color[k] = 1
         v.incoming.color[k] = 1
@@ -257,8 +562,8 @@ function CustomUI.SCT.GetMiddleTextSizeScale()
     return scales[math.ceil(n / 2)]
 end
 
-function CustomUI.SCT.GetMiddleAnimSpeed()
-    local scales = CustomUI.SCT.ANIMATION_SPEED_TICKS
+function CustomUI.SCT.GetMiddleCritSizeScale()
+    local scales = CustomUI.SCT.CRIT_SIZE_TICK_SCALES
     local n = #scales
     if n < 1 then
         return 1.0
@@ -269,9 +574,12 @@ end
 -- SCT settings tab "Reset": stock colors, crit = shake, all text size sliders to center tick.
 function CustomUI.SCT.ApplySctSettingsTabFullReset()
     CustomUI.SCT.ResetColorsToStockDefault()
-    local v = CustomUI.SCT.GetSettings()
-    v.critAnimation = "shake"
-    v.critAnimationSpeed = CustomUI.SCT.GetMiddleAnimSpeed()
+    local v = Settings()
+    v.critAnimV2 = true
+    v.critAnimShake = true
+    v.critAnimPulse = false
+    v.critAnimFlash = false
+    v.critSizeScale = CustomUI.SCT.GetMiddleCritSizeScale()
     v.textFont = 1
     v.sctTextFontV2 = true
     local mid = CustomUI.SCT.GetMiddleTextSizeScale()
@@ -314,7 +622,7 @@ end
 ----------------------------------------------------------------
 
 function CustomUI.SCT.CombatTypeOutgoingEnabled(textType)
-    local f = (CustomUI.SCT.GetSettings().outgoing or {}).filters or {}
+    local f = (Settings().outgoing or {}).filters or {}
     if textType == GameData.CombatEvent.HIT              then return f.showHit     ~= false end
     if textType == GameData.CombatEvent.ABILITY_HIT      then return f.showAbility ~= false end
     if textType == GameData.CombatEvent.CRITICAL         then return f.showHit     ~= false end
@@ -329,7 +637,7 @@ function CustomUI.SCT.CombatTypeOutgoingEnabled(textType)
 end
 
 function CustomUI.SCT.CombatTypeIncomingEnabled(textType)
-    local f = (CustomUI.SCT.GetSettings().incoming or {}).filters or {}
+    local f = (Settings().incoming or {}).filters or {}
     if textType == GameData.CombatEvent.HIT              then return f.showHit     ~= false end
     if textType == GameData.CombatEvent.ABILITY_HIT      then return f.showAbility ~= false end
     if textType == GameData.CombatEvent.CRITICAL         then return f.showHit     ~= false end

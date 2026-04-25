@@ -1,4 +1,5 @@
 <Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <!-- LEGACY (removal candidate) / DEPRECATED: in-addon CustomUI.SettingsWindow shell; not loaded from CustomUI.mod. Shipped: CustomUISettingsWindow (CustomUISettingsWindowTabbed, /cui). Window name CustomUISettingsWindow collides conceptually with addon UIs. -->
     <Windows>
 
         <!-- Tab button template — EA_Button_Tab with our own handlers instead of stock SettingsWindowTabbed ones. -->

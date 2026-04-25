@@ -1,3 +1,9 @@
+----------------------------------------------------------------
+-- GroupWindow test harness (dev) — not part of Controller/View
+-- Fakes group roster data and slash gwharness. Do not add production UI or lifecycle
+-- here; keep the real Group window split documented in GroupWindowController.lua.
+----------------------------------------------------------------
+
 if not CustomUI then
     CustomUI = {}
 end
@@ -154,9 +160,6 @@ local function ReadLocalPlayerPrototype()
         isWarbandLeader = (player.isWarbandLeader == true),
         careerLine = careerLine,
         careerName = careerName,
-        Pet = {
-            healthPercent = 0,
-        },
     }
 end
 
@@ -180,11 +183,7 @@ function Harness.GetGroupData()
     for index = 1, memberCount do
         local member = {}
         for key, value in pairs(base) do
-            if key == "Pet" then
-                member.Pet = { healthPercent = value.healthPercent }
-            else
-                member[key] = value
-            end
+            member[key] = value
         end
 
         member.name = BuildMemberName(base.name, index)

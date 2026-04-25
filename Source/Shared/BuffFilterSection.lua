@@ -1,7 +1,9 @@
 ----------------------------------------------------------------
--- CustomUI.BuffFilterSection
--- Shared logic for buff filter checkboxes on LEGACY in-addon *Tab.xml tabs only.
--- CustomUISettingsWindow uses its own layouts; new settings UI belongs there + CustomUI getters/setters.
+-- CustomUI.BuffFilterSection — **only legacy file under Source/Shared** (removal candidate)
+-- All other `Shared/*` is current. Used only by in-addon settings tabs: `CustomUI.<Name>.Tab` +
+-- `*Tab.xml` (Player/Group/Target*/TargetHUD). CustomUISettingsWindow does not call this.
+-- Remove when: all those Tab tables and *Tab.xml entries are removed from CustomUI.mod, then
+-- delete this file if nothing references it. See README "Legacy code (removal candidates)".
 ----------------------------------------------------------------
 
 CustomUI.BuffFilterSection = {}

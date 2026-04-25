@@ -1,4 +1,5 @@
 <Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../../Interface.xsd">
+    <!-- LEGACY (removal candidate) / DEPRECATED: not loaded from CustomUI.mod. Shipped: CustomUISettingsWindow (/cui). -->
     <Scripts>
         <Script file="Source/Settings/View/MiniSettingsWindow.lua" />
     </Scripts>
@@ -130,7 +131,7 @@
                             <AbsPoint x="-5" y="8" />
                         </Anchor>
                     </Anchors>
-                    <ListData table="MiniSettingsData.rowListData" populationfunction="MiniSettingsData.PopulateRow">
+                    <ListData table="CustomUI.MiniSettingsList.rowListData" populationfunction="CustomUI.MiniSettingsList.PopulateRow">
                         <ListColumns>
                             <ListColumn windowname="ComponentName" variable="componentName" format="wstring" />
                         </ListColumns>

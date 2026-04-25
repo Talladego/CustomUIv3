@@ -1,4 +1,5 @@
 <Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <!-- Source/Shared/Shared.xml — current (shipped). Buff slot parent template for CustomUI.BuffTracker. See README "Source/Shared". -->
     <Windows>
 
         <!-- Blank container used by CustomUI.BuffTracker as the slot parent window.

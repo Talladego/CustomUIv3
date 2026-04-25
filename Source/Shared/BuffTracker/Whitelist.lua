@@ -1,5 +1,6 @@
 ----------------------------------------------------------------
 -- CustomUI.Shared.BuffTracker.Whitelist
+-- **Current (shipped):** `DefaultWhitelist` table; mod-loaded. Not legacy. See README "Source/Shared".
 -- Effect IDs that are always shown across all trackers by default,
 -- bypassing blacklist and filter config.
 --

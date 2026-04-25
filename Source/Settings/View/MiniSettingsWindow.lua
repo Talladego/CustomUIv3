@@ -1,15 +1,19 @@
 ----------------------------------------------------------------
--- CustomUI.MiniSettingsWindow - View
--- Data management and row population for the ListBox.
--- Mirrors the ChatFiltersWindow data/population pattern.
+-- CustomUI.MiniSettingsWindow — View
+-- LEGACY (removal candidate) / **DEPRECATED:** Shipped settings UX is the **CustomUISettingsWindow** addon (`/cui`). This
+--   small list window is not loaded from `CustomUI.mod` (see commented `<File>` entries). Kept
+--   only for reference or a local fork that re-enables it. Do not extend; add UI in
+--   CustomUISettingsWindow instead.
+-- ListData uses `CustomUI.MiniSettingsList.*` (`Table.field` style, like stock ListData).
 ----------------------------------------------------------------
 
--- Simple one-dot global so the XML <ListData table="MiniSettingsData.rowListData"> can find it.
--- (The WAR engine's ListData parser only supports a single dot.)
-MiniSettingsData = MiniSettingsData or {}
-MiniSettingsData.rowListData           = {}
-MiniSettingsData.componentNames        = {}
-MiniSettingsData.componentEnabledState = {}
+if not CustomUI.MiniSettingsList then
+    CustomUI.MiniSettingsList = {}
+end
+local M = CustomUI.MiniSettingsList
+M.rowListData           = {}
+M.componentNames        = {}
+M.componentEnabledState = {}
 
 ----------------------------------------------------------------
 -- Widget initialisation
@@ -27,50 +31,50 @@ end
 ----------------------------------------------------------------
 
 function CustomUI.MiniSettingsWindow.RefreshData()
-    MiniSettingsData.rowListData           = {}
-    MiniSettingsData.componentNames        = {}
-    MiniSettingsData.componentEnabledState = {}
+    M.rowListData           = {}
+    M.componentNames        = {}
+    M.componentEnabledState = {}
 
     local rowIndex = 0
 
     for _, componentName in ipairs( CustomUI.ComponentOrder ) do
         rowIndex = rowIndex + 1
-        MiniSettingsData.rowListData[rowIndex]           = { componentName = towstring( componentName ) }
-        MiniSettingsData.componentNames[rowIndex]        = componentName
-        MiniSettingsData.componentEnabledState[rowIndex] = CustomUI.IsComponentEnabled( componentName )
+        M.rowListData[rowIndex]           = { componentName = towstring( componentName ) }
+        M.componentNames[rowIndex]        = componentName
+        M.componentEnabledState[rowIndex] = CustomUI.IsComponentEnabled( componentName )
     end
 
     -- Build sequential display order and push to ListBox, which triggers PopulateRow.
     local order = {}
-    for i = 1, #MiniSettingsData.rowListData do
+    for i = 1, #M.rowListData do
         order[i] = i
     end
     ListBoxSetDisplayOrder( "CustomUIMiniSettingsWindowList", order )
 end
 
 ----------------------------------------------------------------
--- State accessors (used by Controller to avoid direct MiniSettingsData access)
+-- State accessors (used by Controller to avoid direct list-table access)
 ----------------------------------------------------------------
 
 function CustomUI.MiniSettingsWindow.ToggleState( dataIndex )
-    MiniSettingsData.componentEnabledState[dataIndex] = not MiniSettingsData.componentEnabledState[dataIndex]
-    return MiniSettingsData.componentEnabledState[dataIndex]
+    M.componentEnabledState[dataIndex] = not M.componentEnabledState[dataIndex]
+    return M.componentEnabledState[dataIndex]
 end
 
 function CustomUI.MiniSettingsWindow.GetPendingChanges()
     local changes = {}
-    for i, componentName in ipairs( MiniSettingsData.componentNames ) do
-        changes[i] = { name = componentName, enabled = MiniSettingsData.componentEnabledState[i] }
+    for i, componentName in ipairs( M.componentNames ) do
+        changes[i] = { name = componentName, enabled = M.componentEnabledState[i] }
     end
     return changes
 end
 
 function CustomUI.MiniSettingsWindow.GetComponentName( dataIndex )
-    return MiniSettingsData.componentNames[dataIndex]
+    return M.componentNames[dataIndex]
 end
 
 function CustomUI.MiniSettingsWindow.SetState( dataIndex, enabled )
-    MiniSettingsData.componentEnabledState[dataIndex] = ( enabled == true )
+    M.componentEnabledState[dataIndex] = ( enabled == true )
 end
 
 ----------------------------------------------------------------
@@ -78,7 +82,7 @@ end
 -- Called by the engine whenever visible rows need updating.
 ----------------------------------------------------------------
 
-function MiniSettingsData.PopulateRow()
+function M.PopulateRow()
     local list = CustomUIMiniSettingsWindowList
     if list == nil or list.PopulatorIndices == nil then
         return
@@ -86,7 +90,7 @@ function MiniSettingsData.PopulateRow()
 
     for rowIndex, dataIndex in ipairs( list.PopulatorIndices ) do
         local checkBox = "CustomUIMiniSettingsWindowListRow" .. rowIndex .. "CheckBox"
-        local enabled  = MiniSettingsData.componentEnabledState[dataIndex]
+        local enabled  = M.componentEnabledState[dataIndex]
         ButtonSetPressedFlag( checkBox, enabled or false )
     end
 end

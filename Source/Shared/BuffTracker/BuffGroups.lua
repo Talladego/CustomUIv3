@@ -1,5 +1,6 @@
 ----------------------------------------------------------------
 -- CustomUI.Shared.BuffTracker.BuffGroups
+-- **Current (shipped):** data for `SetBuffGroups`; mod-loaded. Not legacy. See README "Source/Shared".
 -- Named groups of effect IDs that trackers can merge into single icons.
 --
 -- All stat-variant abilities (e.g. "Brute's Theft of Strength",

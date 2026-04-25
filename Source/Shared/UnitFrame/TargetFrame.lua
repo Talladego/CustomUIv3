@@ -1,5 +1,6 @@
 ----------------------------------------------------------------
 -- CustomUI.TargetFrame
+-- **Current (shipped):** used by TargetWindow only. Not legacy. See README "Source/Shared".
 -- Subclasses the stock TargetUnitFrame class.  All non-Create()
 -- methods (UpdateUnit, UpdateHealth, UpdateStatusFrame, UpdateLevel,
 -- UpdateCombatState, StopInterpolatingStatus, SetCareerIcon, etc.)

@@ -1,9 +1,11 @@
 ----------------------------------------------------------------
--- CustomUI.SettingsWindow — Tab broker / settings window controller
--- Opens with /cui.  Components call RegisterTab() during their
--- own Initialize() to request a tab.  The window itself is lazy-
--- initialized on first OnShow so all registrations are complete
--- before any buttons are created.
+-- CustomUI.SettingsWindow — in-addon tabbed shell (`RegisterTab` API)
+-- LEGACY (removal candidate) / **DEPRECATED:** Shipped settings UX is the **CustomUISettingsWindow** addon
+--   (window `CustomUISettingsWindowTabbed`, `/cui`). This broker and `View/SettingsWindow.xml`
+--   are **not** loaded from `CustomUI.mod` (see commented `<File>` entries). Kept for
+--   reference or forks that re-enable the in-addon shell. Do not extend; register tabs
+--   and XML in **CustomUISettingsWindow** instead.
+-- Historical behavior: `RegisterTab`, lazy init, per-component *Tab.xml via socket.
 ----------------------------------------------------------------
 
 if not CustomUI.SettingsWindow then
@@ -44,8 +46,12 @@ local m_initialized = false
 CustomUI.SettingsWindow.Debug = false
 
 local function Dbg(msg)
-    if CustomUI.SettingsWindow.Debug then
-        d("[SettingsWindow] " .. tostring(msg))
+    if not CustomUI.SettingsWindow.Debug then
+        return
+    end
+    local dbg = CustomUI.GetClientDebugLog()
+    if type(dbg) == "function" then
+        dbg("[SettingsWindow] " .. tostring(msg))
     end
 end
 

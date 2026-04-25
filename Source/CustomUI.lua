@@ -19,16 +19,36 @@ CustomUI.State = CustomUI.State or
     slashRegistered = false,
 }
 
+-- Controller / View (per component under Source/Components/<Name>/):
+--   Controller: owns state, RegisterComponent, lifecycle (Initialize, Enable, Disable, Shutdown),
+--   engine event/hook registration, and coordination with Shared/. Call View helpers when present.
+--   View: optional View/<Name>.lua for labels, tooltips, and other presentation-only code; XML
+--   event targets may live in View or (for stock-frame-heavy components) on the same namespace
+--   from the controller when no View lua exists. See README.md and .cursor/rules/customui.mdc.
+--   Load order: list Controller/*.lua before View/*.xml in CustomUI.mod; do not re-<Script> the
+--   same *Controller.lua inside that template (PlayerStatusWindow.xml is the exception: it loads
+--   only View/PlayerStatusWindow.lua after the mod already loaded the controller).
+--   Root window instances: first step of CustomUI.Initialize (EnsureRootWindowInstances); .mod
+--   lists files only—no <CreateWindow> in the manifest.
+--
 -- Settings UI: ship in the separate CustomUISettingsWindow addon (window CustomUISettingsWindowTabbed).
--- In-addon View/*Tab.xml files and CustomUI.<Component>.Tab handlers in component controllers are LEGACY
--- (still loaded for compatibility). Do not extend those for new settings; add UI there only.
+-- Deprecated (not in .mod): CustomUI.SettingsWindow + Source/Settings/View/SettingsWindow.xml;
+--   MiniSettingsWindow. In-addon View/*Tab.xml and CustomUI.<Name>.Tab are LEGACY
+--   (removal candidate; see README and grep "LEGACY (removal candidate)" in Source/).
+--   Do not extend; add settings UI in CustomUISettingsWindow only.
+
+-- Client / dev may expose global `d` as a log hook; we never assign it.
+function CustomUI.GetClientDebugLog()
+    return rawget(_G, "d")
+end
 
 local function DebugLog(message)
-    if type(d) ~= "function" then
+    local dbg = CustomUI.GetClientDebugLog()
+    if type(dbg) ~= "function" then
         return
     end
 
-    d("[CustomUI] " .. tostring(message))
+    dbg("[CustomUI] " .. tostring(message))
 end
 
 local function CallComponentHandler(component, handlerName)
@@ -250,13 +270,15 @@ function CustomUI.HandleSlashCommand(input)
     end
 
     if trimmedInput == "" then
-        --CustomUI.SettingsWindow.Open()
+        -- Deprecated: CustomUI.SettingsWindow.Open() (in-addon tab shell; not loaded).
 		WindowUtils.ToggleShowing( "CustomUISettingsWindowTabbed" )
         return
     end
 
     if trimmedInput == "mini" then
-        --CustomUI.MiniSettingsWindow.Show()
+        if CustomUI.PrintMessage then
+            CustomUI.PrintMessage(L"MiniSettingsWindow is deprecated. Open /cui (CustomUISettingsWindow).")
+        end
         return
     end
 
@@ -345,9 +367,7 @@ function CustomUI.HandleSlashCommand(input)
 
             CustomUI.PrintMessage(towstring(componentName) .. L": " .. stateText)
 
-            -- if CustomUI.MiniSettingsWindow.IsVisible() then
-                -- CustomUI.MiniSettingsWindow.RefreshData()
-            -- end
+            -- (deprecated MiniSettingsWindow refresh removed)
         else
             CustomUI.PrintMessage(L"Unable to update component: " .. towstring(componentName))
         end
@@ -402,9 +422,7 @@ function CustomUI.RegisterComponent(componentName, componentTable)
             CustomUI.EnableComponent(componentName)
         end
 
-        -- if CustomUI.MiniSettingsWindow.IsVisible() then
-            -- CustomUI.MiniSettingsWindow.RefreshData()
-        -- end
+        -- (deprecated MiniSettingsWindow refresh removed)
     end
 
     return componentTable
@@ -516,12 +534,7 @@ function CustomUI.ResetAllToDefaults()
         CustomUI.SetComponentEnabled(componentName, defaultEnabled)
     end
 
-    -- if CustomUI.MiniSettingsWindow
-    -- and type(CustomUI.MiniSettingsWindow.IsVisible) == "function"
-    -- and CustomUI.MiniSettingsWindow.IsVisible()
-    -- and type(CustomUI.MiniSettingsWindow.RefreshData) == "function" then
-        -- CustomUI.MiniSettingsWindow.RefreshData()
-    -- end
+    -- (deprecated MiniSettingsWindow refresh removed)
 
     return true
 end
@@ -552,27 +565,58 @@ function CustomUI.ShutdownComponents()
     end
 end
 
+-- Top-level window names from View/*.xml loaded by CustomUI.mod. We instantiate them with
+-- CreateWindow (same as the former <CreateWindow> list in the .mod) at the first step of
+-- CustomUI.Initialize, after all <File> scripts and templates are available but before
+-- any component's Initialize runs. This keeps the mod manifest as files only and still
+-- guarantees instances exist for disabled components (which never run Initialize) so
+-- saved layout, DoesWindowExist, and the layout editor can resolve window names.
+local ROOT_WINDOW_NAMES = {
+    "CustomUIPlayerStatusWindow",
+    "CustomUIPlayerPetWindow",
+    "CustomUIHostileTargetWindow",
+    "CustomUIFriendlyTargetWindow",
+    "CustomUIHostileTargetHUD",
+    "CustomUIFriendlyTargetHUD",
+    "CustomUIGroupWindow",
+    "CustomUIUnitFramesRoot",
+    "CustomUIUnitFramesGroup1Window",
+    "CustomUIUnitFramesGroup2Window",
+    "CustomUIUnitFramesGroup3Window",
+    "CustomUIUnitFramesGroup4Window",
+    "CustomUIUnitFramesGroup5Window",
+    "CustomUIUnitFramesGroup6Window",
+    "CustomUISCTWindow", -- SCT root placeholder; was not in the old .mod list
+}
+
+local function EnsureRootWindowInstances()
+    if type(CreateWindow) ~= "function" then
+        return
+    end
+
+    for i = 1, #ROOT_WINDOW_NAMES do
+        local w = ROOT_WINDOW_NAMES[i]
+        if type(DoesWindowExist) ~= "function" or not DoesWindowExist(w) then
+            local ok, err = pcall(function()
+                CreateWindow(w, false)
+            end)
+            if not ok then
+                DebugLog("EnsureRootWindowInstances: CreateWindow(" .. tostring(w) .. ") — " .. tostring(err))
+            end
+        end
+    end
+end
+
 function CustomUI.Initialize()
     if CustomUI.State.initialized then
         return
     end
 
+    EnsureRootWindowInstances()
+
     CustomUI.State.initialized = true
     CustomUI.State.loadCount = CustomUI.State.loadCount + 1
     CustomUI.State.slashRegistered = false
-
-    -- Register LibConfig with CustomUI if available
-    if type(LibStub) == "table" or type(LibStub) == "function" then
-        local ok, lib = pcall(function() return LibStub("LibConfig") end)
-        if ok and lib then
-            CustomUI.LibConfig = lib
-        end
-    end
-
-    -- Initialize addon config module if present
-    if type(CustomUI_config) == "table" and type(CustomUI_config.OnInitialize) == "function" then
-        pcall(CustomUI_config.OnInitialize)
-    end
 
     CustomUI.RegisterSlashCommands()
     CustomUI.InitializeComponents()

@@ -2,23 +2,20 @@
 
 CustomUI is a modular Return of Reckoning addon that replaces and enhances stock UI components behind a single settings surface and slash-command workflow.
 
-## Deployment
+## Documentation
 
-If your tree includes `deploy.ps1` at the repo root, run it in PowerShell:
+- **`README.md`**: architecture overview, component list, and contributor-facing conventions.
+- **`issues.md`**: code quality backlog (bugs, tech debt, and audit notes; keep items here until resolved).
+- **`plan.md`**: historical implementation plan notes (some sections reflect older patterns; treat as reference, not the current source of truth).
+- **`CustomUISettingsWindow/README.md`**: developer notes for the **separate** settings UI addon (tab layout + XML anchoring pitfalls + diagnostics).
+- **Component refactor plans** (scoped follow-ups):
+  - **`Source/Components/SCT/plan.md`**: SCT refactor notes (stock isolation + handler swap).
+  - **`Source/Components/PlayerStatusWindow/plan.md`**: PlayerPetWindow stock-hook lifecycle tightening.
+  - **`Source/Components/UnitFrames/plan.md`**: BattlegroupHUD stock-hook lifecycle tightening.
 
-```powershell
-.\deploy.ps1
-```
+## Installation
 
-It prompts for the game install folder, defaulting to the path from the Windows registry (`HKCU\Return of Reckoning\Return of Reckoning`), or `C:\Games\Return of Reckoning` if the key is missing, then copies the CustomUI add-on (typically `CustomUI.mod` and `Source/`) into `Interface\AddOns\CustomUI`. Files overwrite in place, so the client can be running.
-
-If you deploy by hand, place both **CustomUI** and **CustomUISettingsWindow** under the game’s `Interface\AddOns\` (sibling folders), each with its own `.mod` and script/XML tree intact.
-
-If PowerShell blocks scripts on first run:
-
-```powershell
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-```
+Place **CustomUI** and **CustomUISettingsWindow** under the game’s `Interface\AddOns\` as sibling folders, each with its own `.mod` and full script/XML tree (overwrite files to update; `/reloadui` in the client picks up changes).
 
 ## What this addon does
 
@@ -49,7 +46,7 @@ All components default to **disabled** except `PlayerStatusWindow`.
 `Source/CustomUI.lua`). The visible UI lives in the separate **CustomUISettingsWindow**
 add-on, which must be enabled alongside CustomUI. Tabs are **not** created via
 `CustomUI.SettingsWindow.RegisterTab` at runtime: that broker and its
-`Source/Settings/View/SettingsWindow.xml` shell are **legacy** (commented out in
+`Source/Settings/View/SettingsWindow.xml` shell are **deprecated** (commented out in
 `CustomUI.mod`); the active UI is a fixed tab strip in
 `CustomUISettingsWindowTabbed.lua` / `.xml` plus one `CustomUISettingsWindowTab<Name>.*`
 pair per feature.
@@ -108,6 +105,10 @@ Each component uses:
 - `View/` — rendering helpers, tooltip/text formatting, and input forwarding handlers. Only present when there is meaningful view-layer code (e.g. `PlayerStatusWindow`). Controller-only components that delegate all rendering to stock frame APIs do not need a View lua file.
 - `View/*.xml` — window definitions and XML event bindings to namespaced Lua functions.
 
+**Load order (important):** `CustomUI.mod` lists each component’s `Controller/*.lua` **before** that component’s `View/*.xml` so the `CustomUI.<Name>.*` API exists when the template is parsed. **Do not** add a second `<Script file="...Controller/...">` in the same XML; that re-executes the controller. The one exception to “controller not in XML” is **PlayerStatusWindow**: `PlayerStatusWindow.xml` loads **only** `View/PlayerStatusWindow.lua` (no controller script) because the mod already included `PlayerStatusWindowController.lua` earlier.
+
+**File headers:** `Source/CustomUI.lua` and the top of each `*Controller.lua` / `View/*.lua` state what belongs in that file (state vs presentation, engine hooks vs tooltips, etc.). **SCT** uses `SCTEventText.lua` / `SCTSettings.lua` in `Controller/` for engine and data, not a `View/` split — the tab UI is the CustomUISettingsWindow addon. Match those headers when you add new code.
+
 ### Window visibility contract
 
 - `LayoutEditor.UserHide(windowName)` is called immediately after `RegisterWindow` in every `Initialize()` so windows start hidden regardless of component state.
@@ -129,6 +130,8 @@ CustomUI/
 	Source/
 		CustomUI.lua
 		Shared/
+			Shared.xml
+			BuffFilterSection.lua    ← LEGACY (in-addon *Tab only; see "Legacy code")
 			BuffTracker/
 				BuffTracker.lua
 				BuffGroups.lua
@@ -138,12 +141,12 @@ CustomUI/
 				TargetFrame.lua
 		Settings/
 			Controller/
-				SettingsWindowController.lua
-				MiniSettingsWindowController.lua
+				SettingsWindowController.lua       ← deprecated (CustomUI.SettingsWindow; not in mod)
+				MiniSettingsWindowController.lua   ← deprecated (not in mod)
 			View/
-				SettingsWindow.xml
-				MiniSettingsWindow.lua
-				MiniSettingsWindow.xml
+				SettingsWindow.xml                 ← deprecated (in-addon tab shell; not in mod)
+				MiniSettingsWindow.lua             ← deprecated
+				MiniSettingsWindow.xml             ← deprecated
 		Components/
 			PlayerStatusWindow/
 				Controller/
@@ -205,7 +208,60 @@ CustomUI/
 					(SCT settings grid lives in the CustomUISettingsWindow addon, not in CustomUI.)
 ```
 
-## Design rules for new components
+### `Source/Shared` (what is current)
+
+| Path | Status | Role |
+|------|--------|------|
+| `Shared.xml` | **Current** | Defines `CustomUIBuffContainerTemplate`; `BuffTracker` creates slot windows from it. |
+| `BuffFilterSection.lua` | **LEGACY** | Label/checkbox glue for in-addon `*Tab.xml` + `CustomUI.*.Tab` only. Shipped settings use **CustomUISettingsWindow**; remove with the [Legacy code](#legacy-code-removal-candidates) bundle. |
+| `BuffTracker/` (`BuffTracker.lua`, `BuffGroups.lua`, `Blacklist.lua`, `Whitelist.lua`) | **Current** | Core buff list behavior: trackers used by `PlayerStatusWindow`, `TargetWindow` (via `TargetFrame`), `GroupWindow`, `TargetHUD`. Blacklist/Whitelist are default tables; BuffGroups is merge metadata. |
+| `UnitFrame/TargetFrame.lua` | **Current** | Stock `TargetUnitFrame` subclass with `CustomUI.BuffTracker`; used only by **TargetWindow**. |
+
+All of the above except **`BuffFilterSection.lua`** are loaded from `CustomUI.mod` on the main path and are required for those components. Search **`LEGACY (removal candidate)`** in `Source/Shared` for the one legacy file.
+
+### Legacy code (removal candidates)
+
+Shipped settings are **CustomUISettingsWindow** (`/cui`). In-addon `CustomUI.SettingsWindow` / `MiniSettingsWindow` and the per-component **in-addon `*Tab.xml` + `CustomUI.<Name>.Tab` Lua** are **legacy** only—kept until you are sure no fork or user relies on them. Everything to remove in one pass is marked **`LEGACY (removal candidate)`** in `Source/` (and `Source/Settings/`), in each legacy `*Tab.xml` comment, and in `CustomUI.mod` (see `LEGACY BUNDLE` / `BuffFilterSection` comments).
+
+**What to remove together (checklist):**
+
+- **`Source/Settings/`** (not loaded in `CustomUI.mod`): `SettingsWindowController`, `SettingsWindow.xml`, `MiniSettingsWindow*` — the old shells and list UI.
+- **In-addon tabs:** for each component, the `View/*Tab.xml` entry in `CustomUI.mod`, the `CustomUI.<Name>.Tab` block (and optional commented `RegisterTab` line) in the component controller, then **`Source/Shared/BuffFilterSection.lua`** and its `<File>` line when the last `BuffFilterSection` caller is gone (Player, Group, Target, TargetHUD).
+- **Orphan only:** `PlayerPetWindowTab.xml` is not listed in the mod; safe to delete with other dead assets once confirmed.
+- Grep: `LEGACY (removal candidate)` and `CustomUI.BuffFilterSection` to find remaining links before deleting files.
+
+
+## Best Practices and Design Rules
+
+### Safe Hooking and Wrappers
+- Always use `pcall` when wrapping or hooking engine or stock functions to prevent errors from propagating and breaking the UI.
+- Forward all arguments (`...`) and return values in wrappers to preserve original behavior.
+- Log errors in wrappers for easier debugging.
+
+### Event Handler Lifecycle
+- For every `WindowRegisterEventHandler`, ensure a matching `WindowUnregisterEventHandler` is called in `Shutdown` or `Disable`.
+- Prefer registering handlers in `Enable` and unregistering in `Disable` for clear lifecycle management.
+
+### Window Creation Pattern
+- Keep `CustomUI.mod` as a **manifest** (`<File>` load order and `OnInitialize` entry only; no `<CreateWindow>` for component roots).
+- **Root** top-level windows (names in each component’s `View/*.xml`) are instantiated once at the start of `CustomUI.Initialize` via `EnsureRootWindowInstances()` in `Source/CustomUI.lua` (`CreateWindow(name, false)`), so they exist even when a component is **disabled** in settings and its `Initialize()` never runs (layout editor, saved positions, `DoesWindowExist`).
+- Each component’s `Initialize()` still calls `RegisterWindow`, `LayoutEditor.UserHide`, and `CreateWindowFromTemplate` for child widgets (target templates, etc.) as documented elsewhere.
+
+### Global Namespace Safety
+- Prefer `CustomUI.*` tables and locals. For `ListData table="…"`, use the same `Namespace.field` style as stock (e.g. `LayoutEditor.windowBrowserDataList` in the client); do not introduce a new bare global for list data.
+- Optional client debug logging reads `rawget(_G, "d")` only via `CustomUI.GetClientDebugLog()` in `Source/CustomUI.lua`; addons must not assign global `d`.
+
+### Shared Defaults and Code
+- Extract duplicated tables or logic (such as buff filter defaults) into shared modules under `Shared/`.
+
+### SCT Component Global Overwrites
+- SCT must receive engine combat/point events, but it should do so without replacing stock globals. Prefer **handler swapping** (unregister stock event handlers, register CustomUI handlers) and **inheriting stock classes** rather than redefining them. See `Source/Components/SCT/plan.md`.
+
+### Code Hygiene
+- Remove dead code, commented-out blocks, and dev/test harnesses from release builds.
+
+---
+
 
 1. Create a namespaced table under `CustomUI` (e.g. `CustomUI.ExampleComponent`).
 2. Put mutable state and runtime logic in `Controller/`.
@@ -216,11 +272,12 @@ CustomUI/
 7. In `Enable`: `UserShow` the CustomUI window, `UserHide` the stock window.
 8. In `Disable`: `UserHide` the CustomUI window, `UserShow` (and if needed `UnregisterWindow`) the stock window.
 9. Keep manifest load order explicit in `CustomUI.mod`: core shared files first, then each component's controller then xml.
-10. Settings UI: use the separate **CustomUISettingsWindow** addon for tabs and handlers; components expose data via `GetSettings()`-style APIs (see SCT: `GetSettingsRowDescriptors`, `SliderPosToScale`). Legacy in-addon `RegisterTab` + `*Tab.xml` is optional/remnant only.
+10. Settings UI: use the separate **CustomUISettingsWindow** addon for tabs and handlers; components expose data via `GetSettings()`-style APIs (see SCT: `GetSettingsRowDescriptors`, `SliderPosToScale`). Deprecated: in-addon `CustomUI.SettingsWindow.RegisterTab` and per-component `*Tab.xml` (remnant only; do not add new UI there).
 
 ## Runtime usage
 
-- Open settings: `/customui` or `/cui`
+- Open settings: `/customui` or `/cui` (window **CustomUISettingsWindowTabbed** from the **CustomUISettingsWindow** addon). In-addon **`CustomUI.SettingsWindow`** (tab broker + `SettingsWindow.xml`) and **MiniSettingsWindow** are deprecated and not loaded from `CustomUI.mod`.
+- `/customui mini` — prints a deprecation notice; use `/cui` instead.
 - Status output: `/customui status`
 - List components: `/customui components`
 - Enable component: `/customui enable <name>`
@@ -243,19 +300,20 @@ The SCT component cannot follow the standard window-visibility contract because 
 
 ### Architecture
 
-`SCTEventText.lua` permanently replaces four stock dispatch functions and two stock frame classes at load time:
+`SCTEventText.lua` implements CustomUI SCT by **inheriting stock classes** and **swapping engine event-handler registrations** on enable/disable (so stock and CustomUI SCT cannot both process the same engine events).
 
-- `EA_System_EventEntry` and `EA_System_PointGainEntry` — replaced with CustomUI subclasses that support custom scale, color, and crit animation.
-- `EA_System_EventText.AddCombatEventText`, `AddXpText`, `AddRenownText`, `AddInfluenceText` — replaced with wrapper functions that fall through to `_stock.*` originals when `m_active` is false.
+- `CustomUI.SCT.EventEntry` and `CustomUI.SCT.PointGainEntry` subclass the stock entry classes (custom scale, color, and crit animation).
+- `CustomUI.SCT.EventTracker` is derived from the stock tracker but spawns CustomUI entries.
+- `CustomUI.SCT.InstallHandlers()` / `RestoreHandlers()` swap `RegisterEventHandler` bindings between stock `EA_System_EventText.*` handlers and `CustomUI.SCT.*` handlers.
 
-The stock functions are saved in a module-local `_stock` table before being overwritten, so when SCT is disabled the stock dispatch is fully restored for the four handlers. The class replacements are permanent.
+Stock `EA_System_EventText` functions and stock class globals remain intact for other addons to call/hook.
 
 ### Enable / disable
 
-- **Enabled** (`m_active = true`): wrappers intercept all events, apply filter/size/color settings, run crit animation.
-- **Disabled** (`m_active = false`): wrappers forward to `_stock.*` unchanged; `EA_System_EventEntry:SetupText` uses stock defaults (no custom scale/color/animation).
+- **Enabled**: CustomUI handlers are registered; stock handlers are unregistered; only CustomUI SCT renders.
+- **Disabled**: stock handlers are restored; CustomUI handlers are unregistered; stock SCT renders.
 
-`Activate()` is called from `EA_System_EventText.Initialize()` (run by the engine's `<OnInitialize>`) but only sets `m_active = true` when `CustomUI.IsComponentEnabled("SCT")` returns true, so the component respects the saved enabled state from the first frame.
+CustomUI SCT animation updates run from the placeholder `CustomUISCTWindow` `OnUpdate` handler in `View/SCT.xml`, not from stock `EA_System_EventText.Update`.
 
 ### Settings
 
@@ -279,9 +337,9 @@ Stock `PetWindow:UpdatePet()` — triggered via `PetWindow.UpdatePetProxy` — c
 
 ### Final solution (reversible)
 
-`CustomUI.PlayerPetWindow` wraps `PetWindow.UpdatePetProxy` with a thin hook that calls the original and then forces `PetHealthWindow` hidden again:
+`CustomUI.PlayerPetWindow` wraps `PetWindow.UpdatePet` with a thin hook that calls the original and then forces `PetHealthWindow` hidden again:
 
-- The wrapper is installed on `Enable` and restored on `Disable` / `Shutdown`, so it does not affect stock behavior while the component is disabled.
+- Current behavior: the wrapper is installed during `Initialize()` and gated by `m_enabled`. Planned follow-up is to install only on `Enable` and restore on `Disable`/`Shutdown` so stock is untouched while disabled (see `Source/Components/PlayerStatusWindow/plan.md`).
 - `Enable` also hides `PetHealthWindow` immediately via `LayoutEditor.UserHide` and `WindowSetShowing`.
 - `Disable` restores the wrapper, re-shows `PetHealthWindow`, and unregisters it from `LayoutEditor`.
 - The saved original is stored at module scope and re-wrap is guarded, so repeated enable/disable cycles don't produce wrapper-of-wrapper corruption.

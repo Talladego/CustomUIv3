@@ -2,14 +2,13 @@
     <Windows>
 
         <!--
-            GroupIcon world-object window template.
-            Created at runtime via CreateWindowFromTemplate into "Root".
-            Outer window is resized to accommodate offset; inner Content
-            is anchored with the offset applied in Lua.
+            GroupIcon world-object window template. Outer height = icon (40) + gap below (50) = 90
+            so AttachWindowToWorldObject(outer) has correct bounds. Content+Icon = 40×40 at top; Lua
+            may set dimensions from constants (c_ICON_SIZE, c_OUTER_H).
         -->
         <Window name="CustomUIGroupIcon">
             <Size>
-                <AbsPoint x="40" y="40" />
+                <AbsPoint x="40" y="90" />
             </Size>
             <Windows>
                 <Window name="$parentContent" handleinput="true">
@@ -20,12 +19,13 @@
                         <Anchor point="topleft" relativePoint="topleft" />
                     </Anchors>
                     <Windows>
-                        <DynamicImage name="$parentIcon" handleinput="false">
+                        <!-- No TexDims: same idea as stock CareerIcon; atlas cell size is set in Lua (DynamicImageSetTextureDimensions). -->
+                        <DynamicImage name="$parentIcon" handleinput="false" textureScale="1.0" filtering="true">
                             <Size>
                                 <AbsPoint x="40" y="40" />
                             </Size>
                             <Anchors>
-                                <Anchor point="center" relativePoint="center" />
+                                <Anchor point="topleft" relativePoint="topleft" />
                             </Anchors>
                         </DynamicImage>
                     </Windows>

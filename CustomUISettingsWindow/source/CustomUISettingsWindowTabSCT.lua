@@ -1,6 +1,6 @@
 CustomUISettingsWindowTabSCT = {}
 
--- Set true in the client console after /reloadui to trace SCT tab input (uses d() when available).
+-- Set true in the client console after /reloadui to trace SCT tab input (uses `CustomUI.GetClientDebugLog()` when set).
 CustomUISettingsWindowTabSCT.DebugInput = false
 
 -- Poll SystemData.MouseOverWindow / ActiveWindow while this tab is visible (same log sinks as DebugInput).
@@ -34,14 +34,16 @@ local m_sctColorPickerContext = nil
 
 local m_pointerLastMouseOver = nil
 local m_pointerLastActive = nil
+local m_hoverLastWindow = nil
 
 -- Forward declaration so OnUpdateDebugPointer (defined earlier in file) can see this local.
 local LogSctLayoutRuntime
 
 local function EmitDebugLine(prefix, msg)
     local line = prefix .. tostring(msg)
-    if type(d) == "function" then
-        d(line)
+    local dbg = type(CustomUI) == "table" and type(CustomUI.GetClientDebugLog) == "function" and CustomUI.GetClientDebugLog()
+    if type(dbg) == "function" then
+        dbg(line)
     end
     pcall(function()
         if LogLuaMessage and SystemData and SystemData.UiLogFilters then
@@ -220,7 +222,7 @@ local function SctRgbForColorOptionIndex(colorIdx, key, isIncoming)
     if (colorIdx or 1) == 1 and key then
         return SctStockPreviewRgbForKey(key, isIncoming)
     end
-    local opt = CustomUI.SCT.COLOR_OPTIONS[colorIdx or 1]
+    local opt = CustomUI.SCT.GetColorOptions()[colorIdx or 1]
     if opt and opt.rgb then
         return opt.rgb[1], opt.rgb[2], opt.rgb[3]
     end
@@ -230,8 +232,8 @@ end
 -- 1D array of { r, g, b, id } for ColorPickerCreateWithColorTable. Skip index 1 (Default) so the grid is exactly 5x8 with one hue per row.
 -- `id` is the COLOR_OPTIONS index (2..41) returned by ColorPickerGetColorAtPoint.
 local function SctBuildColorTable1D()
-    local opts = CustomUI.SCT.COLOR_OPTIONS
-    local columns = (CustomUI.SCT and CustomUI.SCT.COLOR_PICKER_COLUMNS) or 5
+    local opts = CustomUI.SCT.GetColorOptions()
+    local columns = CustomUI.SCT.GetColorPickerColumns()
     local startIdx = 2
     local nPalette = #opts - 1
     if nPalette < 1 then
@@ -275,7 +277,7 @@ local function SctEnsureColorPickerGrid()
     if not DoesWindowExist(c_SCT_COLOR_PICKER) then
         return
     end
-    local rev = (CustomUI.SCT and CustomUI.SCT.COLOR_PALETTE_REVISION) or 1
+    local rev = CustomUI.SCT.GetColorPaletteRevision()
     if m_sctColorPickerReady and m_sctColorPickerGridRev == rev then
         SctTightenColorPickerWidth()
         return
@@ -313,54 +315,135 @@ local function SctUpdateColorSwatch(swatchName, colorIdx, key, isIncoming)
     pcall(WindowSetTintColor, swatchName, r, g, b)
 end
 
-local function SetupRow(contentPrefix, rowSuffix, sct)
+local function SctShowSliderValueTooltip(anchorWindowName, text)
+    if not anchorWindowName or anchorWindowName == "" then
+        return
+    end
+    if type(Tooltips) ~= "table" then
+        return
+    end
+    if type(Tooltips.CreateTextOnlyTooltip) ~= "function" then
+        return
+    end
+    pcall(function()
+        Tooltips.CreateTextOnlyTooltip(anchorWindowName)
+        Tooltips.SetTooltipText(1, 1, text)
+        Tooltips.Finalize()
+        Tooltips.AnchorTooltip(Tooltips.ANCHOR_WINDOW_VARIABLE)
+    end)
+end
+
+local function SctNearestPaletteNameForRgb(r, g, b)
+    local opts = CustomUI.SCT.GetColorOptions()
+    local bestIdx = nil
+    local bestD = math.huge
+    for i = 2, #opts do
+        local o = opts[i]
+        if o and o.rgb then
+            local dr = (o.rgb[1] or 0) - r
+            local dg = (o.rgb[2] or 0) - g
+            local db = (o.rgb[3] or 0) - b
+            local d = dr * dr + dg * dg + db * db
+            if d < bestD then
+                bestD = d
+                bestIdx = i
+            end
+        end
+    end
+    local o = bestIdx and opts[bestIdx]
+    return o and o.name or nil
+end
+
+local function SctFormatRgb(r, g, b)
+    return towstring(string.format("rgb(%d,%d,%d)", r or 0, g or 0, b or 0))
+end
+
+local function SctShowColorSwatchTooltip(anchorSwatch, key, isIncoming)
+    if not anchorSwatch or anchorSwatch == "" or not DoesWindowExist(anchorSwatch) then
+        return
+    end
+    local dir = isIncoming and "incoming" or "outgoing"
+    local dirLabel = isIncoming and L"Incoming" or L"Outgoing"
+
+    local colorIdx = CustomUI.SCT.GetColorIndex(dir, key)
+    local customRGB = CustomUI.SCT.GetCustomColor(dir, key)
+
+    local header = dirLabel .. L" " .. towstring(tostring(key)) .. L" Color"
+
+    if customRGB and customRGB[1] then
+        local r, g, b = customRGB[1], customRGB[2], customRGB[3]
+        local nearest = SctNearestPaletteNameForRgb(r, g, b)
+        local line = L"Custom: " .. SctFormatRgb(r, g, b)
+        if nearest then
+            line = line .. L" (closest: " .. nearest .. L")"
+        end
+        SctShowSliderValueTooltip(anchorSwatch, header .. L"\n" .. line)
+        return
+    end
+
+    if (colorIdx or 1) <= 1 then
+        local pr, pg, pb = SctStockPreviewRgbForKey(key, isIncoming)
+        if pr ~= nil then
+            SctShowSliderValueTooltip(anchorSwatch, header .. L"\nDefault: " .. SctFormatRgb(pr, pg, pb))
+        else
+            SctShowSliderValueTooltip(anchorSwatch, header .. L"\nDefault")
+        end
+        return
+    end
+
+    local opt = CustomUI.SCT.GetColorOptions()[colorIdx]
+    if opt and opt.rgb then
+        SctShowSliderValueTooltip(anchorSwatch, header .. L"\n" .. (opt.name or L"Preset") .. L": " .. SctFormatRgb(opt.rgb[1], opt.rgb[2], opt.rgb[3]))
+        return
+    end
+
+    SctShowSliderValueTooltip(anchorSwatch, header .. L"\nPreset")
+end
+
+-- NOTE: SctShowSliderValueTooltip is used by both sliders and color swatches.
+-- It must be defined before any caller executes; the file is loaded top-to-bottom.
+-- (We keep it near the tooltip handlers as a shared helper.)
+
+local function SetupRow(contentPrefix, rowSuffix)
     local info = ROW_BY_SUFFIX[rowSuffix]
     if not info then return end
     local key = info.key
     local rowPfx = contentPrefix .. "Row" .. rowSuffix
 
-    local out = sct.outgoing
     if DoesWindowExist(rowPfx .. "OutShowButton") then
-        ButtonSetPressedFlag(rowPfx .. "OutShowButton", out.filters["show" .. key] ~= false)
+        ButtonSetPressedFlag(rowPfx .. "OutShowButton", CustomUI.SCT.GetFilter("outgoing", key))
     end
     if DoesWindowExist(rowPfx .. "OutSize") then
-        SliderBarSetCurrentPosition(rowPfx .. "OutSize", CustomUI.SCT.ScaleToSliderPos(out.size[key] or 1.0))
+        SliderBarSetCurrentPosition(rowPfx .. "OutSize", CustomUI.SCT.ScaleToSliderPos(CustomUI.SCT.GetSize("outgoing", key)))
     end
-    SctUpdateColorSwatch(rowPfx .. "OutColorSwatch", out.color[key] or 1)
+    SctUpdateColorSwatch(rowPfx .. "OutColorSwatch", CustomUI.SCT.GetColorIndex("outgoing", key))
 
     if info.hasIncoming then
-        local inc = sct.incoming
         if DoesWindowExist(rowPfx .. "InShowButton") then
-            ButtonSetPressedFlag(rowPfx .. "InShowButton", inc.filters["show" .. key] ~= false)
+            ButtonSetPressedFlag(rowPfx .. "InShowButton", CustomUI.SCT.GetFilter("incoming", key))
         end
         if DoesWindowExist(rowPfx .. "InSize") then
-            SliderBarSetCurrentPosition(rowPfx .. "InSize", CustomUI.SCT.ScaleToSliderPos(inc.size[key] or 1.0))
+            SliderBarSetCurrentPosition(rowPfx .. "InSize", CustomUI.SCT.ScaleToSliderPos(CustomUI.SCT.GetSize("incoming", key)))
         end
-        SctUpdateColorSwatch(rowPfx .. "InColorSwatch", inc.color[key] or 1)
+        SctUpdateColorSwatch(rowPfx .. "InColorSwatch", CustomUI.SCT.GetColorIndex("incoming", key))
     end
 end
 
 local function CritAnimButtonPrefix()
-    return c_SCROLL_CHILD .. "General"
+    return c_SCT_PREFIX .. "RowCritAnimation"
 end
 
-local function SyncCritAnimationButtons(mode)
+local function SyncCritAnimationButtons()
     local p = CritAnimButtonPrefix()
-    local isNone = (mode == "none")
-    local isShake = (mode == "shake")
-    local isPulse = (mode == "pulse")
-    local isFlash = (mode == "flash")
-    if DoesWindowExist(p .. "CritAnimNoneButton") then
-        ButtonSetPressedFlag(p .. "CritAnimNoneButton", isNone)
-    end
+    local sh, pu, cf = CustomUI.SCT.GetCritFlags()
     if DoesWindowExist(p .. "CritAnimShakeButton") then
-        ButtonSetPressedFlag(p .. "CritAnimShakeButton", isShake)
+        ButtonSetPressedFlag(p .. "CritAnimShakeButton", sh)
     end
     if DoesWindowExist(p .. "CritAnimFlashButton") then
-        ButtonSetPressedFlag(p .. "CritAnimFlashButton", isPulse)
+        ButtonSetPressedFlag(p .. "CritAnimFlashButton", pu)
     end
     if DoesWindowExist(p .. "CritAnimColorFlashButton") then
-        ButtonSetPressedFlag(p .. "CritAnimColorFlashButton", isFlash)
+        ButtonSetPressedFlag(p .. "CritAnimColorFlashButton", cf)
     end
 end
 
@@ -376,24 +459,24 @@ local function SyncSctTextFontCombo()
     m_refreshing = true
     pcall(function()
         ComboBoxClearMenuItems(w)
-        for _, ent in ipairs(CustomUI.SCT.TEXT_FONTS) do
+        for _, ent in ipairs(CustomUI.SCT.GetTextFonts()) do
             ComboBoxAddMenuItem(w, ent.label)
         end
-        local idx = CustomUI.SCT.GetSettings().textFont or 1
+        local idx = CustomUI.SCT.GetTextFontIndex()
         ComboBoxSetSelectedMenuItem(w, idx)
     end)
     m_refreshing = false
 end
 
-local function SyncCritAnimationSpeedSlider()
-    local w = c_SCROLL_CHILD .. "GeneralCritAnimSpeed"
+local function SyncCritSizeSlider()
+    local w = c_SCT_PREFIX .. "RowCritSizeCritSize"
     if not DoesWindowExist(w) then
         return
     end
     m_refreshing = true
     pcall(function()
-        local spd = (CustomUI.SCT.GetSettings().critAnimationSpeed) or 1.0
-        SliderBarSetCurrentPosition(w, CustomUI.SCT.AnimSpeedToSliderPos(spd))
+        local sc = CustomUI.SCT.GetCritSizeScale()
+        SliderBarSetCurrentPosition(w, CustomUI.SCT.CritSizeToSliderPos(sc))
     end)
     m_refreshing = false
 end
@@ -403,10 +486,9 @@ local function RefreshSctControls(contentPrefix)
         return
     end
     SctHideColorPicker()
-    local sct = CustomUI.SCT.GetSettings()
     m_refreshing = true
     for _, d in ipairs(CustomUI.SCT.GetSettingsRowDescriptors()) do
-        SetupRow(contentPrefix, d.suffix, sct)
+        SetupRow(contentPrefix, d.suffix)
     end
     m_refreshing = false
 end
@@ -434,10 +516,11 @@ local function ResolveSliderBarWindow(startName)
         if not w or w == "" then
             break
         end
-        local ok = pcall(function()
-            SliderBarGetCurrentPosition(w)
-        end)
-        if ok then
+        -- Do NOT probe with SliderBarGetCurrentPosition here: the engine logs an error
+        -- for every non-slider window, even when wrapped in pcall.
+        local isSizeSlider = (string.len(w) >= 7 and string.sub(w, -7) == "OutSize")
+            or (string.len(w) >= 6 and string.sub(w, -6) == "InSize")
+        if isSizeSlider then
             local rowSuffix, dir = ParseControlName(w)
             if rowSuffix then
                 return w, rowSuffix, dir, depth
@@ -505,6 +588,32 @@ end
 function CustomUISettingsWindowTabSCT.OnUpdateDebugPointer(timePassed)
     -- Runs only the first time the SCT section is visible with a real screen position.
     LogSctLayoutRuntime()
+
+    -- Hover tooltips: keep these lightweight and avoid requiring XML OnMouseOver wiring
+    -- for every swatch created via repeated templates.
+    if DoesWindowExist(c_SCT_TAB_ROOT) and WindowGetShowing(c_SCT_TAB_ROOT) then
+        local mo = (SystemData.MouseOverWindow and SystemData.MouseOverWindow.name) or ""
+
+        -- 1) Appearance swatches (OutColorSwatch / InColorSwatch)
+        local isOutSwatch = mo ~= "" and string.len(mo) >= 14 and string.sub(mo, -14) == "OutColorSwatch"
+        local isInSwatch  = mo ~= "" and string.len(mo) >= 13 and string.sub(mo, -13) == "InColorSwatch"
+        if isOutSwatch or isInSwatch then
+            if mo ~= m_hoverLastWindow then
+                m_hoverLastWindow = mo
+                local swatchName, rowSuffix, dir = SctResolveColorSwatchFromWindow(mo)
+                local info = rowSuffix and ROW_BY_SUFFIX[rowSuffix]
+                if swatchName and info then
+                    SctShowColorSwatchTooltip(swatchName, info.key, dir == "In")
+                end
+            end
+        else
+            if m_hoverLastWindow ~= nil then
+                m_hoverLastWindow = nil
+                CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd()
+            end
+        end
+    end
+
     if not CustomUISettingsWindowTabSCT.DebugPointer then
         return
     end
@@ -577,7 +686,10 @@ end
 -- XML sibling anchors (relativeTo="$parentRow*") collapse all rows to the same Y.
 -- Re-anchor each row to the SCT window's top with explicit Y offsets that we know work.
 local c_SCT_ROW_ORDER = {
+    "CritAnimation",
+    "CritSize",
     "TextFont",
+    "AbilityIcon",
     "SctColumnHeaders",
     "Hit",
     "Ability",
@@ -610,6 +722,17 @@ local function ReanchorSctRows()
     end
 end
 
+local function AbilityIconButtonPrefix()
+    return c_SCT_PREFIX .. "RowAbilityIcon"
+end
+
+local function SyncAbilityIconButton()
+    local p = AbilityIconButtonPrefix()
+    if DoesWindowExist(p .. "ShowAbilityIconButton") then
+        ButtonSetPressedFlag(p .. "ShowAbilityIconButton", CustomUI.SCT.GetShowAbilityIcon())
+    end
+end
+
 function CustomUISettingsWindowTabSCT.Initialize()
     m_pointerLastMouseOver = nil
     m_pointerLastActive = nil
@@ -629,20 +752,38 @@ function CustomUISettingsWindowTabSCT.Initialize()
     LabelSetText( c_SCROLL_CHILD .. "GeneralSCTEnabledLabel", L"Enabled" )
     ButtonSetCheckButtonFlag( c_SCROLL_CHILD .. "GeneralSCTEnabledButton", true )
 
-    LabelSetText( c_SCROLL_CHILD .. "GeneralCritAnimationLabel", L"Crit Animation" )
-    LabelSetText( c_SCROLL_CHILD .. "GeneralAnimationSpeedLabel", L"Animation Speed" )
-    LabelSetText( c_SCROLL_CHILD .. "GeneralCritAnimNoneLabel", L"None" )
-    LabelSetText( c_SCROLL_CHILD .. "GeneralCritAnimShakeLabel", L"Shake" )
-    LabelSetText( c_SCROLL_CHILD .. "GeneralCritAnimFlashLabel",      L"Pulse" )
-    LabelSetText( c_SCROLL_CHILD .. "GeneralCritAnimColorFlashLabel", L"Flash" )
-    ButtonSetCheckButtonFlag( c_SCROLL_CHILD .. "GeneralCritAnimNoneButton", true )
-    ButtonSetCheckButtonFlag( c_SCROLL_CHILD .. "GeneralCritAnimShakeButton", true )
-    ButtonSetCheckButtonFlag( c_SCROLL_CHILD .. "GeneralCritAnimFlashButton", true )
-    ButtonSetCheckButtonFlag( c_SCROLL_CHILD .. "GeneralCritAnimColorFlashButton", true )
+    LabelSetText( c_SCT_PREFIX .. "RowCritAnimationCritAnimationLabel", L"Crit Animation" )
+    LabelSetText( c_SCT_PREFIX .. "RowCritSizeCritSizeLabel", L"Crit Size" )
+    if DoesWindowExist(c_SCT_PREFIX .. "RowCritAnimationCritAnimShakeLabel") then
+        LabelSetText( c_SCT_PREFIX .. "RowCritAnimationCritAnimShakeLabel", L"Shake" )
+    end
+    if DoesWindowExist(c_SCT_PREFIX .. "RowCritAnimationCritAnimFlashLabel") then
+        LabelSetText( c_SCT_PREFIX .. "RowCritAnimationCritAnimFlashLabel",      L"Pulse" )
+    end
+    if DoesWindowExist(c_SCT_PREFIX .. "RowCritAnimationCritAnimColorFlashLabel") then
+        LabelSetText( c_SCT_PREFIX .. "RowCritAnimationCritAnimColorFlashLabel", L"Flash" )
+    end
+    if DoesWindowExist(c_SCT_PREFIX .. "RowCritAnimationCritAnimShakeButton") then
+        ButtonSetCheckButtonFlag( c_SCT_PREFIX .. "RowCritAnimationCritAnimShakeButton", true )
+    end
+    if DoesWindowExist(c_SCT_PREFIX .. "RowCritAnimationCritAnimFlashButton") then
+        ButtonSetCheckButtonFlag( c_SCT_PREFIX .. "RowCritAnimationCritAnimFlashButton", true )
+    end
+    if DoesWindowExist(c_SCT_PREFIX .. "RowCritAnimationCritAnimColorFlashButton") then
+        ButtonSetCheckButtonFlag( c_SCT_PREFIX .. "RowCritAnimationCritAnimColorFlashButton", true )
+    end
 
     LabelSetText( c_SCT_PREFIX .. "Title", L"Appearance" )
     LabelSetText( c_SCT_PREFIX .. "RowTextFontTextFontLabel", L"Font" )
-
+    if DoesWindowExist(c_SCT_PREFIX .. "RowAbilityIconAbilityIconLabel") then
+        LabelSetText( c_SCT_PREFIX .. "RowAbilityIconAbilityIconLabel", L"Ability Icon" )
+    end
+    if DoesWindowExist(c_SCT_PREFIX .. "RowAbilityIconShowAbilityIconLabel") then
+        LabelSetText( c_SCT_PREFIX .. "RowAbilityIconShowAbilityIconLabel", L"Show" )
+    end
+    if DoesWindowExist(c_SCT_PREFIX .. "RowAbilityIconShowAbilityIconButton") then
+        ButtonSetCheckButtonFlag( c_SCT_PREFIX .. "RowAbilityIconShowAbilityIconButton", true )
+    end
     local hdr = c_SCT_PREFIX .. "RowSctColumnHeaders"
     LabelSetText( hdr .. "OutShowHdr", L"Show" )
     LabelSetText( hdr .. "OutSizeHdr", L"Size" )
@@ -679,16 +820,17 @@ function CustomUISettingsWindowTabSCT.Initialize()
     LabelSetText( c_SCT_PREFIX .. "RowInfluenceOutShowLabel", L"Influence" )
 
     SyncSctTextFontCombo()
-    SyncCritAnimationSpeedSlider()
+    SyncCritSizeSlider()
+    SyncAbilityIconButton()
 end
 
 function CustomUISettingsWindowTabSCT.UpdateSettings()
     SctTabDbg("UpdateSettings: refreshing controls, m_refreshing=" .. tostring(m_refreshing))
     ButtonSetPressedFlag( c_SCROLL_CHILD .. "GeneralSCTEnabledButton", CustomUI.IsComponentEnabled("SCT") )
-    local anim = CustomUI.SCT.GetSettings().critAnimation or "shake"
-    SyncCritAnimationButtons(anim)
+    SyncCritAnimationButtons()
     SyncSctTextFontCombo()
-    SyncCritAnimationSpeedSlider()
+    SyncCritSizeSlider()
+    SyncAbilityIconButton()
     RefreshSctControls(c_SCT_PREFIX)
     SctTabDbg("UpdateSettings: done")
 end
@@ -712,31 +854,40 @@ function CustomUISettingsWindowTabSCT.OnCritAnimationModeChanged()
         return
     end
     local w = SystemData.ActiveWindow and SystemData.ActiveWindow.name or ""
-    local mode = "shake"
+    local sh, pu, cf = CustomUI.SCT.GetCritFlags()
     for _ = 0, 10 do
         if w == nil or w == "" then
             break
         end
         if string.find(w, "CritAnimColorFlash", 1, true) then
-            mode = "flash"
+            cf = not cf
             break
         end
         if string.find(w, "CritAnimFlash", 1, true) then
-            mode = "pulse"
+            if pu then
+                pu = false
+            else
+                pu = true
+                sh = false
+            end
             break
         end
         if string.find(w, "CritAnimShake", 1, true) then
-            mode = "shake"
-            break
-        end
-        if string.find(w, "CritAnimNone", 1, true) then
-            mode = "none"
+            if sh then
+                sh = false
+            else
+                sh = true
+                pu = false
+            end
             break
         end
         w = WindowGetParent(w)
     end
-    CustomUI.SCT.GetSettings().critAnimation = mode
-    SyncCritAnimationButtons(mode)
+    if sh and pu then
+        pu = false
+    end
+    CustomUI.SCT.SetCritFlags(sh, pu, cf)
+    SyncCritAnimationButtons()
 end
 
 function CustomUISettingsWindowTabSCT.OnSctTextFontChanged()
@@ -748,23 +899,110 @@ function CustomUISettingsWindowTabSCT.OnSctTextFontChanged()
         return
     end
     local ok, idx = pcall(ComboBoxGetSelectedMenuItem, w)
-    if not ok or type(idx) ~= "number" or idx < 1 or idx > #CustomUI.SCT.TEXT_FONTS then
+    if not ok or type(idx) ~= "number" or idx < 1 or idx > #CustomUI.SCT.GetTextFonts() then
         return
     end
-    CustomUI.SCT.GetSettings().textFont = idx
+    CustomUI.SCT.SetTextFontIndex(idx)
 end
 
-function CustomUISettingsWindowTabSCT.OnCritAnimationSpeedChanged()
+function CustomUISettingsWindowTabSCT.OnToggleAbilityIcon()
     if m_refreshing then
         return
     end
-    local w = c_SCROLL_CHILD .. "GeneralCritAnimSpeed"
+    EA_LabelCheckButton.Toggle()
+    local w = AbilityIconButtonPrefix() .. "ShowAbilityIconButton"
+    local enabled = DoesWindowExist(w) and ButtonGetPressedFlag(w)
+    CustomUI.SCT.SetShowAbilityIcon(enabled == true)
+    SyncAbilityIconButton()
+end
+
+function CustomUISettingsWindowTabSCT.OnCritSizeChanged()
+    if m_refreshing then
+        return
+    end
+    local w = c_SCT_PREFIX .. "RowCritSizeCritSize"
     if not DoesWindowExist(w) then
         return
     end
     local pos = SliderBarGetCurrentPosition(w)
-    local speed = CustomUI.SCT.SliderPosToAnimSpeed(pos)
-    CustomUI.SCT.GetSettings().critAnimationSpeed = speed
+    local sc = CustomUI.SCT.SliderPosToCritSize(pos)
+    CustomUI.SCT.SetCritSizeScale(sc)
+    -- Refresh hover tooltip while dragging.
+    pcall(CustomUISettingsWindowTabSCT.OnMouseOverSliderValue)
+end
+
+function CustomUISettingsWindowTabSCT.OnMouseOverSliderValue()
+    local active = (SystemData.MouseOverWindow and SystemData.MouseOverWindow.name)
+        or (SystemData.ActiveWindow and SystemData.ActiveWindow.name)
+        or ""
+    if active == "" then
+        return
+    end
+
+    -- 1) Crit size slider (General section)
+    local critSlider = c_SCT_PREFIX .. "RowCritSizeCritSize"
+    if active == critSlider or string.find(active, "RowCritSizeCritSize", 1, true) then
+        local ok, pos = pcall(SliderBarGetCurrentPosition, critSlider)
+        if ok and type(pos) == "number" then
+            local sc = CustomUI.SCT.SliderPosToCritSize(pos)
+            SctShowSliderValueTooltip(critSlider, L"Crit Size: " .. towstring(string.format("%.2fx", sc)))
+        end
+        return
+    end
+
+    -- 2) Per-row size sliders (Appearance section)
+    if not (string.find(active, "OutSize", 1, true) or string.find(active, "InSize", 1, true) or string.find(active, "Slider", 1, true)) then
+        return
+    end
+    local winName, rowSuffix, dir = ResolveSliderBarWindow(active)
+    if not winName or not rowSuffix or not dir then
+        return
+    end
+
+    local ok, pos = pcall(SliderBarGetCurrentPosition, winName)
+    if not ok or type(pos) ~= "number" then
+        return
+    end
+    local scale = CustomUI.SCT.SliderPosToScale(pos)
+
+    local info = ROW_BY_SUFFIX[rowSuffix]
+    local key = info and info.key or rowSuffix
+    local dirLabel = (dir == "In") and L"Incoming" or L"Outgoing"
+    local label = towstring(tostring(key))
+    SctShowSliderValueTooltip(winName, dirLabel .. L" " .. label .. L" Size: " .. towstring(string.format("%.2fx", scale)))
+end
+
+function CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd()
+    if type(Tooltips) ~= "table" or type(Tooltips.ClearTooltip) ~= "function" then
+        return
+    end
+    pcall(function() Tooltips.ClearTooltip() end)
+end
+
+function CustomUISettingsWindowTabSCT.OnMouseOverColorSwatch()
+    local active = (SystemData.MouseOverWindow and SystemData.MouseOverWindow.name)
+        or (SystemData.ActiveWindow and SystemData.ActiveWindow.name)
+        or ""
+    if active == "" then
+        return
+    end
+    local swatchName, rowSuffix, dir = SctResolveColorSwatchFromWindow(active)
+    if not swatchName or not rowSuffix or not dir then
+        return
+    end
+    local info = ROW_BY_SUFFIX[rowSuffix]
+    if not info then
+        return
+    end
+    local isIncoming = (dir == "In")
+    if isIncoming and not info.hasIncoming then
+        return
+    end
+    SctShowColorSwatchTooltip(swatchName, info.key, isIncoming)
+end
+
+function CustomUISettingsWindowTabSCT.OnMouseOverColorSwatchEnd()
+    CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd()
 end
 
 -- Stock TooltipCheckButton uses SettingsWindowTabbed.OnMouseOverTooltipElement; this is the CustomUI equivalent (extend for real tooltips).
@@ -795,19 +1033,11 @@ function CustomUISettingsWindowTabSCT.OnFilterChanged()
     if not info then return end
     if dir == "In" and not info.hasIncoming then return end
 
-    local sct = CustomUI.SCT.GetSettings()
-    local filterKey = "show" .. info.key
-    if dir == "Out" then
-        local prev = sct.outgoing.filters[filterKey]
-        local new = (prev == false)
-        sct.outgoing.filters[filterKey] = new
-        ButtonSetPressedFlag(winName .. "Button", new)
-    else
-        local prev = sct.incoming.filters[filterKey]
-        local new = (prev == false)
-        sct.incoming.filters[filterKey] = new
-        ButtonSetPressedFlag(winName .. "Button", new)
-    end
+    local direction = (dir == "Out") and "outgoing" or "incoming"
+    local prevOn = CustomUI.SCT.GetFilter(direction, info.key)
+    local new = not prevOn
+    CustomUI.SCT.SetFilter(direction, info.key, new)
+    ButtonSetPressedFlag(winName .. "Button", new)
 end
 
 function CustomUISettingsWindowTabSCT.OnSizeChanged()
@@ -829,16 +1059,27 @@ function CustomUISettingsWindowTabSCT.OnSizeChanged()
         return
     end
 
-    local sct = CustomUI.SCT.GetSettings()
-    local pos = SliderBarGetCurrentPosition(winName)
+    -- Defensive: if resolution fails, do not call SliderBarGetCurrentPosition on non-sliders
+    local isSizeSlider = (string.len(winName) >= 7 and string.sub(winName, -7) == "OutSize")
+        or (string.len(winName) >= 6 and string.sub(winName, -6) == "InSize")
+    if not isSizeSlider then
+        SctTabDbg("OnSizeChanged: resolved non-slider winName=" .. tostring(winName))
+        return
+    end
+    local okPos, pos = pcall(SliderBarGetCurrentPosition, winName)
+    if not okPos or type(pos) ~= "number" then
+        return
+    end
     SctTabDbg("OnSizeChanged: active=" .. tostring(active) .. " resolved=" .. tostring(winName) .. " row=" .. tostring(rowSuffix) .. " dir=" .. tostring(dir) .. " depth=" .. tostring(depth) .. " pos=" .. tostring(pos))
     local scale = CustomUI.SCT.SliderPosToScale(pos)
     SctTabDbg("OnSizeChanged: applied scale=" .. tostring(scale) .. " key=" .. tostring(info.key))
     if dir == "Out" then
-        sct.outgoing.size[info.key] = scale
+        CustomUI.SCT.SetSize("outgoing", info.key, scale)
     else
-        sct.incoming.size[info.key] = scale
+        CustomUI.SCT.SetSize("incoming", info.key, scale)
     end
+    -- Refresh hover tooltip while dragging.
+    pcall(CustomUISettingsWindowTabSCT.OnMouseOverSliderValue)
 end
 
 function CustomUISettingsWindowTabSCT.OnSctColorSwatchClick()
@@ -916,16 +1157,15 @@ function CustomUISettingsWindowTabSCT.OnSctColorPickerLButtonUp(flags, x, y)
         return
     end
     local idx = color.id
-    if type(idx) ~= "number" or idx < 2 or idx > #CustomUI.SCT.COLOR_OPTIONS then
+    if type(idx) ~= "number" or idx < 2 or idx > #CustomUI.SCT.GetColorOptions() then
         return
     end
     local ctx = m_sctColorPickerContext
-    local sct = CustomUI.SCT.GetSettings()
     SctTabDbg("OnSctColorPickerLButtonUp: idx=" .. tostring(idx) .. " key=" .. tostring(ctx.key))
     if ctx.dir == "Out" then
-        sct.outgoing.color[ctx.key] = idx
+        CustomUI.SCT.SetColorIndex("outgoing", ctx.key, idx)
     else
-        sct.incoming.color[ctx.key] = idx
+        CustomUI.SCT.SetColorIndex("incoming", ctx.key, idx)
     end
     SctUpdateColorSwatch(ctx.anchorSwatch, idx, ctx.key, ctx.dir == "In")
     SctHideColorPicker()
@@ -937,11 +1177,10 @@ function CustomUISettingsWindowTabSCT.OnSctColorPickerRButtonUp()
         return
     end
     local ctx = m_sctColorPickerContext
-    local sct = CustomUI.SCT.GetSettings()
     if ctx.dir == "Out" then
-        sct.outgoing.color[ctx.key] = 1
+        CustomUI.SCT.SetColorIndex("outgoing", ctx.key, 1)
     else
-        sct.incoming.color[ctx.key] = 1
+        CustomUI.SCT.SetColorIndex("incoming", ctx.key, 1)
     end
     SctUpdateColorSwatch(ctx.anchorSwatch, 1, ctx.key, ctx.dir == "In")
     SctHideColorPicker()

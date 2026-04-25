@@ -1,7 +1,7 @@
 ----------------------------------------------------------------
--- CustomUI.MiniSettingsWindow - Controller
--- Lifecycle, visibility, toggle, and apply logic.
--- Mirrors the ChatFiltersWindow pattern exactly.
+-- CustomUI.MiniSettingsWindow — Controller
+-- LEGACY (removal candidate) / **DEPRECATED:** Use **CustomUISettingsWindow** for component toggles and tabs. This file is
+--   not loaded from `CustomUI.mod`. See View/MiniSettingsWindow.lua for the same notice.
 ----------------------------------------------------------------
 
 if not CustomUI.MiniSettingsWindow then

@@ -85,12 +85,10 @@ end
 
 local function ReadPlayerMoraleLevel(player)
     if type(GetPlayerMoraleLevel) == "function" then
-        local ok, moraleLevel = pcall(GetPlayerMoraleLevel)
-        if ok then
-            local parsed = tonumber(moraleLevel)
-            if parsed ~= nil then
-                return ClampMoraleLevel(parsed)
-            end
+        local moraleLevel = GetPlayerMoraleLevel()
+        local parsed = tonumber(moraleLevel)
+        if parsed ~= nil then
+            return ClampMoraleLevel(parsed)
         end
     end
 
@@ -107,11 +105,7 @@ local function ReadPlayerMainAssistStatus()
         return false
     end
 
-    local ok, value = pcall(IsPlayerMainAssist)
-    if not ok then
-        return false
-    end
-
+    local value = IsPlayerMainAssist()
     if value == true then
         return true
     end
@@ -225,7 +219,7 @@ local function RequestGroupWindowRefresh()
     end
 
     if type(CustomUI.GroupWindow.OnGroupUpdated) == "function" then
-        pcall(CustomUI.GroupWindow.OnGroupUpdated)
+        CustomUI.GroupWindow.OnGroupUpdated()
     end
 end
 

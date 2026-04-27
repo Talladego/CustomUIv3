@@ -100,7 +100,7 @@
                         <Window name="$parentSCT">
                             <!-- Same horizontal stretch as $parentGeneral: dual anchors to ScrollChild. A single anchor + fixed Width (850) left the section narrower than General so right-edge controls (e.g. Incoming color) sat outside the section background. -->
                             <Size>
-                                <AbsPoint x="850" y="737" />
+                                <AbsPoint x="850" y="904" />
                             </Size>
                             <Anchors>
                                 <Anchor point="topleft" relativePoint="topleft">
@@ -237,6 +237,8 @@
 									</Windows>
 								</Window>
 
+								<!-- LEGACY (v2 SCT, 2026-04-25): BaseXOffset slider removed; stock offsets used. Remove in Step 5b. -->
+
 								<Window name="$parentRowTextFont">
 									<Size>
 										<AbsPoint x="850" y="37" />
@@ -313,6 +315,158 @@
 												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnToggleAbilityIcon" />
 											</EventHandlers>
 										</Window>
+									</Windows>
+								</Window>
+
+								<Window name="$parentRowCombatXOffset">
+									<Size>
+										<AbsPoint x="850" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+											<AbsPoint x="0" y="45" />
+										</Anchor>
+										<Anchor point="topright" relativePoint="topright" relativeTo="$parent">
+											<AbsPoint x="0" y="45" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+										<Label name="$parentCombatXOffsetLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+											<Size>
+												<AbsPoint x="170" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="45" y="2" />
+												</Anchor>
+											</Anchors>
+										</Label>
+										<Label name="$parentOutgoingXOffsetLabel" font="font_default_text_small" textalign="left" handleinput="false" layer="background">
+											<Size>
+												<AbsPoint x="80" y="18" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="220" y="4" />
+												</Anchor>
+											</Anchors>
+										</Label>
+										<SliderBar name="$parentOutgoingXOffset" inherits="EA_Default_SliderBar" handleinput="true" numticks="9">
+											<Size>
+												<AbsPoint x="175" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="300" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnXOffsetChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
+											</EventHandlers>
+										</SliderBar>
+										<Label name="$parentIncomingXOffsetLabel" font="font_default_text_small" textalign="left" handleinput="false" layer="background">
+											<Size>
+												<AbsPoint x="80" y="18" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="500" y="4" />
+												</Anchor>
+											</Anchors>
+										</Label>
+										<SliderBar name="$parentIncomingXOffset" inherits="EA_Default_SliderBar" handleinput="true" numticks="9">
+											<Size>
+												<AbsPoint x="175" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="580" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnXOffsetChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
+											</EventHandlers>
+										</SliderBar>
+									</Windows>
+								</Window>
+
+								<Window name="$parentRowCombatYOffset">
+									<Size>
+										<AbsPoint x="850" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+											<AbsPoint x="0" y="45" />
+										</Anchor>
+										<Anchor point="topright" relativePoint="topright" relativeTo="$parent">
+											<AbsPoint x="0" y="45" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+										<Label name="$parentCombatYOffsetLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+											<Size>
+												<AbsPoint x="170" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="45" y="2" />
+												</Anchor>
+											</Anchors>
+										</Label>
+										<Label name="$parentOutgoingYOffsetLabel" font="font_default_text_small" textalign="left" handleinput="false" layer="background">
+											<Size>
+												<AbsPoint x="80" y="18" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="220" y="4" />
+												</Anchor>
+											</Anchors>
+										</Label>
+										<SliderBar name="$parentOutgoingYOffset" inherits="EA_Default_SliderBar" handleinput="true" numticks="9">
+											<Size>
+												<AbsPoint x="175" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="300" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnYOffsetChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
+											</EventHandlers>
+										</SliderBar>
+										<Label name="$parentIncomingYOffsetLabel" font="font_default_text_small" textalign="left" handleinput="false" layer="background">
+											<Size>
+												<AbsPoint x="80" y="18" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="500" y="4" />
+												</Anchor>
+											</Anchors>
+										</Label>
+										<SliderBar name="$parentIncomingYOffset" inherits="EA_Default_SliderBar" handleinput="true" numticks="9">
+											<Size>
+												<AbsPoint x="175" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="580" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnYOffsetChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
+											</EventHandlers>
+										</SliderBar>
 									</Windows>
 								</Window>
 
@@ -1439,8 +1593,7 @@
 										</HorizontalResizeImage>
 								</Window>
 
-								<!-- Column headers: Show / Size / Color above Outgoing for XP, Renown, Influence (outgoing only). -->
-								<Window name="$parentRowSctPointColumnHeaders">
+								<Window name="$parentRowPointXOffset">
 									<Size>
 										<AbsPoint x="850" y="37" />
 									</Size>
@@ -1449,6 +1602,109 @@
 											<AbsPoint x="0" y="0" />
 										</Anchor>
 										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowHorizontalBar">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+										<Label name="$parentPointXOffsetLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+											<Size>
+												<AbsPoint x="170" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="45" y="2" />
+												</Anchor>
+											</Anchors>
+										</Label>
+										<Label name="$parentPointsXOffsetLabel" font="font_default_text_small" textalign="left" handleinput="false" layer="background">
+											<Size>
+												<AbsPoint x="80" y="18" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="220" y="4" />
+												</Anchor>
+											</Anchors>
+										</Label>
+										<SliderBar name="$parentPointsXOffset" inherits="EA_Default_SliderBar" handleinput="true" numticks="9">
+											<Size>
+												<AbsPoint x="175" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="300" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnXOffsetChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
+											</EventHandlers>
+										</SliderBar>
+									</Windows>
+								</Window>
+
+								<Window name="$parentRowPointYOffset">
+									<Size>
+										<AbsPoint x="850" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowPointXOffset">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowPointXOffset">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+										<Label name="$parentPointYOffsetLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+											<Size>
+												<AbsPoint x="170" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="45" y="2" />
+												</Anchor>
+											</Anchors>
+										</Label>
+										<Label name="$parentPointsYOffsetLabel" font="font_default_text_small" textalign="left" handleinput="false" layer="background">
+											<Size>
+												<AbsPoint x="80" y="18" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="220" y="4" />
+												</Anchor>
+											</Anchors>
+										</Label>
+										<SliderBar name="$parentPointsYOffset" inherits="EA_Default_SliderBar" handleinput="true" numticks="9">
+											<Size>
+												<AbsPoint x="175" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="300" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnYOffsetChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
+											</EventHandlers>
+										</SliderBar>
+									</Windows>
+								</Window>
+
+								<!-- Column headers: Show / Size / Color above Outgoing for XP, Renown, Influence (outgoing only). -->
+								<Window name="$parentRowSctPointColumnHeaders">
+									<Size>
+										<AbsPoint x="850" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowPointXOffset">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowPointXOffset">
 											<AbsPoint x="0" y="0" />
 										</Anchor>
 									</Anchors>

@@ -46,8 +46,7 @@ All components default to **disabled** except `PlayerStatusWindow`.
 `Source/CustomUI.lua`). The visible UI lives in the separate **CustomUISettingsWindow**
 add-on, which must be enabled alongside CustomUI. Tabs are **not** created via
 `CustomUI.SettingsWindow.RegisterTab` at runtime: that broker and its
-`Source/Settings/View/SettingsWindow.xml` shell are **deprecated** (commented out in
-`CustomUI.mod`); the active UI is a fixed tab strip in
+`Source/Settings/` shell were removed; the active UI is a fixed tab strip in
 `CustomUISettingsWindowTabbed.lua` / `.xml` plus one `CustomUISettingsWindowTab<Name>.*`
 pair per feature.
 
@@ -131,7 +130,6 @@ CustomUI/
 		CustomUI.lua
 		Shared/
 			Shared.xml
-			BuffFilterSection.lua    ← LEGACY (in-addon *Tab only; see "Legacy code")
 			BuffTracker/
 				BuffTracker.lua
 				BuffGroups.lua
@@ -139,14 +137,6 @@ CustomUI/
 				Whitelist.lua
 			UnitFrame/
 				TargetFrame.lua
-		Settings/
-			Controller/
-				SettingsWindowController.lua       ← deprecated (CustomUI.SettingsWindow; not in mod)
-				MiniSettingsWindowController.lua   ← deprecated (not in mod)
-			View/
-				SettingsWindow.xml                 ← deprecated (in-addon tab shell; not in mod)
-				MiniSettingsWindow.lua             ← deprecated
-				MiniSettingsWindow.xml             ← deprecated
 		Components/
 			PlayerStatusWindow/
 				Controller/
@@ -154,38 +144,32 @@ CustomUI/
 				View/
 					PlayerStatusWindow.lua        ← view lua (tooltips, label helpers)
 					PlayerStatusWindow.xml
-					PlayerStatusWindowTab.xml
 			TargetWindow/
 				Controller/
 					TargetWindowController.lua
 				View/
 					TargetWindow.xml
-					TargetWindowTab.xml
 			PlayerPetWindow/
 				Controller/
 					PlayerPetWindowController.lua
 				View/
 					PlayerPetWindow.xml
-					PlayerPetWindowTab.xml
 			GroupWindow/
 				Controller/
 					GroupWindowController.lua
 					GroupWindowTestHarness.lua    ← dev test harness, gated at runtime
 				View/
 					GroupWindow.xml
-					GroupWindowTab.xml
 			GroupIcons/
 				Controller/
 					GroupIconsController.lua
 				View/
 					GroupIcons.xml
-					GroupIconsTab.xml
 			TargetHUD/
 				Controller/
 					TargetHUDController.lua
 				View/
 					TargetHUD.xml
-					TargetHUDTab.xml
 			UnitFrames/
 				Controller/
 					UnitFramesController.lua
@@ -197,7 +181,6 @@ CustomUI/
 						ScenarioFloatingAdapter.lua
 				View/
 					UnitFrames.xml
-					UnitFramesTab.xml
 			SCT/
 				Controller/
 					SCTSettings.lua               ← settings helpers, GetSettings(), color/size/filter keys
@@ -213,22 +196,14 @@ CustomUI/
 | Path | Status | Role |
 |------|--------|------|
 | `Shared.xml` | **Current** | Defines `CustomUIBuffContainerTemplate`; `BuffTracker` creates slot windows from it. |
-| `BuffFilterSection.lua` | **LEGACY** | Label/checkbox glue for in-addon `*Tab.xml` + `CustomUI.*.Tab` only. Shipped settings use **CustomUISettingsWindow**; remove with the [Legacy code](#legacy-code-removal-candidates) bundle. |
 | `BuffTracker/` (`BuffTracker.lua`, `BuffGroups.lua`, `Blacklist.lua`, `Whitelist.lua`) | **Current** | Core buff list behavior: trackers used by `PlayerStatusWindow`, `TargetWindow` (via `TargetFrame`), `GroupWindow`, `TargetHUD`. Blacklist/Whitelist are default tables; BuffGroups is merge metadata. |
 | `UnitFrame/TargetFrame.lua` | **Current** | Stock `TargetUnitFrame` subclass with `CustomUI.BuffTracker`; used only by **TargetWindow**. |
 
-All of the above except **`BuffFilterSection.lua`** are loaded from `CustomUI.mod` on the main path and are required for those components. Search **`LEGACY (removal candidate)`** in `Source/Shared` for the one legacy file.
+All of the above are loaded from `CustomUI.mod` on the main path and are required for shipped components.
 
-### Legacy code (removal candidates)
+### Removed legacy settings code
 
-Shipped settings are **CustomUISettingsWindow** (`/cui`). In-addon `CustomUI.SettingsWindow` / `MiniSettingsWindow` and the per-component **in-addon `*Tab.xml` + `CustomUI.<Name>.Tab` Lua** are **legacy** only—kept until you are sure no fork or user relies on them. Everything to remove in one pass is marked **`LEGACY (removal candidate)`** in `Source/` (and `Source/Settings/`), in each legacy `*Tab.xml` comment, and in `CustomUI.mod` (see `LEGACY BUNDLE` / `BuffFilterSection` comments).
-
-**What to remove together (checklist):**
-
-- **`Source/Settings/`** (not loaded in `CustomUI.mod`): `SettingsWindowController`, `SettingsWindow.xml`, `MiniSettingsWindow*` — the old shells and list UI.
-- **In-addon tabs:** for each component, the `View/*Tab.xml` entry in `CustomUI.mod`, the `CustomUI.<Name>.Tab` block (and optional commented `RegisterTab` line) in the component controller, then **`Source/Shared/BuffFilterSection.lua`** and its `<File>` line when the last `BuffFilterSection` caller is gone (Player, Group, Target, TargetHUD).
-- **Orphan only:** `PlayerPetWindowTab.xml` is not listed in the mod; safe to delete with other dead assets once confirmed.
-- Grep: `LEGACY (removal candidate)` and `CustomUI.BuffFilterSection` to find remaining links before deleting files.
+The old in-addon `CustomUI.SettingsWindow` / `MiniSettingsWindow` shells and per-component `*Tab.xml` + `CustomUI.<Name>.Tab` handlers were removed after the standalone **CustomUISettingsWindow** became the shipped `/cui` UI. Do not reintroduce `Source/Settings/`, `CustomUI.SettingsWindow.RegisterTab`, component `View/*Tab.xml`, or `CustomUI.<Name>.Tab`; add settings UI in `CustomUISettingsWindow` instead.
 
 
 ## Best Practices and Design Rules
@@ -272,11 +247,11 @@ Shipped settings are **CustomUISettingsWindow** (`/cui`). In-addon `CustomUI.Set
 7. In `Enable`: `UserShow` the CustomUI window, `UserHide` the stock window.
 8. In `Disable`: `UserHide` the CustomUI window, `UserShow` (and if needed `UnregisterWindow`) the stock window.
 9. Keep manifest load order explicit in `CustomUI.mod`: core shared files first, then each component's controller then xml.
-10. Settings UI: use the separate **CustomUISettingsWindow** addon for tabs and handlers; components expose data via `GetSettings()`-style APIs (see SCT: `GetSettingsRowDescriptors`, `SliderPosToScale`). Deprecated: in-addon `CustomUI.SettingsWindow.RegisterTab` and per-component `*Tab.xml` (remnant only; do not add new UI there).
+10. Settings UI: use the separate **CustomUISettingsWindow** addon for tabs and handlers; components expose data via `GetSettings()`-style APIs (see SCT: `GetSettingsRowDescriptors`, `SliderPosToScale`). Do not add in-addon `CustomUI.SettingsWindow.RegisterTab` or per-component `*Tab.xml`.
 
 ## Runtime usage
 
-- Open settings: `/customui` or `/cui` (window **CustomUISettingsWindowTabbed** from the **CustomUISettingsWindow** addon). In-addon **`CustomUI.SettingsWindow`** (tab broker + `SettingsWindow.xml`) and **MiniSettingsWindow** are deprecated and not loaded from `CustomUI.mod`.
+- Open settings: `/customui` or `/cui` (window **CustomUISettingsWindowTabbed** from the **CustomUISettingsWindow** addon). The old in-addon settings windows were removed.
 - `/customui mini` — prints a deprecation notice; use `/cui` instead.
 - Status output: `/customui status`
 - List components: `/customui components`

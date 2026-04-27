@@ -32,37 +32,15 @@ CustomUI.State = CustomUI.State or
 --   lists files only—no <CreateWindow> in the manifest.
 --
 -- Settings UI: ship in the separate CustomUISettingsWindow addon (window CustomUISettingsWindowTabbed).
--- Deprecated (not in .mod): CustomUI.SettingsWindow + Source/Settings/View/SettingsWindow.xml;
---   MiniSettingsWindow. In-addon View/*Tab.xml and CustomUI.<Name>.Tab are LEGACY
---   (removal candidate; see README and grep "LEGACY (removal candidate)" in Source/).
---   Do not extend; add settings UI in CustomUISettingsWindow only.
-
--- Client / dev may expose global `d` as a log hook; we never assign it.
-function CustomUI.GetClientDebugLog()
-    return rawget(_G, "d")
-end
-
-local function DebugLog(message)
-    local dbg = CustomUI.GetClientDebugLog()
-    if type(dbg) ~= "function" then
-        return
-    end
-
-    dbg("[CustomUI] " .. tostring(message))
-end
+-- Removed legacy paths: CustomUI.SettingsWindow / MiniSettingsWindow, Source/Settings,
+--   in-addon View/*Tab.xml, and CustomUI.<Name>.Tab. Do not reintroduce them; add
+--   settings UI in CustomUISettingsWindow only.
 
 local function CallComponentHandler(component, handlerName)
     local handler = component and component[handlerName]
 
     if type(handler) == "function" then
-        local ok, result = pcall(handler, component)
-
-        if not ok then
-            local componentName = (component and component.Name) or "?"
-            DebugLog("Handler error: " .. tostring(componentName) .. "." .. tostring(handlerName) .. ": " .. tostring(result))
-            return false
-        end
-
+        local result = handler(component)
         -- Handlers that do not return a value are treated as success.
         return result ~= false
     end
@@ -221,7 +199,7 @@ function CustomUI.PrintComponentStatuses()
 end
 
 function CustomUI.PrintHelp()
-    CustomUI.PrintMessage(L"Commands: /customui, /customui status, /customui components, /customui enable <name>, /customui disable <name>, /customui toggle <name>, /customui ufdebug <on|off|status>")
+    CustomUI.PrintMessage(L"Commands: /customui, /customui status, /customui components, /customui enable <name>, /customui disable <name>, /customui toggle <name>, /customui help")
 end
 
 function CustomUI.RegisterSlashCommands()
@@ -270,14 +248,13 @@ function CustomUI.HandleSlashCommand(input)
     end
 
     if trimmedInput == "" then
-        -- Deprecated: CustomUI.SettingsWindow.Open() (in-addon tab shell; not loaded).
 		WindowUtils.ToggleShowing( "CustomUISettingsWindowTabbed" )
         return
     end
 
     if trimmedInput == "mini" then
         if CustomUI.PrintMessage then
-            CustomUI.PrintMessage(L"MiniSettingsWindow is deprecated. Open /cui (CustomUISettingsWindow).")
+            CustomUI.PrintMessage(L"Open /cui for CustomUI settings.")
         end
         return
     end
@@ -295,48 +272,6 @@ function CustomUI.HandleSlashCommand(input)
 
     if command == "help" then
         CustomUI.PrintHelp()
-        return
-    end
-
-    if command == "ufdebug" then
-        if type(CustomUI.UnitFrames) ~= "table"
-        or type(CustomUI.UnitFrames.SetScenarioVerboseDebug) ~= "function" then
-            CustomUI.PrintMessage(L"UnitFrames debug controls unavailable.")
-            return
-        end
-
-        local mode = "status"
-        if type(argument) == "string" then
-            local trimmedArg = argument:match("^%s*(.-)%s*$")
-            if trimmedArg ~= "" then
-                mode = string.lower(trimmedArg)
-            end
-        end
-
-        if mode == "status" then
-            local enabled = false
-            if type(CustomUI.UnitFrames.GetScenarioVerboseDebug) == "function" then
-                enabled = CustomUI.UnitFrames.GetScenarioVerboseDebug()
-            end
-
-            local statusText = enabled and L"on" or L"off"
-            CustomUI.PrintMessage(L"UnitFrames scenario debug: " .. statusText)
-            return
-        end
-
-        if mode == "on" or mode == "1" or mode == "true" then
-            CustomUI.UnitFrames.SetScenarioVerboseDebug(true)
-            CustomUI.PrintMessage(L"UnitFrames scenario debug: on")
-            return
-        end
-
-        if mode == "off" or mode == "0" or mode == "false" then
-            CustomUI.UnitFrames.SetScenarioVerboseDebug(false)
-            CustomUI.PrintMessage(L"UnitFrames scenario debug: off")
-            return
-        end
-
-        CustomUI.PrintMessage(L"Usage: /customui ufdebug <on|off|status>")
         return
     end
 
@@ -367,7 +302,6 @@ function CustomUI.HandleSlashCommand(input)
 
             CustomUI.PrintMessage(towstring(componentName) .. L": " .. stateText)
 
-            -- (deprecated MiniSettingsWindow refresh removed)
         else
             CustomUI.PrintMessage(L"Unable to update component: " .. towstring(componentName))
         end
@@ -421,8 +355,6 @@ function CustomUI.RegisterComponent(componentName, componentTable)
         if CustomUI.IsComponentEnabled(componentName) then
             CustomUI.EnableComponent(componentName)
         end
-
-        -- (deprecated MiniSettingsWindow refresh removed)
     end
 
     return componentTable
@@ -468,16 +400,11 @@ function CustomUI.EnableComponent(componentName)
         return true
     end
 
-    DebugLog("EnableComponent start: " .. tostring(componentName))
-
     if CallComponentHandler(component, "Enable") then
         component.Enabled = true
         CustomUI.Settings.Components[componentName] = true
-        DebugLog("EnableComponent success: " .. tostring(componentName))
         return true
     end
-
-    DebugLog("EnableComponent failed: " .. tostring(componentName))
 
     return false
 end
@@ -489,19 +416,15 @@ function CustomUI.DisableComponent(componentName)
         return false
     end
 
-    DebugLog("DisableComponent start: " .. tostring(componentName))
-
     if component.Initialized then
         local disabled = CallComponentHandler(component, "Disable")
         if not disabled then
-            DebugLog("DisableComponent failed: " .. tostring(componentName))
             return false
         end
         component.Enabled = false
     end
 
     CustomUI.Settings.Components[componentName] = false
-    DebugLog("DisableComponent success: " .. tostring(componentName))
     return true
 end
 
@@ -533,8 +456,6 @@ function CustomUI.ResetAllToDefaults()
         CustomUI.Settings.Components[componentName] = defaultEnabled
         CustomUI.SetComponentEnabled(componentName, defaultEnabled)
     end
-
-    -- (deprecated MiniSettingsWindow refresh removed)
 
     return true
 end
@@ -597,12 +518,7 @@ local function EnsureRootWindowInstances()
     for i = 1, #ROOT_WINDOW_NAMES do
         local w = ROOT_WINDOW_NAMES[i]
         if type(DoesWindowExist) ~= "function" or not DoesWindowExist(w) then
-            local ok, err = pcall(function()
-                CreateWindow(w, false)
-            end)
-            if not ok then
-                DebugLog("EnsureRootWindowInstances: CreateWindow(" .. tostring(w) .. ") — " .. tostring(err))
-            end
+            CreateWindow(w, false)
         end
     end
 end

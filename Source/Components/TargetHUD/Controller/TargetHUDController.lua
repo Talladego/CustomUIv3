@@ -31,11 +31,6 @@ local c_BUFF_ICON_GAP  = 2
 local m_enabled     = false
 local m_initialized = false
 
--- Debug: set CustomUI.TargetHUD.DebugSort = true in console to enable sort snapshots.
-CustomUI.TargetHUD.DebugSort    = false
-local m_debugThrottle           = 0
-local c_DEBUG_INTERVAL          = 1.0  -- seconds between snapshots
-
 -- Per-HUD state tables (plain, no TargetUnitFrame).
 local m_hostile  = { unitId = c_HOSTILE_UNIT_ID,  attachedId = 0, buffTracker = nil }
 local m_friendly = { unitId = c_FRIENDLY_UNIT_ID, attachedId = 0, buffTracker = nil }
@@ -62,6 +57,7 @@ local function CreateHUDBuffTracker(parentWindowName, buffTargetType)
     tracker:SetAlignment(CustomUI.BuffTracker.Alignment.CENTER)
     tracker:SetFilter({ playerCastOnly = true })
     CustomUI.BuffTracker.ApplyPlayerStatusRules(tracker)
+    tracker:SetForceShowTrackerPriority100(true)
     tracker:SetSortMode(CustomUI.BuffTracker.SortMode.SHORT_LONG_PERM)
     tracker:SetHandleInput(false)  -- HUD is a non-interactive overlay
     tracker:Show(true)
@@ -177,7 +173,7 @@ function CustomUI.TargetHUD.Initialize()
 
     -- Apply persisted buff filter settings (if any)
     if type(CustomUI.TargetHUD.ApplyBuffSettings) == "function" then
-        pcall(CustomUI.TargetHUD.ApplyBuffSettings)
+        CustomUI.TargetHUD.ApplyBuffSettings()
     else
         -- Default behaviour: make HUD show player-cast only (preserves previous behaviour)
         if m_hostile.buffTracker then m_hostile.buffTracker:SetFilter({ playerCastOnly = true }) end
@@ -314,40 +310,10 @@ function CustomUI.TargetHUD.OnPlayerTargetUpdated(targetClassification)
     RefreshBothHUDsFromCache()
 end
 
-local function DebugPrintTracker(label, tracker)
-    local frames = tracker.m_buffFrames
-    if not frames then return end
-    local parts = { "[CustomUI] TargetHUD sort snapshot - " .. label .. ":" }
-    local any = false
-    for i, frame in ipairs(frames) do
-        local bd = frame.m_buffData
-        if bd and bd.iconNum and bd.iconNum > 0 then
-            local dur = bd.permanentUntilDispelled and "perm" or string.format("%.1fs", bd.duration)
-            table.insert(parts, string.format("  [%d] %s  dur=%s  castByPlayer=%s",
-                i, tostring(bd.name), dur, tostring(bd.castByPlayer)))
-            any = true
-        end
-    end
-    if any then
-        for _, line in ipairs(parts) do
-            LogLuaMessage("Lua", SystemData.UiLogFilters.DEBUG, towstring(line))
-        end
-    end
-end
-
 function CustomUI.TargetHUD.OnUpdate(timePassed)
     if SystemData.ActiveWindow.name ~= c_HOSTILE_WINDOW_NAME then return end
     if m_hostile.buffTracker  then m_hostile.buffTracker:Update(timePassed)  end
     if m_friendly.buffTracker then m_friendly.buffTracker:Update(timePassed) end
-
-    if CustomUI.TargetHUD.DebugSort then
-        m_debugThrottle = m_debugThrottle + timePassed
-        if m_debugThrottle >= c_DEBUG_INTERVAL then
-            m_debugThrottle = 0
-            if m_hostile.buffTracker  then DebugPrintTracker("hostile",  m_hostile.buffTracker)  end
-            if m_friendly.buffTracker then DebugPrintTracker("friendly", m_friendly.buffTracker) end
-        end
-    end
 end
 
 function CustomUI.TargetHUD.OnHostileStateUpdated()
@@ -410,39 +376,3 @@ end
 function TargetHUDComponent:Shutdown()
 end
 CustomUI.RegisterComponent("TargetHUD", TargetHUDComponent)
-
--- ============================================================================
--- LEGACY (removal candidate) — in-addon settings: View/TargetHUDTab.xml, CustomUI.TargetHUD.Tab
--- Replaced by: CustomUISettingsWindow. Remove with: *Tab in CustomUI.mod, this block, BuffFilterSection
---   if last user. See README "Legacy code".
--- ============================================================================
-
-CustomUI.TargetHUD.Tab = {}
-
-function CustomUI.TargetHUD.Tab.OnShown(contentName)
-    ButtonSetPressedFlag(contentName .. "EnableCheckBox", CustomUI.IsComponentEnabled("TargetHUD"))
-    LabelSetText(contentName .. "EnableLabel", L"Enabled")
-    CustomUI.BuffFilterSection.SetupLabels(contentName)
-    CustomUI.BuffFilterSection.RefreshControls(contentName, CustomUI.TargetHUD.GetBuffFilterHostile())
-end
-
-function CustomUI.TargetHUD.Tab.OnToggleEnable()
-    local newState = not CustomUI.IsComponentEnabled("TargetHUD")
-    CustomUI.SetComponentEnabled("TargetHUD", newState)
-    ButtonSetPressedFlag(SystemData.ActiveWindow.name, newState)
-end
-
-function CustomUI.TargetHUD.Tab.OnFilterChanged()
-    CustomUI.BuffFilterSection.OnFilterChanged(
-        function() return CustomUI.TargetHUD.GetBuffFilterHostile() end,
-        function()
-            local s = CustomUI.TargetHUD.GetSettings()
-            for k, val in pairs(s.buffsHostile) do
-                s.buffsFriendly[k] = val
-            end
-            CustomUI.TargetHUD.ApplyBuffSettings()
-        end
-    )
-end
-
---CustomUI.SettingsWindow.RegisterTab("TargetHUD", "CustomUITargetHUDTab", TargetHUDComponent, CustomUI.TargetHUD.Tab.OnShown)  -- LEGACY: remove with Tab block above

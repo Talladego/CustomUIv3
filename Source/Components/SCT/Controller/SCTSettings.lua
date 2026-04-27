@@ -1,26 +1,37 @@
 ----------------------------------------------------------------
 -- CustomUI.SCT — Settings helpers (SCT; not a View/ .lua)
 -- Responsibilities: default schema, GetSettings, migrations, and pure helpers (colors, fonts
---   descriptors) used by SCTEventText and CustomUISettingsWindow tabs. No RegisterComponent
+--   descriptors) used by SCT runtime modules and CustomUISettingsWindow tabs. No RegisterComponent
 --   here, no engine hooks — data and defaults only. Call sites must not add saved-variable
 --   paths to a specific settings window; tabs live in the CustomUISettingsWindow addon.
 if not CustomUI.SCT then CustomUI.SCT = {} end
--- Verbose trace log gate (default off). From console: CustomUI.SCT.m_debug = true
-if CustomUI.SCT.m_debug == nil then
-    CustomUI.SCT.m_debug = false
+-- Mirror SCT hard failures to LogLuaMessage + uilog text log (see SCTAnchors). Default on.
+-- Legacy: old saves used `m_uilog`; when nil we migrate.
+if CustomUI.SCT.m_sctFileLog == nil then
+    if type(CustomUI.SCT.m_uilog) == "boolean" then
+        CustomUI.SCT.m_sctFileLog = CustomUI.SCT.m_uilog
+    else
+        CustomUI.SCT.m_sctFileLog = true
+    end
 end
 
-function CustomUI.SCT.Trace(msg)
-    if not CustomUI.SCT.m_debug then return end
-    local dbg = CustomUI.GetClientDebugLog()
-    if type(dbg) == "function" then dbg("[SCT:Trace] " .. tostring(msg)) end
+function CustomUI.SCT.SetSctFileLog(enabled)
+    CustomUI.SCT.m_sctFileLog = enabled == true
+    return CustomUI.SCT.m_sctFileLog
 end
 
--- Shared by SCTEventText, SCTController, and external settings UIs.
+-- Back compat for saved vars / old scripts; prefer `SetSctFileLog`.
+CustomUI.SCT.SetUilogLogging = CustomUI.SCT.SetSctFileLog
+
+-- Shared by SCT runtime modules, SCTController, and external settings UIs.
 ----------------------------------------------------------------
 
 CustomUI.SCT.COMBAT_TYPE_KEYS = { "Hit", "Ability", "Heal", "Block", "Parry", "Evade", "Disrupt", "Absorb", "Immune" }
 CustomUI.SCT.POINT_TYPE_KEYS  = { "XP", "Renown", "Influence" }
+
+-- Setters are declared before the implementation block for IsAtDefault / notifyChange.
+-- Forward declare so setter bodies bind this local instead of looking for a global.
+local notifyChange
 
 -- Discrete size ticks used by the settings UI (slider maps to these values).
 CustomUI.SCT.TICK_SCALES = { 0.75, 0.875, 1.0, 1.25, 1.75 }
@@ -104,6 +115,62 @@ function CustomUI.SCT.SliderPosToCritSize(pos)
     idx = math.max(1, math.min(n, idx))
     return scales[idx]
 end
+
+----------------------------------------------------------------
+-- X offsets (pixels) — absolute category positions relative to the world-object anchor.
+-- Defaults are 0 (centered on the anchor). Exposed as sliders in CustomUISettingsWindow.
+----------------------------------------------------------------
+
+local X_OFFSET_MIN = -100
+local X_OFFSET_MAX = 100
+
+-- Y offsets (pixels) — category vertical offsets relative to stock animation Y.
+local Y_OFFSET_MIN = -200
+local Y_OFFSET_MAX = 200
+
+function CustomUI.SCT.XOffsetToSliderPos(px)
+    if type(px) ~= "number" or px ~= px then px = 0 end
+    if px < X_OFFSET_MIN then px = X_OFFSET_MIN end
+    if px > X_OFFSET_MAX then px = X_OFFSET_MAX end
+    -- SliderBar positions are normalized [0,1] in this UI.
+    local denom = (X_OFFSET_MAX - X_OFFSET_MIN)
+    if denom <= 0 then
+        return 0
+    end
+    return (px - X_OFFSET_MIN) / denom
+end
+
+function CustomUI.SCT.SliderPosToXOffset(pos)
+    if type(pos) ~= "number" or pos ~= pos then pos = 0.5 end
+    if pos < 0 then pos = 0 end
+    if pos > 1 then pos = 1 end
+    local px = X_OFFSET_MIN + ((X_OFFSET_MAX - X_OFFSET_MIN) * pos)
+    -- Keep it integer pixels for stable window positioning.
+    return math.floor(px + 0.5)
+end
+
+function CustomUI.SCT.YOffsetToSliderPos(px)
+    if type(px) ~= "number" or px ~= px then px = 0 end
+    if px < Y_OFFSET_MIN then px = Y_OFFSET_MIN end
+    if px > Y_OFFSET_MAX then px = Y_OFFSET_MAX end
+    local denom = (Y_OFFSET_MAX - Y_OFFSET_MIN)
+    if denom <= 0 then
+        return 0
+    end
+    return (px - Y_OFFSET_MIN) / denom
+end
+
+function CustomUI.SCT.SliderPosToYOffset(pos)
+    if type(pos) ~= "number" or pos ~= pos then pos = 0.5 end
+    if pos < 0 then pos = 0 end
+    if pos > 1 then pos = 1 end
+    local px = Y_OFFSET_MIN + ((Y_OFFSET_MAX - Y_OFFSET_MIN) * pos)
+    return math.floor(px + 0.5)
+end
+
+-- Back compat for old settings-window code paths; per-category offsets use the generic names.
+CustomUI.SCT.BaseXOffsetToSliderPos = CustomUI.SCT.XOffsetToSliderPos
+CustomUI.SCT.SliderPosToBaseXOffset = CustomUI.SCT.SliderPosToXOffset
 
 -- Predefined color palette (index 1 = Default = keep engine color; not shown in the 5x8 ColorPicker—use R-click on the palette for Default).
 -- Indices 2+ are 5 columns x 8 rows in row-major order, one base hue per row: [dark, dark, base, light, light].
@@ -257,6 +324,24 @@ local function Settings()
     end
     v.showAbilityIcon = v.showAbilityIcon == true
 
+    -- Per-category X offsets (pixels): absolute positions relative to the world-object anchor.
+    if type(v.offsets) ~= "table" then v.offsets = {} end
+    if type(v.offsets.outgoing) ~= "table" then v.offsets.outgoing = {} end
+    if type(v.offsets.incoming) ~= "table" then v.offsets.incoming = {} end
+    if type(v.offsets.points) ~= "table" then v.offsets.points = {} end
+    v.offsets.outgoing.x = CustomUI.SCT.SliderPosToXOffset(CustomUI.SCT.XOffsetToSliderPos(v.offsets.outgoing.x or 0))
+    v.offsets.incoming.x = CustomUI.SCT.SliderPosToXOffset(CustomUI.SCT.XOffsetToSliderPos(v.offsets.incoming.x or 0))
+    v.offsets.points.x   = CustomUI.SCT.SliderPosToXOffset(CustomUI.SCT.XOffsetToSliderPos(v.offsets.points.x or 0))
+    v.offsets.outgoing.y = CustomUI.SCT.SliderPosToYOffset(CustomUI.SCT.YOffsetToSliderPos(v.offsets.outgoing.y or 0))
+    v.offsets.incoming.y = CustomUI.SCT.SliderPosToYOffset(CustomUI.SCT.YOffsetToSliderPos(v.offsets.incoming.y or 0))
+    v.offsets.points.y   = CustomUI.SCT.SliderPosToYOffset(CustomUI.SCT.YOffsetToSliderPos(v.offsets.points.y or 0))
+
+    -- LEGACY (v2 SCT, 2026-04-25): old global X offset no longer applied.
+    if type(v.baseXOffset) ~= "number" or v.baseXOffset ~= v.baseXOffset then
+        v.baseXOffset = 0
+    end
+    v.baseXOffset = CustomUI.SCT.SliderPosToXOffset(CustomUI.SCT.XOffsetToSliderPos(v.baseXOffset))
+
     -- textFont: 1 = Default (stock), 2–9 = former 8 wsct options. Migrate old 1–8 → 2–9 when Default row was added.
     local nFonts = #CustomUI.SCT.TEXT_FONTS
     if v.sctTextFontV2 ~= true then
@@ -402,6 +487,54 @@ function CustomUI.SCT.GetShowAbilityIcon()
     return Settings().showAbilityIcon == true
 end
 
+function CustomUI.SCT.GetBaseXOffset()
+    return Settings().baseXOffset or 0
+end
+
+local function isValidOffsetCategory(category)
+    return category == "outgoing" or category == "incoming" or category == "points"
+end
+
+function CustomUI.SCT.GetXOffset(category)
+    if not isValidOffsetCategory(category) then
+        return 0
+    end
+    local offsets = Settings().offsets or {}
+    local t = offsets[category]
+    return (type(t) == "table" and type(t.x) == "number") and t.x or 0
+end
+
+function CustomUI.SCT.GetYOffset(category)
+    if not isValidOffsetCategory(category) then
+        return 0
+    end
+    local offsets = Settings().offsets or {}
+    local t = offsets[category]
+    return (type(t) == "table" and type(t.y) == "number") and t.y or 0
+end
+
+function CustomUI.SCT.SetXOffset(category, px)
+    if not isValidOffsetCategory(category) or type(px) ~= "number" or px ~= px then
+        return
+    end
+    local v = Settings()
+    v.offsets = v.offsets or {}
+    v.offsets[category] = v.offsets[category] or {}
+    v.offsets[category].x = CustomUI.SCT.SliderPosToXOffset(CustomUI.SCT.XOffsetToSliderPos(px))
+    notifyChange()
+end
+
+function CustomUI.SCT.SetYOffset(category, px)
+    if not isValidOffsetCategory(category) or type(px) ~= "number" or px ~= px then
+        return
+    end
+    local v = Settings()
+    v.offsets = v.offsets or {}
+    v.offsets[category] = v.offsets[category] or {}
+    v.offsets[category].y = CustomUI.SCT.SliderPosToYOffset(CustomUI.SCT.YOffsetToSliderPos(px))
+    notifyChange()
+end
+
 function CustomUI.SCT.SetSize(direction, key, scale)
     if not isValidSettingsKey(key) or type(scale) ~= "number" or scale ~= scale then
         return
@@ -410,6 +543,7 @@ function CustomUI.SCT.SetSize(direction, key, scale)
     if isPointTypeKey(key) then
         scale = CustomUI.SCT.SliderPosToScale(CustomUI.SCT.ScaleToSliderPos(scale))
         v.outgoing.size[key] = scale
+        notifyChange()
         return
     end
     assert(direction == "outgoing" or direction == "incoming", "bad direction")
@@ -418,6 +552,7 @@ function CustomUI.SCT.SetSize(direction, key, scale)
     end
     scale = CustomUI.SCT.SliderPosToScale(CustomUI.SCT.ScaleToSliderPos(scale))
     v[direction].size[key] = scale
+    notifyChange()
 end
 
 function CustomUI.SCT.SetColorIndex(direction, key, idx)
@@ -438,6 +573,7 @@ function CustomUI.SCT.SetColorIndex(direction, key, idx)
         idx = n
     end
     v[direction].color[key] = idx
+    notifyChange()
 end
 
 function CustomUI.SCT.SetCustomColor(direction, key, rgb_or_nil)
@@ -452,6 +588,7 @@ function CustomUI.SCT.SetCustomColor(direction, key, rgb_or_nil)
     v.customColor[direction] = v.customColor[direction] or {}
     if rgb_or_nil == nil then
         v.customColor[direction][key] = nil
+        notifyChange()
         return
     end
     if type(rgb_or_nil) ~= "table" then
@@ -466,6 +603,7 @@ function CustomUI.SCT.SetCustomColor(direction, key, rgb_or_nil)
         math.max(0, math.min(255, math.floor(g + 0.5))),
         math.max(0, math.min(255, math.floor(b + 0.5))),
     }
+    notifyChange()
 end
 
 function CustomUI.SCT.SetFilter(direction, key, boolVal)
@@ -479,6 +617,7 @@ function CustomUI.SCT.SetFilter(direction, key, boolVal)
     local v = Settings()
     local fk = "show" .. key
     v[direction].filters[fk] = boolVal == true
+    notifyChange()
 end
 
 function CustomUI.SCT.SetCritFlags(shake, pulse, flash)
@@ -490,6 +629,7 @@ function CustomUI.SCT.SetCritFlags(shake, pulse, flash)
     v.critAnimShake = sh
     v.critAnimPulse = pu
     v.critAnimFlash = cf
+    notifyChange()
 end
 
 function CustomUI.SCT.SetCritSizeScale(scale)
@@ -498,6 +638,7 @@ function CustomUI.SCT.SetCritSizeScale(scale)
     end
     local v = Settings()
     v.critSizeScale = CustomUI.SCT.SliderPosToCritSize(CustomUI.SCT.CritSizeToSliderPos(scale))
+    notifyChange()
 end
 
 function CustomUI.SCT.SetTextFontIndex(idx)
@@ -509,10 +650,18 @@ function CustomUI.SCT.SetTextFontIndex(idx)
         return
     end
     Settings().textFont = idx
+    notifyChange()
 end
 
 function CustomUI.SCT.SetShowAbilityIcon(enabled)
     Settings().showAbilityIcon = enabled == true
+    notifyChange()
+end
+
+-- LEGACY (v2 SCT, 2026-04-25): baseXOffset no longer applied.
+-- Field preserved so old saves load without error. Setter is a no-op.
+function CustomUI.SCT.SetBaseXOffset(_px)
+    -- no-op
 end
 
 -- Returns shake, pulse, color-flash (all booleans). Shake and pulse are mutually exclusive after GetSettings().
@@ -532,7 +681,7 @@ function CustomUI.SCT.GetTextFontName()
 end
 
 -- All preset color indices to 1 (engine DefaultColor per event) and clear per-row custom RGB overrides.
-function CustomUI.SCT.ResetColorsToStockDefault()
+function CustomUI.SCT.ResetColorsToStockDefault(skipNotify)
     local v = Settings()
     for _, k in ipairs(CustomUI.SCT.COMBAT_TYPE_KEYS) do
         v.outgoing.color[k] = 1
@@ -549,6 +698,9 @@ function CustomUI.SCT.ResetColorsToStockDefault()
         if v.customColor.outgoing then
             v.customColor.outgoing[k] = nil
         end
+    end
+    if skipNotify ~= true then
+        notifyChange()
     end
 end
 
@@ -571,17 +723,21 @@ function CustomUI.SCT.GetMiddleCritSizeScale()
     return scales[math.ceil(n / 2)]
 end
 
--- SCT settings tab "Reset": stock colors, crit = shake, all text size sliders to center tick.
+-- SCT settings tab "Reset": restore stock-equivalent defaults so IsAtDefault() becomes true.
 function CustomUI.SCT.ApplySctSettingsTabFullReset()
-    CustomUI.SCT.ResetColorsToStockDefault()
+    CustomUI.SCT.ResetColorsToStockDefault(true)
     local v = Settings()
     v.critAnimV2 = true
-    v.critAnimShake = true
+    v.critAnimShake = false
     v.critAnimPulse = false
     v.critAnimFlash = false
-    v.critSizeScale = CustomUI.SCT.GetMiddleCritSizeScale()
+    v.critSizeScale = 1.0
     v.textFont = 1
     v.sctTextFontV2 = true
+    v.offsets = v.offsets or {}
+    v.offsets.outgoing = { x = 0, y = 0 }
+    v.offsets.incoming = { x = 0, y = 0 }
+    v.offsets.points = { x = 0, y = 0 }
     local mid = CustomUI.SCT.GetMiddleTextSizeScale()
     for _, k in ipairs(CustomUI.SCT.COMBAT_TYPE_KEYS) do
         v.outgoing.size[k] = mid
@@ -590,6 +746,7 @@ function CustomUI.SCT.ApplySctSettingsTabFullReset()
     for _, k in ipairs(CustomUI.SCT.POINT_TYPE_KEYS) do
         v.outgoing.size[k] = mid
     end
+    notifyChange()
 end
 
 ----------------------------------------------------------------
@@ -649,4 +806,82 @@ function CustomUI.SCT.CombatTypeIncomingEnabled(textType)
     if textType == GameData.CombatEvent.ABSORB           then return f.showAbsorb  ~= false end
     if textType == GameData.CombatEvent.IMMUNE           then return f.showImmune  ~= false end
     return true
+end
+
+----------------------------------------------------------------
+-- IsAtDefault() — true iff every SCT setting matches its stock-equivalent default.
+-- Recomputed on every Set* call for settings UI/reset state; handler ownership follows
+-- the component enabled state, not this value.
+----------------------------------------------------------------
+
+local function checkDefault(v)
+    if not v then return true end
+
+    for _, k in ipairs(CustomUI.SCT.COMBAT_TYPE_KEYS) do
+        local fk = "show"..k
+        if v.outgoing and v.outgoing.filters and v.outgoing.filters[fk] == false then return false end
+        if v.incoming and v.incoming.filters and v.incoming.filters[fk] == false then return false end
+    end
+    for _, k in ipairs(CustomUI.SCT.POINT_TYPE_KEYS) do
+        local fk = "show"..k
+        if v.outgoing and v.outgoing.filters and v.outgoing.filters[fk] == false then return false end
+    end
+
+    for _, k in ipairs(CustomUI.SCT.COMBAT_TYPE_KEYS) do
+        if v.outgoing and v.outgoing.size and (v.outgoing.size[k] or 1.0) ~= 1.0 then return false end
+        if v.incoming and v.incoming.size and (v.incoming.size[k] or 1.0) ~= 1.0 then return false end
+    end
+    for _, k in ipairs(CustomUI.SCT.POINT_TYPE_KEYS) do
+        if v.outgoing and v.outgoing.size and (v.outgoing.size[k] or 1.0) ~= 1.0 then return false end
+    end
+
+    for _, k in ipairs(CustomUI.SCT.COMBAT_TYPE_KEYS) do
+        if v.outgoing and v.outgoing.color and (v.outgoing.color[k] or 1) ~= 1 then return false end
+        if v.incoming and v.incoming.color and (v.incoming.color[k] or 1) ~= 1 then return false end
+    end
+    for _, k in ipairs(CustomUI.SCT.POINT_TYPE_KEYS) do
+        if v.outgoing and v.outgoing.color and (v.outgoing.color[k] or 1) ~= 1 then return false end
+    end
+
+    if v.customColor then
+        for _, k in ipairs(CustomUI.SCT.COMBAT_TYPE_KEYS) do
+            if v.customColor.outgoing and v.customColor.outgoing[k] then return false end
+            if v.customColor.incoming and v.customColor.incoming[k] then return false end
+        end
+        for _, k in ipairs(CustomUI.SCT.POINT_TYPE_KEYS) do
+            if v.customColor.outgoing and v.customColor.outgoing[k] then return false end
+        end
+    end
+
+    if v.critAnimShake == true  then return false end
+    if v.critAnimPulse == true  then return false end
+    if v.critAnimFlash == true  then return false end
+    if (v.critSizeScale or 1.0) ~= 1.0 then return false end
+    if (v.textFont or 1) ~= 1           then return false end
+    if v.showAbilityIcon == true        then return false end
+    if v.offsets then
+        if type(v.offsets.outgoing) == "table" and (v.offsets.outgoing.x or 0) ~= 0 then return false end
+        if type(v.offsets.incoming) == "table" and (v.offsets.incoming.x or 0) ~= 0 then return false end
+        if type(v.offsets.points) == "table" and (v.offsets.points.x or 0) ~= 0 then return false end
+        if type(v.offsets.outgoing) == "table" and (v.offsets.outgoing.y or 0) ~= 0 then return false end
+        if type(v.offsets.incoming) == "table" and (v.offsets.incoming.y or 0) ~= 0 then return false end
+        if type(v.offsets.points) == "table" and (v.offsets.points.y or 0) ~= 0 then return false end
+    end
+
+    return true
+end
+
+function CustomUI.SCT.IsAtDefault()
+    local v = CustomUI.Settings and CustomUI.Settings.SCT
+    local result = checkDefault(v)
+    CustomUI.SCT._isAtDefault = result
+    return result
+end
+
+-- Fires after every public setter. SCTController.ApplyMode is defined later; lazy call is safe.
+function notifyChange()
+    CustomUI.SCT._isAtDefault = nil
+    if CustomUI.SCT.ApplyMode then
+        CustomUI.SCT.ApplyMode()
+    end
 end

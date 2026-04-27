@@ -38,30 +38,18 @@
             <File name="Source/Shared/BuffTracker/BuffGroups.lua" />
             <File name="Source/Shared/BuffTracker/Blacklist.lua" />
             <File name="Source/Shared/BuffTracker/Whitelist.lua" />
-            <!-- LEGACY: BuffFilterSection.lua — buff filters for in-addon *Tab.xml only (see README). Remove with Tab bundle. -->
-            <File name="Source/Shared/BuffFilterSection.lua" />
             <File name="Source/Shared/UnitFrame/TargetFrame.lua" />
-            <!-- LEGACY: DEPRECATED in-addon settings shells (not in mod; use CustomUISettingsWindow /cui). See README. -->
-            <!-- <File name="Source/Settings/Controller/MiniSettingsWindowController.lua" /> -->
-            <!-- <File name="Source/Settings/View/MiniSettingsWindow.xml" /> -->
-            <!-- <File name="Source/Settings/View/SettingsWindow.xml" /> -->
-            <!-- <File name="Source/Settings/Controller/SettingsWindowController.lua" /> -->
             <File name="Source/Components/PlayerStatusWindow/Controller/PlayerStatusWindowController.lua" />
             <File name="Source/Components/PlayerStatusWindow/View/PlayerStatusWindow.xml" />
-            <!-- LEGACY BUNDLE: in-addon *Tab.xml (CustomUI.*.Tab in controllers). Shipped: CustomUISettingsWindow. See README. -->
-            <File name="Source/Components/PlayerStatusWindow/View/PlayerStatusWindowTab.xml" />
             <File name="Source/Components/TargetWindow/Controller/TargetWindowController.lua" />
             <File name="Source/Components/TargetWindow/View/TargetWindow.xml" />
-            <File name="Source/Components/TargetWindow/View/TargetWindowTab.xml" />
             <File name="Source/Components/PlayerStatusWindow/Controller/PlayerPetWindowController.lua" />
             <File name="Source/Components/PlayerStatusWindow/View/PlayerPetWindow.xml" />
             <File name="Source/Components/TargetHUD/Controller/TargetHUDController.lua" />
             <File name="Source/Components/TargetHUD/View/TargetHUD.xml" />
-            <File name="Source/Components/TargetHUD/View/TargetHUDTab.xml" />
             <File name="Source/Components/GroupWindow/Controller/GroupWindowController.lua" />
             <File name="Source/Components/GroupWindow/Controller/GroupWindowTestHarness.lua" />
             <File name="Source/Components/GroupWindow/View/GroupWindow.xml" />
-            <File name="Source/Components/GroupWindow/View/GroupWindowTab.xml" />
             <File name="Source/Components/UnitFrames/Controller/UnitFramesModel.lua" />
             <File name="Source/Components/UnitFrames/Controller/UnitFramesEvents.lua" />
             <File name="Source/Components/UnitFrames/Controller/UnitFramesRenderer.lua" />
@@ -69,18 +57,21 @@
             <File name="Source/Components/UnitFrames/Controller/Adapters/ScenarioFloatingAdapter.lua" />
             <File name="Source/Components/UnitFrames/Controller/UnitFramesController.lua" />
             <File name="Source/Components/UnitFrames/View/UnitFrames.xml" />
-            <File name="Source/Components/UnitFrames/View/UnitFramesTab.xml" />
             <File name="Source/Components/GroupIcons/Controller/GroupIconsController.lua" />
             <File name="Source/Components/GroupIcons/View/GroupIcons.xml" />
-            <File name="Source/Components/GroupIcons/View/GroupIconsTab.xml" />
-            <!-- /LEGACY BUNDLE: in-addon *Tab.xml -->
+            <!-- SCT component (v2 load order) -->
             <File name="Source/Components/SCT/Controller/SCTSettings.lua" />
             <File name="Source/Components/SCT/View/CustomUI_EventTextLabel.xml" />
             <File name="Source/Components/SCT/View/SCTAbilityIcon.xml" />
-            <File name="Source/Components/SCT/Controller/SCTEventText.lua" />
+            <File name="Source/Components/SCT/Controller/SCTAnim.lua" />
+            <File name="Source/Components/SCT/Controller/SCTOverrides.lua" />
             <File name="Source/Components/SCT/Controller/SCTHandlers.lua" />
             <File name="Source/Components/SCT/Controller/SCTController.lua" />
             <File name="Source/Components/SCT/View/SCT.xml" />
+            <!-- LEGACY (v2 SCT, 2026-04-25): superseded by SCTOverrides.lua. Remove in Step 5b. -->
+            <!-- <File name="Source/Components/SCT/Controller/SCTAnchors.lua" /> -->
+            <!-- <File name="Source/Components/SCT/Controller/SCTEntry.lua" /> -->
+            <!-- <File name="Source/Components/SCT/Controller/SCTTracker.lua" /> -->
         </Files>
         <OnInitialize>
             <!-- Component root windows: instantiated in Source/CustomUI.lua (EnsureRootWindowInstances) -->

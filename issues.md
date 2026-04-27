@@ -57,8 +57,8 @@ Notes: consolidated and refreshed after a focused code review of `Source/`, `Cus
     - Suggested fix: remove or wire up in the view.
 
 9. **Duplicate `BUFF_FILTER_DEFAULTS` tables**  
-    - Evidence: identical defaults in [PlayerStatusWindowController.lua](Source/Components/PlayerStatusWindow/Controller/PlayerStatusWindowController.lua) and [TargetWindowController.lua](Source/Components/TargetWindow/Controller/TargetWindowController.lua) (~561+ and ~508+). [BuffFilterSection.lua](Source/Shared/BuffFilterSection.lua) only handles *labels and checkbox UI* (legacy tabs); it does **not** own default filter values.  
-    - Suggested fix: e.g. `CustomUI.BuffFilterSection.DefaultFilterTable()` in shared code, used by both controllers and settings merge logic.
+    - Evidence: identical defaults in [PlayerStatusWindowController.lua](Source/Components/PlayerStatusWindow/Controller/PlayerStatusWindowController.lua) and [TargetWindowController.lua](Source/Components/TargetWindow/Controller/TargetWindowController.lua) (~561+ and ~508+). The old `BuffFilterSection.lua` legacy settings helper was removed and did not own default filter values.  
+    - Suggested fix: move shared buff-filter defaults into a current shared settings helper, used by both controllers and settings merge logic.
 
 10. **`m_refreshing` in SCT settings tab (wrong file in older notes)**  
     - Evidence: [CustomUISettingsWindow/source/CustomUISettingsWindowTabSCT.lua](CustomUISettingsWindow/source/CustomUISettingsWindowTabSCT.lua) — `RefreshSctControls` sets `m_refreshing = true`, runs `SetupRow` for every row in a plain loop (~407–410), then clears the flag. Other sync functions wrap work in `pcall` (e.g. `SyncSctTextFontCombo`). If `SetupRow` throws, `m_refreshing` can stay `true` and block handlers that guard on it (~720+).  
@@ -94,7 +94,7 @@ Last updated: 2026-04-23.
 
 - **`EA_System_EventTracker:Update` expiry** (~1092–1101 in [SCTEventText.lua](Source/Components/SCT/Controller/SCTEventText.lua)): expiry uses `DEFAULT_FRIENDLY_EVENT_ANIMATION_PARAMETERS.maximumDisplayTime` for displayed event lifetime, not a per-tracker or per-`animData` value. If friendly/hostile point-gain parameters diverge, behavior may be wrong.
 
-- **Crit / loading**: `BeginLoading` sets `loading` so `EA_System_EventText.Update` returns early (~1379–1383); crit trackers are not updated during load, nor cleared at load start. `Deactivate()` clears `EventTrackersCrit`. If SCT stays enabled across a load, old crit state may resume after load. Consider clearing crit trackers in `BeginLoading` (mirror `Deactivate`’s crit cleanup) if stale floating text is observed.
+- **Crit / loading**: `BeginLoading` sets `loading` so `EA_System_EventText.Update` returns early (~1379–1383); crit trackers are not updated during load, nor cleared at load start. `CustomUI.SCT.Disable` / `DestroyAllTrackers` tear down trackers. If SCT stays enabled across a load, old crit state may resume after load. Consider clearing crit trackers in `BeginLoading` (same as disable teardown) if stale floating text is observed.
 
 - **`CombatEventText` built at file load** (~26–37): indexes `GameData.CombatEvent` and `StringTables`. If the table is not ready, entries can be `nil` until re-init. Defer to `Initialize()` or guard.
 
@@ -106,7 +106,7 @@ Last updated: 2026-04-23.
 
 - **Filter / delegate duplication in `_AddCombatEventText`**: some branches read `filters` directly; others use helper functions that re-read settings — hard to read; could unify.
 
-- **Crit anchor sequence** (`CritTrackerSeq` / crit lane): monotonic counters on long sessions — low risk; reset on `Deactivate` if needed.
+- **Crit anchor sequence** (`CritTrackerSeq` / crit lane): monotonic counters on long sessions — low risk; reset on component disable / `DestroyAllTrackers` if needed.
 
 - **Anchor/window churn** for per-target anchors — possible future pooling.
 
@@ -152,7 +152,7 @@ Last updated: 2026-04-23.
 ## Resolved (since last sweep)
 
 - **Manifest `<CreateWindow>` / component pattern** — 2026-04-23. Pre-creates moved from [CustomUI.mod](CustomUI.mod) to `EnsureRootWindowInstances()` in [Source/CustomUI.lua](Source/CustomUI.lua); `OnInitialize` now only calls `CustomUI.Initialize`.  
-- **Global namespace (ListBox + debug `d`)** — 2026-04-24. Deprecated in-addon list data uses `CustomUI.MiniSettingsList` (see [MiniSettingsWindow.xml](Source/Settings/View/MiniSettingsWindow.xml), not mod-loaded); optional logging via `CustomUI.GetClientDebugLog()` in [CustomUI.lua](Source/CustomUI.lua), [SCTEventText.lua](Source/Components/SCT/Controller/SCTEventText.lua), controllers, and [CustomUISettingsWindowTabSCT.lua](CustomUISettingsWindow/source/CustomUISettingsWindowTabSCT.lua) (`EmitDebugLine`).  
+- **Legacy in-addon settings UI removed** — 2026-04-26. Deleted `Source/Settings/`, component `View/*Tab.xml` files, `CustomUI.<Name>.Tab` controller blocks, and `Source/Shared/BuffFilterSection.lua`; shipped settings live in [CustomUISettingsWindow](CustomUISettingsWindow/).  
 - **GroupWindow: group member pet frames not implemented — code removed** — 2026-04-23. Removed `GroupPetUnitFrame` / `c_ENABLE_GROUP_PET_WINDOWS` paths, pet-only state, and no-op `LogPetStateChange` / `LogRosterChanges` from [GroupWindowController.lua](Source/Components/GroupWindow/Controller/GroupWindowController.lua); dropped harness `Pet` stubs in [GroupWindowTestHarness.lua](Source/Components/GroupWindow/Controller/GroupWindowTestHarness.lua). Player pet window (`PlayerPetWindow`) is unchanged.  
 - **LibConfig / in-addon config GUI experiment removed** — 2026-04-23. Dropped `LibStub("LibConfig")`, `CustomUI_config`, and `CustomUI.LibConfig` from [CustomUI.lua](Source/CustomUI.lua); removed commented LibConfig and `CustomUIConfigSCTListWindow` lines from [CustomUI.mod](CustomUI.mod). Settings UI is the standalone [CustomUISettingsWindow](CustomUISettingsWindow/) addon.  
 - **`CustomUISettingsWindowTabPlayer` buff checkboxes had no effect** — fixed 2026-04-20. `BUFF_CHECKBOX_KEYS` keys corrected (dropped `Button` suffix); pressed state read from child button name.  

@@ -17,9 +17,7 @@ CustomUISettingsWindowTabbed.TABS_MAX_NUMBER	= 7
 local c_SCT_COLOR_PICKER_DEFAULT_BUTTON = "CustomUISettingsWindowTabbedSctColorPickerHostSctColorPickerDefaultButton"
 
 local function SctSetDefaultColorButtonCaption()
-    pcall(function()
-        ButtonSetText( c_SCT_COLOR_PICKER_DEFAULT_BUTTON, L"Default" )
-    end)
+    ButtonSetText( c_SCT_COLOR_PICKER_DEFAULT_BUTTON, L"Default" )
 end
 
 CustomUISettingsWindowTabbed.SelectedTab		= CustomUISettingsWindowTabbed.TABS_PLAYER

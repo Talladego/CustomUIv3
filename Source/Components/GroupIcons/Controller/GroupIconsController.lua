@@ -12,11 +12,6 @@ if not CustomUI.GroupIcons then
     CustomUI.GroupIcons = {}
 end
 
-local function Dbg(msg)
-    local dbg = CustomUI.GetClientDebugLog()
-    if type(dbg) == "function" then dbg(msg) end
-end
-
 ----------------------------------------------------------------
 -- Constants
 ----------------------------------------------------------------
@@ -233,7 +228,6 @@ function GroupIconsComponent:Initialize()
 end
 
 function GroupIconsComponent:Enable()
-    Dbg("[CustomUI.GroupIcons] Enable start.")
     WindowRegisterEventHandler("Root", SystemData.Events.GROUP_UPDATED,           "CustomUI.GroupIcons.OnGroupUpdated")
     WindowRegisterEventHandler("Root", SystemData.Events.GROUP_PLAYER_ADDED,      "CustomUI.GroupIcons.OnGroupUpdated")
     WindowRegisterEventHandler("Root", SystemData.Events.BATTLEGROUP_UPDATED,     "CustomUI.GroupIcons.OnBattlegroupUpdated")
@@ -242,7 +236,6 @@ function GroupIconsComponent:Enable()
     WindowRegisterEventHandler("Root", SystemData.Events.SCENARIO_PLAYERS_LIST_GROUPS_UPDATED, "CustomUI.GroupIcons.OnScenarioUpdated")
     WindowRegisterEventHandler("Root", SystemData.Events.PLAYER_ZONE_CHANGED,     "CustomUI.GroupIcons.OnZoneChanged")
     RefreshAll()
-    Dbg("[CustomUI.GroupIcons] Enable complete.")
     return true
 end
 
@@ -262,24 +255,3 @@ function GroupIconsComponent:Shutdown()
 end
 
 CustomUI.RegisterComponent("GroupIcons", GroupIconsComponent)
-
--- ============================================================================
--- LEGACY (removal candidate) — in-addon settings: View/GroupIconsTab.xml, CustomUI.GroupIcons.Tab
--- Replaced by: CustomUISettingsWindow. Remove with: *Tab in CustomUI.mod, this block (no BuffFilterSection).
--- See README "Legacy code".
--- ============================================================================
-
-CustomUI.GroupIcons.Tab = {}
-
-function CustomUI.GroupIcons.Tab.OnShown(contentName)
-    ButtonSetPressedFlag(contentName .. "EnableCheckBox", CustomUI.IsComponentEnabled("GroupIcons"))
-    LabelSetText(contentName .. "EnableLabel", L"Enabled")
-end
-
-function CustomUI.GroupIcons.Tab.OnToggleEnable()
-    local newState = not CustomUI.IsComponentEnabled("GroupIcons")
-    CustomUI.SetComponentEnabled("GroupIcons", newState)
-    ButtonSetPressedFlag(SystemData.ActiveWindow.name, newState)
-end
-
---CustomUI.SettingsWindow.RegisterTab("GroupIcons", "CustomUIGroupIconsTab", GroupIconsComponent, CustomUI.GroupIcons.Tab.OnShown)  -- LEGACY: remove with Tab block above

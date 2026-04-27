@@ -1,13 +1,49 @@
 <Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../../../Interface.xsd">
     <Windows>
 
-        <Window name="CustomUIBGMember" popable="false">
+        <!-- ========================================================= -->
+        <!-- UnitFrames HP bar art: match EA_BattlegroupHUD slices      -->
+        <!-- Foreground = current HP (green), Background = missing HP  -->
+        <!-- ========================================================= -->
+
+        <HorizontalResizeImage name="CustomUIUnitFramesHPBarFilled" texture="EA_HUD_01" slice="Player-Health" alpha="1.0" textureScale="2.75">
+            <Size>
+                <AbsPoint x="73" y="55" />
+            </Size>
+            <Sizes left="0" middle="73" right="0" />
+            <TexSlices>
+                <Middle id="Player-Health" />
+            </TexSlices>
+        </HorizontalResizeImage>
+
+        <HorizontalResizeImage name="CustomUIUnitFramesHPBarBackground" texture="EA_HUD_01" slice="Enemy-Health" alpha="1.0" textureScale="2.75">
+            <Size>
+                <AbsPoint x="73" y="55" />
+            </Size>
+            <Sizes left="0" middle="73" right="0" />
+            <TexSlices>
+                <Middle id="Enemy-Health" />
+            </TexSlices>
+        </HorizontalResizeImage>
+
+        <StatusBar name="CustomUIUnitFramesHPBar" layer="background"
+                   background="CustomUIUnitFramesHPBarBackground"
+                   foreground="CustomUIUnitFramesHPBarFilled"
+                   reverseFill="false" interpolate="true">
+            <Size>
+                <AbsPoint x="135" y="55" />
+            </Size>
+        </StatusBar>
+
+        <Window name="CustomUIBGMember" popable="false" handleinput="true">
             <Size>
                 <AbsPoint x="139" y="55"/>
             </Size>
             <EventHandlers>
                 <EventHandler event="OnLButtonUp" function="CustomUI.UnitFrames.OnMemberLeftClick" />
                 <EventHandler event="OnRButtonUp" function="CustomUI.UnitFrames.OnMemberRightClick" />
+                <EventHandler event="OnMouseOver" function="CustomUI.UnitFrames.OnMemberMouseOver" />
+                <EventHandler event="OnMouseOverEnd" function="CustomUI.UnitFrames.OnMemberMouseOverEnd" />
             </EventHandlers>
             <Windows>
                 <FullResizeImage name="$parentBackground" inherits="EA_FullResizeImage_TintableSolidBackground" alpha="0.25">
@@ -55,7 +91,7 @@
                     </Anchors>
                 </Label>
 
-                <StatusBar name="$parentHPBar" inherits="UnitFrameFriendlyHealthStatusSmallBar" popable="false" layer="background" interpolate="true">
+                <StatusBar name="$parentHPBar" inherits="CustomUIUnitFramesHPBar" popable="false" layer="background" interpolate="true">
                     <Size>
                         <AbsPoint x="135" y="55" />
                     </Size>
@@ -90,6 +126,56 @@
                         <EventHandler event="OnMouseOver" function="CustomUI.UnitFrames.OnMouseOverCareerIcon" />
                     </EventHandlers>
                 </DynamicImage>
+
+                <!-- Target highlight: same approach as EA_BattlegroupHUD (ring frame) -->
+                <Window name="$parentTargetBorder" layer="overlay" handleinput="false" show="false">
+                    <Anchors>
+                        <Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+                            <AbsPoint x="0" y="0"/>
+                        </Anchor>
+                        <Anchor point="bottomright" relativePoint="bottomright" relativeTo="$parent">
+                            <AbsPoint x="0" y="0"/>
+                        </Anchor>
+                    </Anchors>
+                    <Windows>
+                        <DynamicImage name="$parentRing" texture="EA_HUD_01" slice="WarbandUnitFrame-Frame" layer="overlay" alpha="0.95" handleinput="false">
+                            <Size>
+                                <AbsPoint x="139" y="55"/>
+                            </Size>
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+                                    <AbsPoint x="0" y="0"/>
+                                </Anchor>
+                            </Anchors>
+                            <TintColor r="255" g="215" b="0" />
+                        </DynamicImage>
+                    </Windows>
+                </Window>
+
+                <!-- Mouseover highlight: lightweight ring frame -->
+                <Window name="$parentMouseOverBorder" layer="overlay" handleinput="false" show="false">
+                    <Anchors>
+                        <Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+                            <AbsPoint x="0" y="0"/>
+                        </Anchor>
+                        <Anchor point="bottomright" relativePoint="bottomright" relativeTo="$parent">
+                            <AbsPoint x="0" y="0"/>
+                        </Anchor>
+                    </Anchors>
+                    <Windows>
+                        <DynamicImage name="$parentRing" texture="EA_HUD_01" slice="WarbandUnitFrame-Frame" layer="overlay" alpha="0.55" handleinput="false">
+                            <Size>
+                                <AbsPoint x="139" y="55"/>
+                            </Size>
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+                                    <AbsPoint x="0" y="0"/>
+                                </Anchor>
+                            </Anchors>
+                            <TintColor r="255" g="255" b="255" />
+                        </DynamicImage>
+                    </Windows>
+                </Window>
             </Windows>
         </Window>
 

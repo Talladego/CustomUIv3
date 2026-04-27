@@ -586,33 +586,4 @@ function CustomUI.PlayerStatusWindow.ApplyBuffSettings()
     tracker:SetFilter(cfg)
 end
 
--- ============================================================================
--- LEGACY (removal candidate) — in-addon settings: View/PlayerStatusWindowTab.xml, CustomUI.*.Tab below
--- Replaced by: CustomUISettingsWindow. Remove with: *Tab.xml + File in CustomUI.mod, this block, then
---   BuffFilterSection.lua if no other component still uses it. See README "Legacy code".
--- ============================================================================
-
-CustomUI.PlayerStatusWindow.Tab = {}
-
-function CustomUI.PlayerStatusWindow.Tab.OnShown(contentName)
-    ButtonSetPressedFlag(contentName .. "EnableCheckBox", CustomUI.IsComponentEnabled("PlayerStatusWindow"))
-    LabelSetText(contentName .. "EnableLabel", L"Enabled")
-    CustomUI.BuffFilterSection.SetupLabels(contentName)
-    CustomUI.BuffFilterSection.RefreshControls(contentName, CustomUI.PlayerStatusWindow.GetSettings().buffs)
-end
-
-function CustomUI.PlayerStatusWindow.Tab.OnToggleEnable()
-    local newState = not CustomUI.IsComponentEnabled("PlayerStatusWindow")
-    CustomUI.SetComponentEnabled("PlayerStatusWindow", newState)
-    ButtonSetPressedFlag(SystemData.ActiveWindow.name, newState)
-end
-
-function CustomUI.PlayerStatusWindow.Tab.OnFilterChanged()
-    CustomUI.BuffFilterSection.OnFilterChanged(
-        function() return CustomUI.PlayerStatusWindow.GetSettings().buffs end,
-        function() CustomUI.PlayerStatusWindow.ApplyBuffSettings() end
-    )
-end
-
---CustomUI.SettingsWindow.RegisterTab("Player", "CustomUIPlayerStatusWindowTab", PlayerStatusWindowComponent, CustomUI.PlayerStatusWindow.Tab.OnShown)  -- LEGACY: remove with Tab block above
 CustomUI.RegisterComponent( "PlayerStatusWindow", PlayerStatusWindowComponent )

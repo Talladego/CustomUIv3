@@ -17,7 +17,6 @@ end
 
 local UnitFrames = CustomUI.UnitFrames
 UnitFrames.WindowSettings = UnitFrames.WindowSettings or {}
-UnitFrames.WindowSettings.scenarioVerboseDebug = UnitFrames.WindowSettings.scenarioVerboseDebug == true
 
 local c_ROOT_WINDOW_NAME = "CustomUIUnitFramesRoot"
 local c_MAX_GROUP_WINDOWS = 6
@@ -38,7 +37,161 @@ local m_stockOnMenuClickSetBackgroundOpacity = nil
 local m_stockOnOpacitySlide = nil
 local m_eventsRegistered = false
 local m_lastVisibilityMode = nil
-local m_lastScenarioGroupDebugState = {}
+
+-- Forward decls (used by target-highlight helpers below).
+local IsWarbandModeActive
+local MemberWindowName
+local TryGetWarbandMember
+local GetGroupMemberIndicesFromWindowName
+
+-- Target highlight state (friendly target only; same classification string as EA_BattlegroupHUD).
+local c_FRIENDLY_TARGET = "selffriendlytarget"
+local m_currentTargetId = 0
+local m_currentTargetName = nil
+local m_mouseOverMemberWindow = nil
+
+local function ToWString(v)
+    if v == nil then
+        return nil
+    end
+    if type(v) == "string" then
+        return towstring(v)
+    end
+    return v
+end
+
+local function ToLuaString(v)
+    if v == nil then
+        return nil
+    end
+
+    return tostring(v)
+end
+
+local function NamesMatch(memberName, targetName)
+    local memberText = ToLuaString(memberName)
+    local targetText = ToLuaString(targetName)
+    if memberText == nil or targetText == nil or memberText == "" or targetText == "" then
+        return false
+    end
+
+    if memberText == targetText then
+        return true
+    end
+
+    -- Stock WStringsCompareIgnoreGrammer strips a leading grammar marker but uses
+    -- '<' internally, which can crash on mixed string/wstring values on this client.
+    return string.sub(memberText, 2) == string.sub(targetText, 2)
+end
+
+local function IsMemberCurrentFriendlyTarget(member)
+    if member == nil then
+        return false
+    end
+    local currentTargetId = tonumber(m_currentTargetId)
+    local memberWorldObjNum = tonumber(member.worldObjNum)
+    if currentTargetId ~= nil and currentTargetId ~= 0 and memberWorldObjNum ~= nil and memberWorldObjNum ~= 0 and memberWorldObjNum == currentTargetId then
+        return true
+    end
+    local memberName = ToWString(member and member.name)
+    if m_currentTargetName ~= nil and memberName ~= nil and memberName ~= L"" then
+        local targetName = ToWString(m_currentTargetName)
+        if memberName == nil or targetName == nil then
+            return false
+        end
+        return NamesMatch(memberName, targetName)
+    end
+    return false
+end
+
+local function RefreshTargetBorders()
+    if not m_enabled then
+        return
+    end
+    if not IsWarbandModeActive() then
+        return
+    end
+    for groupIndex = 1, c_WARBAND_GROUPS do
+        for memberIndex = 1, c_GROUP_MEMBERS do
+            local memberWindow = MemberWindowName(groupIndex, memberIndex)
+            local border = memberWindow .. "TargetBorder"
+            if DoesWindowExist(border) then
+                local member = TryGetWarbandMember(groupIndex, memberIndex)
+                WindowSetShowing(border, IsMemberCurrentFriendlyTarget(member))
+            end
+        end
+    end
+end
+
+local function SetMouseOverBorderShowing(memberWindow, show)
+    local border = tostring(memberWindow or "") .. "MouseOverBorder"
+    if DoesWindowExist(border) then
+        WindowSetShowing(border, show == true)
+    end
+end
+
+local function RefreshMouseOverBorders()
+    if not m_enabled then
+        m_mouseOverMemberWindow = nil
+    end
+
+    for groupIndex = 1, c_MAX_GROUP_WINDOWS do
+        for memberIndex = 1, c_GROUP_MEMBERS do
+            local memberWindow = MemberWindowName(groupIndex, memberIndex)
+            SetMouseOverBorderShowing(memberWindow, m_mouseOverMemberWindow == memberWindow)
+        end
+    end
+end
+
+function UnitFrames.OnMemberMouseOver()
+    local groupIndex, memberIndex = GetGroupMemberIndicesFromWindowName(SystemData.ActiveWindow.name)
+    if groupIndex == nil or memberIndex == nil then
+        return
+    end
+
+    local memberWindow = MemberWindowName(groupIndex, memberIndex)
+    if m_mouseOverMemberWindow ~= memberWindow then
+        if m_mouseOverMemberWindow ~= nil then
+            SetMouseOverBorderShowing(m_mouseOverMemberWindow, false)
+        end
+        m_mouseOverMemberWindow = memberWindow
+    end
+
+    SetMouseOverBorderShowing(memberWindow, true)
+end
+
+function UnitFrames.OnMemberMouseOverEnd()
+    local groupIndex, memberIndex = GetGroupMemberIndicesFromWindowName(SystemData.ActiveWindow.name)
+    if groupIndex ~= nil and memberIndex ~= nil then
+        local memberWindow = MemberWindowName(groupIndex, memberIndex)
+        SetMouseOverBorderShowing(memberWindow, false)
+        if m_mouseOverMemberWindow == memberWindow then
+            m_mouseOverMemberWindow = nil
+        end
+        return
+    end
+
+    if m_mouseOverMemberWindow ~= nil then
+        SetMouseOverBorderShowing(m_mouseOverMemberWindow, false)
+        m_mouseOverMemberWindow = nil
+    end
+end
+
+function UnitFrames.OnTargetUpdated(targetClassification, targetId, targetType)
+    if targetClassification ~= c_FRIENDLY_TARGET then
+        return
+    end
+    m_currentTargetId = tonumber(targetId) or 0
+    m_currentTargetName = nil
+    if type(TargetInfo) == "table" and type(TargetInfo.UnitName) == "function" then
+        local nm = TargetInfo:UnitName(c_FRIENDLY_TARGET)
+        if type(nm) == "string" then
+            nm = towstring(nm)
+        end
+        m_currentTargetName = nm
+    end
+    RefreshTargetBorders()
+end
 
 local function IsScenarioModeActive()
     return GameData ~= nil
@@ -46,7 +199,7 @@ local function IsScenarioModeActive()
         and (GameData.Player.isInScenario == true or GameData.Player.isInSiege == true)
 end
 
-local function IsWarbandModeActive()
+IsWarbandModeActive = function()
     if IsScenarioModeActive() then
         return false
     end
@@ -62,7 +215,7 @@ local function GroupWindowName(groupIndex)
     return "CustomUIUnitFramesGroup" .. groupIndex .. "Window"
 end
 
-local function MemberWindowName(groupIndex, memberIndex)
+MemberWindowName = function(groupIndex, memberIndex)
     return GroupWindowName(groupIndex) .. "Member" .. memberIndex
 end
 
@@ -72,27 +225,6 @@ local function IsLayoutEditorReady()
         and type(LayoutEditor.UserShow) == "function"
         and type(LayoutEditor.UserHide) == "function"
         and type(LayoutEditor.windowsList) == "table"
-end
-
-local function DebugLog(message)
-    local dbg = CustomUI.GetClientDebugLog()
-    if type(dbg) ~= "function" then
-        return
-    end
-
-    dbg("[CustomUI.UnitFrames] " .. tostring(message))
-end
-
-local function IsScenarioVerboseDebugEnabled()
-    return UnitFrames.WindowSettings.scenarioVerboseDebug == true
-end
-
-local function ScenarioDebugLog(message)
-    if not IsScenarioVerboseDebugEnabled() then
-        return
-    end
-
-    DebugLog("[Scenario] " .. tostring(message))
 end
 
 local function ForEachWindow(windowList, callback)
@@ -376,11 +508,12 @@ end
 local function ApplyStatusSettings(memberWindow, color, alpha, showBars)
     LabelSetTextColor(memberWindow .. "LabelHealth", color.r, color.g, color.b)
     WindowSetFontAlpha(memberWindow .. "LabelHealth", alpha)
-    WindowSetShowing(memberWindow .. "HPBar", showBars)
-    WindowSetShowing(memberWindow .. "APBar", showBars)
+    -- UnitFrames: always show HP/AP bars (no fade/hide on full bars).
+    WindowSetShowing(memberWindow .. "HPBar", true)
+    WindowSetShowing(memberWindow .. "APBar", true)
 end
 
-local function TryGetWarbandMember(groupIndex, memberIndex)
+TryGetWarbandMember = function(groupIndex, memberIndex)
     if type(PartyUtils) ~= "table" or type(PartyUtils.GetWarbandMember) ~= "function" then
         return nil
     end
@@ -400,7 +533,7 @@ local function GetMemberFromCareerIconWindow(windowName)
     return TryGetWarbandMember(groupIndex, memberIndex)
 end
 
-local function GetGroupMemberIndicesFromWindowName(windowName)
+GetGroupMemberIndicesFromWindowName = function(windowName)
     local groupIndex, memberIndex = string.match(windowName or "", "^CustomUIUnitFramesGroup(%d+)WindowMember(%d+)")
     groupIndex = tonumber(groupIndex)
     memberIndex = tonumber(memberIndex)
@@ -413,38 +546,44 @@ local function GetGroupMemberIndicesFromWindowName(windowName)
 end
 
 local function SetMemberTextAndState(memberWindow, member)
-    LabelSetText(memberWindow .. "LabelName", member.name or L"")
+    local memberName = ToWString(member and member.name) or L""
+    LabelSetText(memberWindow .. "LabelName", memberName)
 
     local healthText = towstring(tonumber(member.healthPercent) or 0) .. L"%"
     local hp = tonumber(member.healthPercent) or 0
 
     if member.online ~= true then
         healthText = GetString(StringTables.Default.LABEL_PARTY_MEMBER_OFFLINE)
-        ApplyStatusSettings(memberWindow, DefaultColor.HEALTH_TEXT_DEAD, 0.5, false)
+        ApplyStatusSettings(memberWindow, DefaultColor.HEALTH_TEXT_DEAD, 0.5, true)
     elseif member.isDistant then
         healthText = GetString(StringTables.Default.LABEL_PARTY_MEMBER_IS_DISTANT)
-        ApplyStatusSettings(memberWindow, DefaultColor.HEALTH_TEXT_DEAD, 0.5, false)
+        ApplyStatusSettings(memberWindow, DefaultColor.HEALTH_TEXT_DEAD, 0.5, true)
     elseif hp >= 100 and (tonumber(member.actionPointPercent) or 0) >= 100 then
-        ApplyStatusSettings(memberWindow, DefaultColor.HEALTH_TEXT_FULL, 0.5, false)
+        ApplyStatusSettings(memberWindow, DefaultColor.HEALTH_TEXT_FULL, 1.0, true)
     elseif hp > 0 then
         ApplyStatusSettings(memberWindow, DefaultColor.HEALTH_TEXT_NOT_FULL, 1.0, true)
     else
         healthText = GetString(StringTables.Default.LABEL_PLAYER_DEAD_ALLCAPS)
-        ApplyStatusSettings(memberWindow, DefaultColor.HEALTH_TEXT_DEAD, 1.0, false)
+        ApplyStatusSettings(memberWindow, DefaultColor.HEALTH_TEXT_DEAD, 1.0, true)
     end
 
     LabelSetText(memberWindow .. "LabelHealth", healthText)
-    WindowSetGameActionData(memberWindow, GameData.PlayerActions.SET_TARGET, 0, member.name)
+    WindowSetGameActionData(memberWindow, GameData.PlayerActions.SET_TARGET, 0, memberName)
+
+    if DoesWindowExist(memberWindow .. "TargetBorder") then
+        WindowSetShowing(memberWindow .. "TargetBorder", IsMemberCurrentFriendlyTarget(member))
+    end
 
     local isDead = hp <= 0 and member.online == true
     WindowSetShowing(memberWindow .. "DeathIcon", isDead)
 end
 
 local function SetScenarioMemberTextAndState(memberWindow, player)
-    LabelSetText(memberWindow .. "LabelName", player.name or L"")
+    local playerName = ToWString(player and player.name) or L""
+    LabelSetText(memberWindow .. "LabelName", playerName)
     LabelSetText(memberWindow .. "LabelHealth", towstring(tonumber(player.health) or 0) .. L"%")
 
-    WindowSetGameActionData(memberWindow, GameData.PlayerActions.SET_TARGET, 0, player.name)
+    WindowSetGameActionData(memberWindow, GameData.PlayerActions.SET_TARGET, 0, playerName)
 
     local isDead = (tonumber(player.health) or 0) <= 0
     WindowSetShowing(memberWindow .. "DeathIcon", isDead)
@@ -518,7 +657,8 @@ local function UpdateWarbandGroup(groupIndex)
 
     for memberIndex = 1, c_GROUP_MEMBERS do
         local member = PartyUtils.GetWarbandMember(groupIndex, memberIndex)
-        if member ~= nil and member.name ~= nil and member.name ~= L"" then
+        local memberName = ToWString(member and member.name)
+        if member ~= nil and memberName ~= nil and memberName ~= L"" then
             SetMemberWindowShowing(groupIndex, memberIndex, true)
             UpdateWarbandMember(groupIndex, memberIndex, member)
 
@@ -570,8 +710,6 @@ local function BuildScenarioGroupMap()
         end
     end
 
-    ScenarioDebugLog("BuildScenarioGroupMap players=" .. tostring(table.getn(playerGroups)) .. " invalid=" .. tostring(invalidEntries))
-
     return groups
 end
 
@@ -589,7 +727,8 @@ local function UpdateScenarioGroup(groupIndex, groups)
         local player = groupSlots[memberIndex]
         local memberWindow = MemberWindowName(groupIndex, memberIndex)
 
-        if player ~= nil and player.name ~= nil and player.name ~= L"" then
+        local playerName = ToWString(player and player.name)
+        if player ~= nil and playerName ~= nil and playerName ~= L"" then
             hasMembers = true
             SetMemberWindowShowing(groupIndex, memberIndex, true)
             SetScenarioMemberTextAndState(memberWindow, player)
@@ -624,41 +763,10 @@ local function UpdateScenarioGroup(groupIndex, groups)
     else
         WindowSetShowing(groupWindow .. "MainAssistIcon", false)
     end
-
-    if IsScenarioVerboseDebugEnabled() then
-        local memberCount = 0
-        for memberIndex = 1, c_GROUP_MEMBERS do
-            if groupSlots[memberIndex] ~= nil and groupSlots[memberIndex].name ~= nil and groupSlots[memberIndex].name ~= L"" then
-                memberCount = memberCount + 1
-            end
-        end
-
-        local summary = "Group " .. tostring(groupIndex)
-            .. " members=" .. tostring(memberCount)
-            .. " toggle=" .. tostring(toggleVisible)
-            .. " show=" .. tostring(showGroup)
-            .. " mainAssistSlot=" .. tostring(mainAssistSlot or 0)
-
-        if m_lastScenarioGroupDebugState[groupIndex] ~= summary then
-            m_lastScenarioGroupDebugState[groupIndex] = summary
-            ScenarioDebugLog(summary)
-        end
-    end
 end
 
 local function ShowScenarioDualModeWindows()
     local groups = BuildScenarioGroupMap()
-    local mappedMembers = 0
-
-    for groupIndex = 1, c_MAX_GROUP_WINDOWS do
-        for memberIndex = 1, c_GROUP_MEMBERS do
-            if groups[groupIndex][memberIndex] ~= nil and groups[groupIndex][memberIndex].name ~= nil and groups[groupIndex][memberIndex].name ~= L"" then
-                mappedMembers = mappedMembers + 1
-            end
-        end
-    end
-
-    ScenarioDebugLog("Render begin mappedMembers=" .. tostring(mappedMembers))
 
     for groupIndex = 1, c_MAX_GROUP_WINDOWS do
         UpdateScenarioGroup(groupIndex, groups)
@@ -678,12 +786,7 @@ local function ApplyModeVisibility()
     end
 
     if currentMode ~= m_lastVisibilityMode then
-        DebugLog("Mode transition: " .. tostring(m_lastVisibilityMode or "none") .. " -> " .. tostring(currentMode))
         m_lastVisibilityMode = currentMode
-
-        if currentMode ~= "scenario" then
-            m_lastScenarioGroupDebugState = {}
-        end
     end
 
     HideAllStockWindows()
@@ -708,10 +811,6 @@ local function HideCustomShowStock()
 end
 
 function UnitFrames.OnVisibilityStateChanged()
-    if IsScenarioVerboseDebugEnabled() and IsScenarioModeActive() then
-        ScenarioDebugLog("OnVisibilityStateChanged event=" .. tostring(SystemData.EventType))
-    end
-
     ApplyModeVisibility()
 end
 
@@ -736,7 +835,7 @@ function UnitFrames.OnMouseOverCareerIcon()
     local levelString = PartyUtils.GetLevelText(member.level, member.battleLevel)
 
     Tooltips.CreateTextOnlyTooltip(SystemData.ActiveWindow.name)
-    Tooltips.SetTooltipText(1, 1, member.name)
+    Tooltips.SetTooltipText(1, 1, ToWString(member.name) or L"")
     Tooltips.SetTooltipColorDef(1, 1, Tooltips.COLOR_HEADING)
     Tooltips.SetTooltipText(2, 1, GetStringFormat(StringTables.Default.LABEL_RANK_X, { levelString }))
     Tooltips.SetTooltipText(3, 1, GetStringFormatFromTable("HUDStrings", StringTables.HUD.LABEL_HUD_PLAYER_WINDOW_TOOLTIP_CAREER_NAME, { member.careerName }))
@@ -762,13 +861,14 @@ function UnitFrames.OnMemberRightClick()
     end
 
     local member = TryGetWarbandMember(groupIndex, memberIndex)
-    if member == nil or member.name == nil or member.name == L"" then
+    local memberName = ToWString(member and member.name)
+    if member == nil or memberName == nil or memberName == L"" then
         return
     end
 
     if type(BattlegroupHUD) == "table" and type(BattlegroupHUD.ShowMenu) == "function" then
         BattlegroupHUD.contextMenuOpenedFrom = MemberWindowName(groupIndex, memberIndex)
-        BattlegroupHUD.ShowMenu(member.name, member.online ~= true)
+        BattlegroupHUD.ShowMenu(memberName, member.online ~= true)
     end
 end
 
@@ -786,9 +886,6 @@ function UnitFrames.InitializeWindow()
 
     m_windowsInitialized = RegisterCustomWindowsForLayout()
 
-    if not m_windowsInitialized then
-        DebugLog("InitializeWindow deferred: LayoutEditor or windows not ready yet.")
-    end
 end
 
 function UnitFrames.ShutdownWindow()
@@ -803,6 +900,8 @@ function UnitFrames.Update(elapsedTime)
     if m_visibilityPollElapsed >= c_VISIBILITY_POLL_INTERVAL then
         m_visibilityPollElapsed = 0
         ApplyModeVisibility()
+        RefreshTargetBorders()
+        RefreshMouseOverBorders()
     end
 end
 
@@ -851,23 +950,22 @@ function UnitFrames.Initialize()
         WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.CITY_SCENARIO_BEGIN, "CustomUI.UnitFrames.OnVisibilityStateChanged")
         WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_END, "CustomUI.UnitFrames.OnVisibilityStateChanged")
         WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.CITY_SCENARIO_END, "CustomUI.UnitFrames.OnVisibilityStateChanged")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.PLAYER_TARGET_UPDATED, "CustomUI.UnitFrames.OnTargetUpdated")
         m_eventsRegistered = true
     end
 end
 
 function UnitFrames.Enable()
-    DebugLog("Enable start.")
-
     m_enabled = true
     m_visibilityPollElapsed = 0
     UnitFrames.InitializeWindow()
 
     if not m_windowsInitialized then
-        DebugLog("Enable deferred: UnitFrames windows not registered yet.")
         return true
     end
 
     ApplyModeVisibility()
+    RefreshMouseOverBorders()
 
     local alpha = UnitFrames.WindowSettings.backgroundAlpha
     if alpha == nil then
@@ -880,22 +978,16 @@ function UnitFrames.Enable()
         SetUnitFramesBackgroundAlpha(alpha)
     end
 
-    if IsScenarioVerboseDebugEnabled() then
-        DebugLog("Scenario verbose debug is enabled.")
-    end
-
-    DebugLog("Enable complete.")
     return true
 end
 
 function UnitFrames.Disable()
-    DebugLog("Disable start.")
-
     m_enabled = false
+    m_mouseOverMemberWindow = nil
+    RefreshMouseOverBorders()
     m_visibilityPollElapsed = 0
     HideCustomShowStock()
 
-    DebugLog("Disable complete.")
     return true
 end
 
@@ -925,16 +1017,6 @@ function UnitFrames.Shutdown()
         end
         m_stockOnOpacitySlide = nil
     end
-end
-
-function UnitFrames.SetScenarioVerboseDebug(enabled)
-    UnitFrames.WindowSettings.scenarioVerboseDebug = enabled == true
-    m_lastScenarioGroupDebugState = {}
-    DebugLog("Scenario verbose debug: " .. (enabled and "enabled" or "disabled"))
-end
-
-function UnitFrames.GetScenarioVerboseDebug()
-    return UnitFrames.WindowSettings.scenarioVerboseDebug == true
 end
 
 local function ResetUnitFramesWindowDefaults()
@@ -977,9 +1059,7 @@ function UnitFramesComponent:Disable()
 end
 
 function UnitFramesComponent:ResetToDefaults()
-    UnitFrames.WindowSettings.scenarioVerboseDebug = false
     UnitFrames.WindowSettings.backgroundAlpha = nil
-    m_lastScenarioGroupDebugState = {}
 
     ResetUnitFramesWindowDefaults()
     SetStockWarbandBackgroundAlpha(c_DEFAULT_BACKGROUND_ALPHA)
@@ -995,26 +1075,4 @@ end
 function UnitFramesComponent:Shutdown()
     UnitFrames.Shutdown()
 end
-
--- ============================================================================
--- LEGACY (removal candidate) — in-addon settings: View/UnitFramesTab.xml, CustomUI.UnitFrames.Tab
--- Replaced by: CustomUISettingsWindow. Remove with: *Tab in CustomUI.mod, this block (no BuffFilterSection).
--- See README "Legacy code".
--- ============================================================================
-
-CustomUI.UnitFrames.Tab = {}
-
-function CustomUI.UnitFrames.Tab.OnShown(contentName)
-    local enabled = CustomUI.IsComponentEnabled("UnitFrames")
-    ButtonSetPressedFlag(contentName .. "EnableCheckBox", enabled)
-    LabelSetText(contentName .. "EnableLabel", L"Enabled")
-end
-
-function CustomUI.UnitFrames.Tab.OnToggleEnable()
-    local newState = not CustomUI.IsComponentEnabled("UnitFrames")
-    CustomUI.SetComponentEnabled("UnitFrames", newState)
-    ButtonSetPressedFlag(SystemData.ActiveWindow.name, newState)
-end
-
---CustomUI.SettingsWindow.RegisterTab("UnitFrames", "CustomUIUnitFramesTab", UnitFramesComponent, CustomUI.UnitFrames.Tab.OnShown)  -- LEGACY: remove with Tab block above
 CustomUI.RegisterComponent("UnitFrames", UnitFramesComponent)

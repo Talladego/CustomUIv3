@@ -1,11 +1,5 @@
 CustomUISettingsWindowTabSCT = {}
 
--- Set true in the client console after /reloadui to trace SCT tab input (uses `CustomUI.GetClientDebugLog()` when set).
-CustomUISettingsWindowTabSCT.DebugInput = false
-
--- Poll SystemData.MouseOverWindow / ActiveWindow while this tab is visible (same log sinks as DebugInput).
-CustomUISettingsWindowTabSCT.DebugPointer = false
-
 local c_SCROLL_CHILD = "SWTabSCTContentsScrollChild"
 local c_SCT_PREFIX   = c_SCROLL_CHILD .. "SCT"
 -- Tab is instanced as <Window name="SWTabSCT" inherits="CustomUISettingsWindowTabSCT"/> in CustomUISettingsWindowTabbed.xml, so the template root is SWTabSCT, not the template file name.
@@ -36,35 +30,8 @@ local m_pointerLastMouseOver = nil
 local m_pointerLastActive = nil
 local m_hoverLastWindow = nil
 
--- Forward declaration so OnUpdateDebugPointer (defined earlier in file) can see this local.
-local LogSctLayoutRuntime
-
-local function EmitDebugLine(prefix, msg)
-    local line = prefix .. tostring(msg)
-    local dbg = type(CustomUI) == "table" and type(CustomUI.GetClientDebugLog) == "function" and CustomUI.GetClientDebugLog()
-    if type(dbg) == "function" then
-        dbg(line)
-    end
-    pcall(function()
-        if LogLuaMessage and SystemData and SystemData.UiLogFilters then
-            LogLuaMessage("Lua", SystemData.UiLogFilters.DEBUG, towstring(line))
-        end
-    end)
-end
-
-local function SctTabDbg(msg)
-    if not CustomUISettingsWindowTabSCT.DebugInput then
-        return
-    end
-    EmitDebugLine("[CustomUI SCT Tab] ", msg)
-end
-
-local function SctPointerDbg(msg)
-    if not CustomUISettingsWindowTabSCT.DebugPointer then
-        return
-    end
-    EmitDebugLine("[CustomUI SCT Tab ptr] ", msg)
-end
+local function SctTabDbg() end
+local function SctPointerDbg() end
 
 local function PointerScopeName(name)
     if name == nil or name == "" then
@@ -82,6 +49,10 @@ local function PointerParentSnippet(winName, maxDepth)
     local w = winName
     for i = 1, maxDepth or 8 do
         if not w or w == "" then
+            break
+        end
+        if not DoesWindowExist(w) then
+            parts[#parts + 1] = tostring(w) .. " <no such window>"
             break
         end
         parts[#parts + 1] = tostring(w)
@@ -155,7 +126,7 @@ end
 -- For Block / Parry / etc., the engine still calls `DefaultColor.GetCombatEventColor` with the real
 -- `hitAmount` from the client. A positive amount selects the *healing* branch (green tints) before
 -- `textType` is considered—so the floating text is often green, not the miss greys. Match that in the
--- Default (index 1) swatch by using the same function with amount 1, same as `SCTEventText.SetupText`.
+-- Default (index 1) swatch by using the same function with amount 1, same as `CustomUI.SCT.EventEntry:SetupText`.
 local function SctStockPreviewDefensiveDefaultRgb(key, isIncoming)
     local textType = SctGameDataCombatEventForStockKey(key)
     if textType == nil or not DefaultColor or not DefaultColor.GetCombatEventColor then
@@ -170,10 +141,8 @@ local function SctStockPreviewDefensiveDefaultRgb(key, isIncoming)
         other = player + 1
     end
     local hitTargetObjectNumber = isIncoming and player or other
-    local ok, c = pcall(function()
-        return DefaultColor.GetCombatEventColor(hitTargetObjectNumber, 1, textType)
-    end)
-    if not ok or type(c) ~= "table" or c.r == nil then
+    local c = DefaultColor.GetCombatEventColor(hitTargetObjectNumber, 1, textType)
+    if type(c) ~= "table" or c.r == nil then
         return nil
     end
     return c.r, c.g, c.b
@@ -256,7 +225,7 @@ end
 local function SctHideColorPicker()
     m_sctColorPickerContext = nil
     if DoesWindowExist(c_SCT_COLOR_PICKER_HOST) then
-        pcall(function() WindowSetShowing(c_SCT_COLOR_PICKER_HOST, false) end)
+        WindowSetShowing(c_SCT_COLOR_PICKER_HOST, false)
     end
 end
 
@@ -264,13 +233,13 @@ local function SctTightenColorPickerWidth()
     if not DoesWindowExist(c_SCT_COLOR_PICKER) then
         return
     end
-    pcall(function()
+    do
         local _, h = WindowGetDimensions(c_SCT_COLOR_PICKER)
         if not h or h <= 0 then
             h = c_SCT_COLOR_PICKER_GRID_H
         end
         WindowSetDimensions(c_SCT_COLOR_PICKER, c_SCT_COLOR_PICKER_GRID_W, h)
-    end)
+    end
 end
 
 local function SctEnsureColorPickerGrid()
@@ -283,17 +252,13 @@ local function SctEnsureColorPickerGrid()
         return
     end
     local t, rowsN, columns = SctBuildColorTable1D()
-    local ok, err = pcall(function()
-        ColorPickerCreateWithColorTable(c_SCT_COLOR_PICKER, t, columns, rowsN, 10)
-    end)
-    if not ok then
-        SctTabDbg("SctEnsureColorPickerGrid: ColorPickerCreateWithColorTable failed: " .. tostring(err))
-        return
-    end
+    ColorPickerCreateWithColorTable(c_SCT_COLOR_PICKER, t, columns, rowsN, 10)
     m_sctColorPickerReady = true
     m_sctColorPickerGridRev = rev
     SctTightenColorPickerWidth()
-    pcall(function() WindowSetShowing(c_SCT_COLOR_PICKER_HOST, false) end)
+    if DoesWindowExist(c_SCT_COLOR_PICKER_HOST) then
+        WindowSetShowing(c_SCT_COLOR_PICKER_HOST, false)
+    end
 end
 
 local function SctClickWindowNameForColorButton()
@@ -312,7 +277,7 @@ local function SctUpdateColorSwatch(swatchName, colorIdx, key, isIncoming)
         key, isIncoming = SctParseSwatchNameForKeyDir(swatchName)
     end
     local r, g, b = SctRgbForColorOptionIndex(colorIdx, key, isIncoming)
-    pcall(WindowSetTintColor, swatchName, r, g, b)
+    WindowSetTintColor(swatchName, r, g, b)
 end
 
 local function SctShowSliderValueTooltip(anchorWindowName, text)
@@ -325,12 +290,10 @@ local function SctShowSliderValueTooltip(anchorWindowName, text)
     if type(Tooltips.CreateTextOnlyTooltip) ~= "function" then
         return
     end
-    pcall(function()
-        Tooltips.CreateTextOnlyTooltip(anchorWindowName)
-        Tooltips.SetTooltipText(1, 1, text)
-        Tooltips.Finalize()
-        Tooltips.AnchorTooltip(Tooltips.ANCHOR_WINDOW_VARIABLE)
-    end)
+    Tooltips.CreateTextOnlyTooltip(anchorWindowName)
+    Tooltips.SetTooltipText(1, 1, text)
+    Tooltips.Finalize()
+    Tooltips.AnchorTooltip(Tooltips.ANCHOR_WINDOW_VARIABLE)
 end
 
 local function SctNearestPaletteNameForRgb(r, g, b)
@@ -457,14 +420,14 @@ local function SyncSctTextFontCombo()
         return
     end
     m_refreshing = true
-    pcall(function()
-        ComboBoxClearMenuItems(w)
-        for _, ent in ipairs(CustomUI.SCT.GetTextFonts()) do
-            ComboBoxAddMenuItem(w, ent.label)
-        end
+    ComboBoxClearMenuItems(w)
+    for _, ent in ipairs(CustomUI.SCT.GetTextFonts()) do
+        ComboBoxAddMenuItem(w, ent.label)
+    end
+    do
         local idx = CustomUI.SCT.GetTextFontIndex()
         ComboBoxSetSelectedMenuItem(w, idx)
-    end)
+    end
     m_refreshing = false
 end
 
@@ -474,11 +437,43 @@ local function SyncCritSizeSlider()
         return
     end
     m_refreshing = true
-    pcall(function()
+    do
         local sc = CustomUI.SCT.GetCritSizeScale()
         SliderBarSetCurrentPosition(w, CustomUI.SCT.CritSizeToSliderPos(sc))
-    end)
+    end
     m_refreshing = false
+end
+
+local function SyncXOffsetSliders()
+    local sliders = {
+        { name = c_SCT_PREFIX .. "RowCombatXOffsetOutgoingXOffset", category = "outgoing" },
+        { name = c_SCT_PREFIX .. "RowCombatXOffsetIncomingXOffset", category = "incoming" },
+        { name = c_SCT_PREFIX .. "RowPointXOffsetPointsXOffset", category = "points" },
+    }
+    local wasRefreshing = m_refreshing
+    m_refreshing = true
+    for _, slider in ipairs(sliders) do
+        if DoesWindowExist(slider.name) then
+            SliderBarSetCurrentPosition(slider.name, CustomUI.SCT.XOffsetToSliderPos(CustomUI.SCT.GetXOffset(slider.category)))
+        end
+    end
+    m_refreshing = wasRefreshing
+end
+
+local function SyncYOffsetSliders()
+    local sliders = {
+        { name = c_SCT_PREFIX .. "RowCombatYOffsetOutgoingYOffset", category = "outgoing" },
+        { name = c_SCT_PREFIX .. "RowCombatYOffsetIncomingYOffset", category = "incoming" },
+        { name = c_SCT_PREFIX .. "RowPointYOffsetPointsYOffset", category = "points" },
+    }
+    local wasRefreshing = m_refreshing
+    m_refreshing = true
+    for _, slider in ipairs(sliders) do
+        if DoesWindowExist(slider.name) then
+            SliderBarSetCurrentPosition(slider.name, CustomUI.SCT.YOffsetToSliderPos(CustomUI.SCT.GetYOffset(slider.category)))
+        end
+    end
+    m_refreshing = wasRefreshing
 end
 
 local function RefreshSctControls(contentPrefix)
@@ -510,6 +505,16 @@ end
 -- Walk parents until we find the real control window the API expects.
 local MAX_PARENT_WALK = 18
 
+local function SafeWindowGetParent(w)
+    if not w or w == "" then
+        return nil
+    end
+    if not DoesWindowExist(w) then
+        return nil
+    end
+    return WindowGetParent(w)
+end
+
 local function ResolveSliderBarWindow(startName)
     local w = startName
     for depth = 0, MAX_PARENT_WALK do
@@ -517,7 +522,7 @@ local function ResolveSliderBarWindow(startName)
             break
         end
         -- Do NOT probe with SliderBarGetCurrentPosition here: the engine logs an error
-        -- for every non-slider window, even when wrapped in pcall.
+        -- for every non-slider window.
         local isSizeSlider = (string.len(w) >= 7 and string.sub(w, -7) == "OutSize")
             or (string.len(w) >= 6 and string.sub(w, -6) == "InSize")
         if isSizeSlider then
@@ -526,7 +531,51 @@ local function ResolveSliderBarWindow(startName)
                 return w, rowSuffix, dir, depth
             end
         end
-        w = WindowGetParent(w)
+        w = SafeWindowGetParent(w)
+    end
+    return nil, nil, nil, nil
+end
+
+local function ResolveXOffsetSliderWindow(startName)
+    local w = startName
+    for depth = 0, MAX_PARENT_WALK do
+        if not w or w == "" then
+            break
+        end
+        if string.len(w) >= 7 and string.sub(w, -7) == "XOffset" then
+            if string.find(w, "OutgoingXOffset", 1, true) then
+                return w, "outgoing", L"Outgoing", depth
+            end
+            if string.find(w, "IncomingXOffset", 1, true) then
+                return w, "incoming", L"Incoming", depth
+            end
+            if string.find(w, "PointsXOffset", 1, true) then
+                return w, "points", L"Points", depth
+            end
+        end
+        w = SafeWindowGetParent(w)
+    end
+    return nil, nil, nil, nil
+end
+
+local function ResolveYOffsetSliderWindow(startName)
+    local w = startName
+    for depth = 0, MAX_PARENT_WALK do
+        if not w or w == "" then
+            break
+        end
+        if string.len(w) >= 7 and string.sub(w, -7) == "YOffset" then
+            if string.find(w, "OutgoingYOffset", 1, true) then
+                return w, "outgoing", L"Outgoing", depth
+            end
+            if string.find(w, "IncomingYOffset", 1, true) then
+                return w, "incoming", L"Incoming", depth
+            end
+            if string.find(w, "PointsYOffset", 1, true) then
+                return w, "points", L"Points", depth
+            end
+        end
+        w = SafeWindowGetParent(w)
     end
     return nil, nil, nil, nil
 end
@@ -547,7 +596,7 @@ local function SctResolveColorSwatchFromWindow(startName)
                 return w, rowSuffix, dir, depth
             end
         end
-        w = WindowGetParent(w)
+        w = SafeWindowGetParent(w)
     end
     return nil, nil, nil, nil
 end
@@ -565,30 +614,28 @@ local function ResolveFilterCheckWindow(startName)
                 return w, rowSuffix, dir, depth
             end
         end
-        w = WindowGetParent(w)
+        w = SafeWindowGetParent(w)
     end
     return nil, nil, nil, nil
 end
 
 local function LogParentChain(startName, tag)
-    if not CustomUISettingsWindowTabSCT.DebugInput then
-        return
-    end
     local w = startName
     for i = 0, MAX_PARENT_WALK do
         if not w or w == "" then
             SctTabDbg(tag .. " chain[" .. i .. "]=<nil>")
             break
         end
+        if not DoesWindowExist(w) then
+            SctTabDbg(tag .. " chain[" .. i .. "]=" .. tostring(w) .. " <no such window>")
+            break
+        end
         SctTabDbg(tag .. " chain[" .. i .. "]=" .. tostring(w))
-        w = WindowGetParent(w)
+        w = SafeWindowGetParent(w)
     end
 end
 
 function CustomUISettingsWindowTabSCT.OnUpdateDebugPointer(timePassed)
-    -- Runs only the first time the SCT section is visible with a real screen position.
-    LogSctLayoutRuntime()
-
     -- Hover tooltips: keep these lightweight and avoid requiring XML OnMouseOver wiring
     -- for every swatch created via repeated templates.
     if DoesWindowExist(c_SCT_TAB_ROOT) and WindowGetShowing(c_SCT_TAB_ROOT) then
@@ -613,74 +660,6 @@ function CustomUISettingsWindowTabSCT.OnUpdateDebugPointer(timePassed)
             end
         end
     end
-
-    if not CustomUISettingsWindowTabSCT.DebugPointer then
-        return
-    end
-    if not DoesWindowExist(c_SCT_TAB_ROOT) or not WindowGetShowing(c_SCT_TAB_ROOT) then
-        return
-    end
-    local mo = (SystemData.MouseOverWindow and SystemData.MouseOverWindow.name) or ""
-    local act = (SystemData.ActiveWindow and SystemData.ActiveWindow.name) or ""
-    if mo == m_pointerLastMouseOver and act == m_pointerLastActive then
-        return
-    end
-    if not PointerLogRelevant(mo, act, m_pointerLastMouseOver, m_pointerLastActive) then
-        m_pointerLastMouseOver = mo
-        m_pointerLastActive = act
-        return
-    end
-    m_pointerLastMouseOver = mo
-    m_pointerLastActive = act
-
-    local rowHit = c_SCT_PREFIX .. "RowHitOutShow"
-    local rowHitExists = DoesWindowExist(rowHit)
-    SctPointerDbg("MouseOverWindow=" .. tostring(mo) .. " | ActiveWindow=" .. tostring(act))
-    if mo ~= "" then
-        SctPointerDbg("  MouseOver parent chain: " .. PointerParentSnippet(mo, 8))
-    end
-    if act ~= "" and act ~= mo then
-        SctPointerDbg("  Active parent chain: " .. PointerParentSnippet(act, 8))
-    end
-    SctPointerDbg("  Expected RowHit OutShow window exists: " .. tostring(rowHit) .. " => " .. tostring(rowHitExists))
-end
-
-local m_runtimeDiagLogged = false
-
--- Diagnostic layout dumper (see README.md). Active only when DebugInput=true so it doesn't spam uilog in normal play.
-local function DumpDim(tag, win)
-    if not CustomUISettingsWindowTabSCT.DebugInput then return end
-    if not DoesWindowExist(win) then
-        EmitDebugLine("[CustomUI SCT diag ", tag .. "] " .. win .. " DOES NOT EXIST")
-        return
-    end
-    local okDim, w, h = pcall(WindowGetDimensions, win)
-    local okPos, x, y = pcall(WindowGetScreenPosition, win)
-    local okShow, showing = pcall(WindowGetShowing, win)
-    EmitDebugLine("[CustomUI SCT diag ", string.format("%s] %s exists=true showing=%s dim=%sx%s pos=%s,%s",
-        tag, win,
-        tostring(okShow and showing),
-        tostring(okDim and w), tostring(okDim and h),
-        tostring(okPos and x), tostring(okPos and y)))
-end
-
-LogSctLayoutRuntime = function()
-    if m_runtimeDiagLogged then return end
-    if not CustomUISettingsWindowTabSCT.DebugInput then return end
-    if not DoesWindowExist(c_SCT_PREFIX) then return end
-    local okShow, showing = pcall(WindowGetShowing, c_SCT_PREFIX)
-    if not okShow or not showing then return end
-    local okPos, _, y = pcall(WindowGetScreenPosition, c_SCT_PREFIX)
-    if not okPos or (y or 0) <= 0 then return end
-    m_runtimeDiagLogged = true
-    DumpDim("runtime", c_SCROLL_CHILD)
-    DumpDim("runtime", c_SCROLL_CHILD .. "General")
-    DumpDim("runtime", c_SCROLL_CHILD .. "GeneralSCTEnabled")
-    DumpDim("runtime", c_SCT_PREFIX)
-    DumpDim("runtime", c_SCT_PREFIX .. "Background")
-    DumpDim("runtime", c_SCT_PREFIX .. "Title")
-    DumpDim("runtime", c_SCT_PREFIX .. "RowHit")
-    DumpDim("runtime", c_SCT_PREFIX .. "RowHitOutShow")
 end
 
 -- XML sibling anchors (relativeTo="$parentRow*") collapse all rows to the same Y.
@@ -688,8 +667,11 @@ end
 local c_SCT_ROW_ORDER = {
     "CritAnimation",
     "CritSize",
+    -- LEGACY (v2 SCT, 2026-04-25): "BaseXOffset" row removed. Remove this comment in Step 5b.
     "TextFont",
     "AbilityIcon",
+    "CombatXOffset",
+    "CombatYOffset",
     "SctColumnHeaders",
     "Hit",
     "Ability",
@@ -701,6 +683,8 @@ local c_SCT_ROW_ORDER = {
     "Absorb",
     "Immune",
     "HorizontalBar",
+    "PointXOffset",
+    "PointYOffset",
     "SctPointColumnHeaders",
     "XP",
     "Renown",
@@ -715,9 +699,9 @@ local function ReanchorSctRows()
         if DoesWindowExist(rowWin) then
             local y = c_SCT_FIRST_ROW_Y + (i - 1) * c_SCT_ROW_HEIGHT
             WindowClearAnchors(rowWin)
-            pcall(WindowAddAnchor, rowWin, "topleft", c_SCT_PREFIX, "topleft", 0, y)
-            pcall(WindowAddAnchor, rowWin, "topright", c_SCT_PREFIX, "topright", 0, y)
-            pcall(WindowForceProcessAnchors, rowWin)
+            WindowAddAnchor(rowWin, "topleft", c_SCT_PREFIX, "topleft", 0, y)
+            WindowAddAnchor(rowWin, "topright", c_SCT_PREFIX, "topright", 0, y)
+            WindowForceProcessAnchors(rowWin)
         end
     end
 end
@@ -736,17 +720,9 @@ end
 function CustomUISettingsWindowTabSCT.Initialize()
     m_pointerLastMouseOver = nil
     m_pointerLastActive = nil
-    m_runtimeDiagLogged = false
-    pcall(ReanchorSctRows)
+    ReanchorSctRows()
     SctEnsureColorPickerGrid()
     SctHideColorPicker()
-
-    DumpDim("init", c_SCROLL_CHILD)
-    DumpDim("init", c_SCROLL_CHILD .. "General")
-    DumpDim("init", c_SCT_PREFIX)
-    DumpDim("init", c_SCT_PREFIX .. "Title")
-    DumpDim("init", c_SCT_PREFIX .. "RowHit")
-    DumpDim("init", c_SCT_PREFIX .. "RowHitOutShow")
 
     LabelSetText( c_SCROLL_CHILD .. "GeneralTitle",          L"General" )
     LabelSetText( c_SCROLL_CHILD .. "GeneralSCTEnabledLabel", L"Enabled" )
@@ -784,6 +760,12 @@ function CustomUISettingsWindowTabSCT.Initialize()
     if DoesWindowExist(c_SCT_PREFIX .. "RowAbilityIconShowAbilityIconButton") then
         ButtonSetCheckButtonFlag( c_SCT_PREFIX .. "RowAbilityIconShowAbilityIconButton", true )
     end
+    LabelSetText( c_SCT_PREFIX .. "RowCombatXOffsetCombatXOffsetLabel", L"X Offset" )
+    LabelSetText( c_SCT_PREFIX .. "RowCombatXOffsetOutgoingXOffsetLabel", L"Outgoing" )
+    LabelSetText( c_SCT_PREFIX .. "RowCombatXOffsetIncomingXOffsetLabel", L"Incoming" )
+    LabelSetText( c_SCT_PREFIX .. "RowCombatYOffsetCombatYOffsetLabel", L"Y Offset" )
+    LabelSetText( c_SCT_PREFIX .. "RowCombatYOffsetOutgoingYOffsetLabel", L"Outgoing" )
+    LabelSetText( c_SCT_PREFIX .. "RowCombatYOffsetIncomingYOffsetLabel", L"Incoming" )
     local hdr = c_SCT_PREFIX .. "RowSctColumnHeaders"
     LabelSetText( hdr .. "OutShowHdr", L"Show" )
     LabelSetText( hdr .. "OutSizeHdr", L"Size" )
@@ -793,6 +775,10 @@ function CustomUISettingsWindowTabSCT.Initialize()
     LabelSetText( hdr .. "InColorHdr", L"Color" )
 
     local pHdr = c_SCT_PREFIX .. "RowSctPointColumnHeaders"
+    LabelSetText( c_SCT_PREFIX .. "RowPointXOffsetPointXOffsetLabel", L"X Offset" )
+    LabelSetText( c_SCT_PREFIX .. "RowPointXOffsetPointsXOffsetLabel", L"Points" )
+    LabelSetText( c_SCT_PREFIX .. "RowPointYOffsetPointYOffsetLabel", L"Y Offset" )
+    LabelSetText( c_SCT_PREFIX .. "RowPointYOffsetPointsYOffsetLabel", L"Points" )
     LabelSetText( pHdr .. "OutShowHdr", L"Show" )
     LabelSetText( pHdr .. "OutSizeHdr", L"Size" )
     LabelSetText( pHdr .. "OutColorHdr", L"Color" )
@@ -821,6 +807,8 @@ function CustomUISettingsWindowTabSCT.Initialize()
 
     SyncSctTextFontCombo()
     SyncCritSizeSlider()
+    SyncXOffsetSliders()
+    SyncYOffsetSliders()
     SyncAbilityIconButton()
 end
 
@@ -830,6 +818,8 @@ function CustomUISettingsWindowTabSCT.UpdateSettings()
     SyncCritAnimationButtons()
     SyncSctTextFontCombo()
     SyncCritSizeSlider()
+    SyncXOffsetSliders()
+    SyncYOffsetSliders()
     SyncAbilityIconButton()
     RefreshSctControls(c_SCT_PREFIX)
     SctTabDbg("UpdateSettings: done")
@@ -898,8 +888,8 @@ function CustomUISettingsWindowTabSCT.OnSctTextFontChanged()
     if not DoesWindowExist(w) then
         return
     end
-    local ok, idx = pcall(ComboBoxGetSelectedMenuItem, w)
-    if not ok or type(idx) ~= "number" or idx < 1 or idx > #CustomUI.SCT.GetTextFonts() then
+    local idx = ComboBoxGetSelectedMenuItem(w)
+    if type(idx) ~= "number" or idx < 1 or idx > #CustomUI.SCT.GetTextFonts() then
         return
     end
     CustomUI.SCT.SetTextFontIndex(idx)
@@ -928,7 +918,41 @@ function CustomUISettingsWindowTabSCT.OnCritSizeChanged()
     local sc = CustomUI.SCT.SliderPosToCritSize(pos)
     CustomUI.SCT.SetCritSizeScale(sc)
     -- Refresh hover tooltip while dragging.
-    pcall(CustomUISettingsWindowTabSCT.OnMouseOverSliderValue)
+    CustomUISettingsWindowTabSCT.OnMouseOverSliderValue()
+end
+
+function CustomUISettingsWindowTabSCT.OnXOffsetChanged()
+    if m_refreshing then
+        return
+    end
+    local active = SystemData.ActiveWindow and SystemData.ActiveWindow.name or ""
+    local winName, category = ResolveXOffsetSliderWindow(active)
+    if not winName or not category then
+        return
+    end
+    local pos = SliderBarGetCurrentPosition(winName)
+    if type(pos) ~= "number" then
+        return
+    end
+    CustomUI.SCT.SetXOffset(category, CustomUI.SCT.SliderPosToXOffset(pos))
+    CustomUISettingsWindowTabSCT.OnMouseOverSliderValue()
+end
+
+function CustomUISettingsWindowTabSCT.OnYOffsetChanged()
+    if m_refreshing then
+        return
+    end
+    local active = SystemData.ActiveWindow and SystemData.ActiveWindow.name or ""
+    local winName, category = ResolveYOffsetSliderWindow(active)
+    if not winName or not category then
+        return
+    end
+    local pos = SliderBarGetCurrentPosition(winName)
+    if type(pos) ~= "number" then
+        return
+    end
+    CustomUI.SCT.SetYOffset(category, CustomUI.SCT.SliderPosToYOffset(pos))
+    CustomUISettingsWindowTabSCT.OnMouseOverSliderValue()
 end
 
 function CustomUISettingsWindowTabSCT.OnMouseOverSliderValue()
@@ -942,15 +966,37 @@ function CustomUISettingsWindowTabSCT.OnMouseOverSliderValue()
     -- 1) Crit size slider (General section)
     local critSlider = c_SCT_PREFIX .. "RowCritSizeCritSize"
     if active == critSlider or string.find(active, "RowCritSizeCritSize", 1, true) then
-        local ok, pos = pcall(SliderBarGetCurrentPosition, critSlider)
-        if ok and type(pos) == "number" then
+        local pos = SliderBarGetCurrentPosition(critSlider)
+        if type(pos) == "number" then
             local sc = CustomUI.SCT.SliderPosToCritSize(pos)
             SctShowSliderValueTooltip(critSlider, L"Crit Size: " .. towstring(string.format("%.2fx", sc)))
         end
         return
     end
 
-    -- 2) Per-row size sliders (Appearance section)
+    -- 2) Category X-offset sliders.
+    local offsetWin, offsetCategory, offsetLabel = ResolveXOffsetSliderWindow(active)
+    if offsetWin and offsetCategory then
+        local pos = SliderBarGetCurrentPosition(offsetWin)
+        if type(pos) == "number" then
+            local px = CustomUI.SCT.SliderPosToXOffset(pos)
+            SctShowSliderValueTooltip(offsetWin, offsetLabel .. L" X Offset: " .. towstring(px) .. L"px")
+        end
+        return
+    end
+
+    -- 2b) Category Y-offset sliders.
+    local yWin, yCategory, yLabel = ResolveYOffsetSliderWindow(active)
+    if yWin and yCategory then
+        local pos = SliderBarGetCurrentPosition(yWin)
+        if type(pos) == "number" then
+            local px = CustomUI.SCT.SliderPosToYOffset(pos)
+            SctShowSliderValueTooltip(yWin, yLabel .. L" Y Offset: " .. towstring(px) .. L"px")
+        end
+        return
+    end
+
+    -- 3) Per-row size sliders (Appearance section)
     if not (string.find(active, "OutSize", 1, true) or string.find(active, "InSize", 1, true) or string.find(active, "Slider", 1, true)) then
         return
     end
@@ -959,8 +1005,8 @@ function CustomUISettingsWindowTabSCT.OnMouseOverSliderValue()
         return
     end
 
-    local ok, pos = pcall(SliderBarGetCurrentPosition, winName)
-    if not ok or type(pos) ~= "number" then
+    local pos = SliderBarGetCurrentPosition(winName)
+    if type(pos) ~= "number" then
         return
     end
     local scale = CustomUI.SCT.SliderPosToScale(pos)
@@ -976,7 +1022,7 @@ function CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd()
     if type(Tooltips) ~= "table" or type(Tooltips.ClearTooltip) ~= "function" then
         return
     end
-    pcall(function() Tooltips.ClearTooltip() end)
+    Tooltips.ClearTooltip()
 end
 
 function CustomUISettingsWindowTabSCT.OnMouseOverColorSwatch()
@@ -1007,10 +1053,6 @@ end
 
 -- Stock TooltipCheckButton uses SettingsWindowTabbed.OnMouseOverTooltipElement; this is the CustomUI equivalent (extend for real tooltips).
 function CustomUISettingsWindowTabSCT.OnMouseOverFilterCheckButton()
-    if CustomUISettingsWindowTabSCT.DebugPointer then
-        local w = SystemData.MouseOverWindow and SystemData.MouseOverWindow.name
-        SctPointerDbg("OnMouseOverFilterCheckButton MouseOverWindow=" .. tostring(w))
-    end
 end
 
 function CustomUISettingsWindowTabSCT.OnDebugScrollChildClick()
@@ -1066,8 +1108,8 @@ function CustomUISettingsWindowTabSCT.OnSizeChanged()
         SctTabDbg("OnSizeChanged: resolved non-slider winName=" .. tostring(winName))
         return
     end
-    local okPos, pos = pcall(SliderBarGetCurrentPosition, winName)
-    if not okPos or type(pos) ~= "number" then
+    local pos = SliderBarGetCurrentPosition(winName)
+    if type(pos) ~= "number" then
         return
     end
     SctTabDbg("OnSizeChanged: active=" .. tostring(active) .. " resolved=" .. tostring(winName) .. " row=" .. tostring(rowSuffix) .. " dir=" .. tostring(dir) .. " depth=" .. tostring(depth) .. " pos=" .. tostring(pos))
@@ -1079,7 +1121,7 @@ function CustomUISettingsWindowTabSCT.OnSizeChanged()
         CustomUI.SCT.SetSize("incoming", info.key, scale)
     end
     -- Refresh hover tooltip while dragging.
-    pcall(CustomUISettingsWindowTabSCT.OnMouseOverSliderValue)
+    CustomUISettingsWindowTabSCT.OnMouseOverSliderValue()
 end
 
 function CustomUISettingsWindowTabSCT.OnSctColorSwatchClick()
@@ -1106,9 +1148,7 @@ function CustomUISettingsWindowTabSCT.OnSctColorSwatchClick()
         and DoesWindowExist(c_SCT_COLOR_PICKER_HOST)
     local showing = false
     if wasOpen and DoesWindowExist(c_SCT_COLOR_PICKER_HOST) then
-        pcall(function()
-            showing = WindowGetShowing(c_SCT_COLOR_PICKER_HOST) == true
-        end)
+        showing = WindowGetShowing(c_SCT_COLOR_PICKER_HOST) == true
     end
     if wasOpen and showing then
         SctHideColorPicker()
@@ -1121,27 +1161,19 @@ function CustomUISettingsWindowTabSCT.OnSctColorSwatchClick()
         return
     end
     -- Parent one level above the settings root so the palette is not clipped to the 900x800 client when it overlaps the screen edge.
-    pcall(function()
+    do
         local p = WindowGetParent(c_SCT_SETTINGS_ROOT)
         if p and p ~= L"" then
             WindowSetParent(c_SCT_COLOR_PICKER_HOST, p)
         end
-    end)
+    end
     -- README / engine: tleft↔tright can place the host on the wrong side; tleft↔tleft + fixed dx is unambiguous
     -- (swatch 20px + 6px gap, see c_SCT_SWATCH_PICKER_OFF_X).
     WindowClearAnchors(c_SCT_COLOR_PICKER_HOST)
-    pcall(function()
-        WindowAddAnchor(c_SCT_COLOR_PICKER_HOST, "topleft", anchorSwatch, "topleft", c_SCT_SWATCH_PICKER_OFF_X, 0)
-    end)
-    pcall(function()
-        WindowSetDimensions(c_SCT_COLOR_PICKER_HOST, c_SCT_COLOR_PICKER_HOST_W, c_SCT_COLOR_PICKER_HOST_H)
-    end)
-    pcall(function()
-        WindowForceProcessAnchors(c_SCT_COLOR_PICKER_HOST)
-    end)
-    pcall(function()
-        WindowSetShowing(c_SCT_COLOR_PICKER_HOST, true)
-    end)
+    WindowAddAnchor(c_SCT_COLOR_PICKER_HOST, "topleft", anchorSwatch, "topleft", c_SCT_SWATCH_PICKER_OFF_X, 0)
+    WindowSetDimensions(c_SCT_COLOR_PICKER_HOST, c_SCT_COLOR_PICKER_HOST_W, c_SCT_COLOR_PICKER_HOST_H)
+    WindowForceProcessAnchors(c_SCT_COLOR_PICKER_HOST)
+    WindowSetShowing(c_SCT_COLOR_PICKER_HOST, true)
 end
 
 function CustomUISettingsWindowTabSCT.OnSctColorPickerLButtonUp(flags, x, y)

@@ -17,6 +17,16 @@
                         <Anchor point="bottomright" relativePoint="bottomright" />
                     </Anchors>
                 </DynamicImage>
+                <!-- Border overlay (tinted) -->
+                <DynamicImage name="$parentFrame" handleinput="false" textureScale="1.0" filtering="true">
+                    <Size>
+                        <AbsPoint x="24" y="24" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="topleft" relativePoint="topleft" />
+                        <Anchor point="bottomright" relativePoint="bottomright" />
+                    </Anchors>
+                </DynamicImage>
             </Windows>
         </Window>
     </Windows>

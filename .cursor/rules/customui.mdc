@@ -9,29 +9,28 @@ Modular addon that replaces/enhances stock UI behind `/cui` and per-component se
 
 ## Architecture
 
-- **Pattern:** Controller/View split — state, lifecycle, hooks, and `CustomUI.RegisterComponent` adapter in `Controller/`; rendering helpers and XML-bound handlers in `View/` only when needed (omit empty View lua). Controllers are listed in `CustomUI.mod` before the component’s `View/*.xml`; **do not** re-include the same `*Controller.lua` in that XML’s `<Script>` (duplicate load) — *except* `PlayerStatusWindow.xml` may load **only** `View/PlayerStatusWindow.lua` after the mod already loaded the controller. **SCT** is special: `SCTEventText.lua` / `SCTSettings.lua` are engine + data, not a `View/` file; see file headers. **Conventions** are summarized at the top of `Source/CustomUI.lua` and in each `*Controller.lua` / `View` Lua header.
+- **Pattern:** Controller/View split — state, lifecycle, hooks, and `CustomUI.RegisterComponent` adapter in `Controller/`; rendering helpers and XML-bound handlers in `View/` only when needed (omit empty View lua). Controllers are listed in `CustomUI.mod` before the component’s `View/*.xml`; **do not** re-include the same `*Controller.lua` in that XML’s `<Script>` (duplicate load) — *except* `PlayerStatusWindow.xml` may load **only** `View/PlayerStatusWindow.lua` after the mod already loaded the controller. **SCT** is special: `SCTAnim.lua` / `SCTAnchors.lua` / `SCTEntry.lua` / `SCTTracker.lua` / `SCTSettings.lua` are engine + data, not a `View/` file; see file headers. **Conventions** are summarized at the top of `Source/CustomUI.lua` and in each `*Controller.lua` / `View` Lua header.
 - **Visibility:** After `RegisterWindow` in `Initialize()`, call `LayoutEditor.UserHide(windowName)`. In `Enable`: `UserShow` CustomUI window, `UserHide` stock replacement. In `Disable`: reverse. See README for `PlayerPetWindow` / `PetWindow.UpdatePetProxy` hook rationale (stock can force-show pet health).
-- **Manifest:** `CustomUI.mod` — explicit load order: core/shared first, then Settings, then components (controller then xml). **No** `<CreateWindow>` in the mod; top-level root instances are created in `Source/CustomUI.lua` at `CustomUI.Initialize` (`EnsureRootWindowInstances`). Controllers still use `CreateWindowFromTemplate` in `Initialize` for sub-widgets; see README.
-- **Shared:** `Source/Shared/` — BuffTracker + `TargetFrame` + `Shared.xml` are **current** (shipped). **`BuffFilterSection.lua`** is the **only** legacy file there (in-addon `*Tab`); see README `Source/Shared` table.
+- **Manifest:** `CustomUI.mod` — explicit load order: core/shared first, then components (controller then xml). **No** `<CreateWindow>` in the mod; top-level root instances are created in `Source/CustomUI.lua` at `CustomUI.Initialize` (`EnsureRootWindowInstances`). Controllers still use `CreateWindowFromTemplate` in `Initialize` for sub-widgets; see README.
+- **Shared:** `Source/Shared/` — BuffTracker + `TargetFrame` + `Shared.xml` are current (shipped).
 - **Buff keys:** `abilityId` = stable server ID (grouping variants). `effectIndex` = per-cast slot — use for compression/dedup across casters, **not** for logical buff grouping.
-- **Anchors:** `Point` = on the **target** window (anchor to); `RelativePoint` = on the **element being positioned**. Easy to invert.
+- **Anchors:** The RoR client’s anchor direction is easy to get wrong. In practice, when anchoring `child` to `target`, we frequently need to think in **target→child** terms (e.g. “`topright` → `topleft` to place the child to the right”), even though many UI systems document anchors as **child point → target point**. When layout looks mirrored, invert the points.
 
 ## New component checklist
 
 1. Namespace `CustomUI.<Name>`; controller owns adapter and `RegisterComponent`.
 2. XML events → namespaced functions (e.g. `CustomUI.<Name>.Initialize`).
 3. `UserHide` immediately after `RegisterWindow` in `Initialize`.
-4. **Settings UI:** Prefer the standalone **CustomUISettingsWindow** addon for all tab XML and event handlers. Components stay **agnostic**: expose `GetSettings()` (and helpers like row descriptors / `SliderPosToScale` on `CustomUI.<Name>`) only — **no** in-addon `CustomUI.SettingsWindow` / `RegisterTab`, no paths into a specific settings window. In-addon `View/<Name>Tab.xml` and `CustomUI.<Name>.Tab` Lua are **LEGACY** (commented in `CustomUI.mod` and sources); keep only for compatibility — **do not add new settings UI there**.
+4. **Settings UI:** Use the standalone **CustomUISettingsWindow** addon for all tab XML and event handlers. Components stay **agnostic**: expose `GetSettings()` (and helpers like row descriptors / `SliderPosToScale` on `CustomUI.<Name>`) only — **no** in-addon `CustomUI.SettingsWindow` / `RegisterTab`, no `View/<Name>Tab.xml`, no `CustomUI.<Name>.Tab`, and no paths into a specific settings window.
 
 ## Settings window (summary)
 
 - **Shipped UX:** **CustomUISettingsWindow** (separate mod, depends on CustomUI) owns `/cui` tabbed UI; tabs call into components for data only.
-- **Legacy (removal candidate):** In-addon tabs (`*Tab.xml` / `CustomUI.<Name>.Tab`), `BuffFilterSection.lua`, and `Source/Settings/*` shells are marked **`LEGACY (removal candidate)`** in sources; `CustomUI.mod` uses `LEGACY BUNDLE` / `BuffFilterSection` comments. See README **Legacy code (removal candidates)**. Grep `LEGACY (removal candidate)` under `Source/` before deleting.
-- **`CustomUI.SettingsWindow`** / **`MiniSettingsWindow`:** **deprecated**, not loaded from `CustomUI.mod`. Do not extend. Components must not assume legacy paths when integrating with CustomUISettingsWindow.
+- **Removed legacy paths:** In-addon tabs (`*Tab.xml` / `CustomUI.<Name>.Tab`), `BuffFilterSection.lua`, and `Source/Settings/*` shells were removed. Do not reintroduce them.
 
 ## Slash commands
 
-`/customui` or `/cui` — open settings. Also: `status`, `components`, `enable|disable|toggle <name>`, `ufdebug on|off|status`, `help`.
+`/customui` or `/cui` — open settings. Also: `status`, `components`, `enable|disable|toggle <name>`, `help`.
 
 ## Code quality backlog (prioritize when touching related code)
 

@@ -1,636 +1,368 @@
-# CustomUI.SCT — Refactor Plan
+# CustomUI.SCT — Refactor Plan v2 (deviation-only model)
 
-This plan is meant to be followed top to bottom. Every section either tells you what to write, where to put it, or how to verify a step. If a verification step fails, stop and fix it before moving on. Do not skip ahead.
-
----
-
-## 1. Goals
-
-1. **Stability.** Toggling SCT on/off any number of times leaves no orphan windows, no leaked event registrations, no double-processed engine events, no broken stock state.
-2. **Clean mutual exclusivity with stock event text.**
-   - **Disabled:** stock `EA_System_EventText` runs unmodified. CustomUI.SCT holds zero engine registrations, owns zero windows, consumes zero per-frame work.
-   - **Enabled:** stock event-handler registrations are unhooked, CustomUI.SCT processes the engine events instead, stock's runtime is dormant.
-3. **Unified animation pipeline.** Crit and non-crit floats share one base animation. Crits layer optional flair on top of that same pipeline.
-4. **Settings-agnostic component.** SCT owns its saved variables and persistence. SCT exposes a stable getter/setter API. CustomUISettingsWindow imports that API and owns **nothing** about SCT — it only stores its own UI-state saved variables (which tab is open, etc.).
-
-Inheritance from stock classes is allowed only when we actually call the stock implementation. We do not subclass for cosmetic effect.
-
-## 2. Non-goals
-
-- Reproducing every stock visual quirk pixel-for-pixel.
-- Supporting partial enable (e.g. "only crit overrides"). Enable/disable is binary.
-- Supporting other addons that hook stock by name. We document the swap behavior; we do not arbitrate ownership.
-
-## 3. Ownership map (read this before touching anything)
-
-| Concern | Owner |
-| :-- | :-- |
-| Saved variable `CustomUI.Settings.SCT` | **SCT** (`SCTSettings.lua`) |
-| Schema, defaults, migrations of that table | SCT |
-| Engine event registration for combat/xp/renown/influence/loading | SCT |
-| All windows under `CustomUISCTWindow` (anchors, holders, labels, icons) | SCT |
-| Animation math | SCT |
-| The settings tab UI (sliders, color pickers, checkboxes for SCT) | CustomUISettingsWindow |
-| Saved variables for "which tab is currently open" | CustomUISettingsWindow |
-
-CustomUISettingsWindow is allowed to call **only** the functions in §5. It must not read or write `CustomUI.Settings.SCT` directly.
+This plan replaces the v1 plan. v1 attempted a full reimplementation of stock event text and tried to match it pixel-for-pixel. That goal is not load-bearing and produced ~2000 lines of code we have to maintain forever. v2 takes the opposite stance: **stock is the baseline; we layer deviations on top and only when needed.**
 
 ---
 
-## 4. Module layout
+## 1. Design thesis
 
-Replace `Controller/SCTEventText.lua` (currently ~1775 lines) with the files below. All new files are under `Source/Components/SCT/`. Keep one responsibility per file. Target size given in parentheses; if a file exceeds that, split it further.
+Stock `EA_System_EventText` is the canonical implementation of floating combat text. It exists in the client. It is correct by definition for the "default" case.
 
-```
-Controller/
-  SCTController.lua       (~80 lines)   Component adapter. Initialize / Enable / Disable / Shutdown.
-  SCTSettings.lua         (~400 lines)  Schema, defaults, migrations, public getters/setters.
-  SCTHandlers.lua         (~150 lines)  Engine handler swap (Install/Restore) + the OnX handlers.
-  SCTTracker.lua          (~250 lines)  Per-target tracker: queues, lane slots, dispatch, lifecycle.
-  SCTEntry.lua            (~250 lines)  EventEntry / PointGainEntry: window create, text/color/icon.
-  SCTAnim.lua             (~300 lines)  Animation driver + the 5 effect modules.
-  SCTAnchors.lua          (~120 lines)  Anchor / holder / icon window helpers; reuse-safe creation.
-View/
-  SCT.xml                              CustomUISCTWindow (OnUpdate / OnShutdown driver).
-  CustomUI_EventTextLabel.xml          Label template; required behavior described below.
-  SCTAbilityIcon.xml                   Icon child template; required behavior described below.
-```
+The user-visible promise is:
 
-**XML required behavior (do not assume current files match — verify, fix if not):**
+> With every SCT setting at its default value, SCT is **bit-identical** to stock easystem_eventtext. When the user changes a setting in the SCT settings tab, that setting — and only that setting — overlays its delta on stock behavior.
 
-- `CustomUI_Window_EventTextLabel` (in `CustomUI_EventTextLabel.xml`): a `Label` with `ignoreFormattingTags="false"` (so we can render the engine icon glyphs when needed; the runtime currently avoids `<icon#>` markup, but the template must allow it), `textalign="left"`, `wordwrap="false"`, `handleinput="false"`, `font="font_default_text_large"`, default size 400×100, default white color. The runtime overrides font/scale/size/color per entry.
-- `CustomUI_SCTAbilityIcon` (in `SCTAbilityIcon.xml`): a window template containing a `DynamicImage` named `$parentIcon`. Runtime sets the texture/coords via `DynamicImageSetTexture` and resizes via `WindowSetDimensions`.
-- `CustomUISCTWindow` (in `SCT.xml`): a top-level window with `OnUpdate="CustomUI.SCT.OnUpdate"` and `OnShutdown="CustomUI.SCT.OnShutdown"`. Hidden by default. **All SCT-owned anchors are children of this window** (see §7).
+The architectural consequence: at defaults, **CustomUI runs zero per-event code**. Stock handlers stay registered. CustomUI's tracker tables stay empty. CustomUI's OnUpdate is a no-op or unregistered. There is no "CustomUI pipeline that happens to look like stock" — at defaults, *the actual stock pipeline is what runs*.
 
-If any of these files diverge from the above, update the file before continuing — do not work around it in Lua.
-
-**Load order in `CustomUI.mod`** (top to bottom):
-```
-SCTSettings → SCTAnchors → SCTAnim → SCTEntry → SCTTracker → SCTHandlers → SCTController → View/SCT.xml
-```
-
-After load, the only places that should reference `CustomUI.Settings.SCT` directly are functions inside `SCTSettings.lua`. Verify with grep before merging.
+When any setting deviates from default, CustomUI swaps in: it unregisters stock, registers CustomUI handlers, and runs its own pipeline that **inherits from stock classes** and **overrides only the methods that produce the deviation**. Any non-overridden behavior delegates to stock via `__index`.
 
 ---
 
-## 5. Public API surface (consumed by CustomUISettingsWindow)
+## 2. Feasibility
 
-CustomUISettingsWindow uses **only** these functions. Anything not listed here is internal to SCT.
+Confirmed by reading `interface/default/easystem_eventtext/source/system_eventtext.lua` (520 lines):
 
-### 5.1 Static descriptors (read-only)
-```lua
-CustomUI.SCT.GetSettingsRowDescriptors()  -- returns array {{suffix=..., key=..., hasIncoming=bool}, ...}
-CustomUI.SCT.GetCombatTypeKeys()          -- returns array of strings
-CustomUI.SCT.GetPointTypeKeys()           -- returns array of strings
-CustomUI.SCT.GetTextFonts()               -- returns CustomUI.SCT.TEXT_FONTS
-CustomUI.SCT.GetColorOptions()            -- returns CustomUI.SCT.COLOR_OPTIONS
-CustomUI.SCT.GetTickScales()              -- returns CustomUI.SCT.TICK_SCALES
-CustomUI.SCT.GetCritTickScales()          -- returns CustomUI.SCT.CRIT_SIZE_TICK_SCALES
-CustomUI.SCT.GetColorPaletteRevision()    -- returns integer
-CustomUI.SCT.GetColorPickerColumns()      -- returns integer
-```
+| Question | Answer |
+| :--- | :--- |
+| Can stock and CustomUI handlers both be registered for the same engine event? | Yes engine-wise, but it would double-render. So the swap is binary: stock OR CustomUI, never both. |
+| Can we leave stock registered and just modify what stock produces? | No. Filtering ("don't show heals") requires dropping the event before tracker dispatch — only achievable by replacing the handler. |
+| Are stock's classes subclassable? | Yes. `EA_System_EventEntry`, `EA_System_PointGainEntry`, `EA_System_EventTracker` are global, `Frame`-based, and use `Subclass`/metatable patterns we already reuse today. |
+| Is per-entry rendering centralized? | Yes. `:SetupText` (lines 106 and 194 in stock) is the single per-entry render entry point. Color, font, text, scale, dimensions are all set there. Override that one method and the deviations apply post-create-pre-display. |
+| Is animation centralized? | Yes. `:Update` is a flat 20-line linear interpolator on `m_AnimationData`. Untouched at defaults; replaced for crit flair. |
+| Does stock have crit-specific visuals (shake/pulse/flash) we'd need to disable? | No. Stock crits float like every other entry. Our crit flair is purely additive. |
+| Does stock's tracker have anything we'd need to override beyond entry creation? | At defaults, no. For deviations, we only need to override the entry classes used in `:DispatchOne`. |
 
-### 5.2 Per-setting getters
-`direction` is the literal string `"outgoing"` or `"incoming"`. `key` is one of the keys returned by `GetCombatTypeKeys()` or `GetPointTypeKeys()`.
-
-```lua
-CustomUI.SCT.GetSize(direction, key)         -- number
-CustomUI.SCT.GetColorIndex(direction, key)   -- integer (1 = engine default)
-CustomUI.SCT.GetCustomColor(direction, key)  -- {r,g,b} or nil
-CustomUI.SCT.GetFilter(direction, key)       -- bool
-CustomUI.SCT.GetCritFlags()                  -- shake, pulse, flash (3 bools)
-CustomUI.SCT.GetCritSizeScale()              -- number
-CustomUI.SCT.GetTextFontIndex()              -- integer
-CustomUI.SCT.GetTextFontName()               -- string
-CustomUI.SCT.GetShowAbilityIcon()            -- bool
-```
-
-### 5.3 Per-setting setters
-Setters validate, clamp, and persist. They never call back into the runtime.
-
-```lua
-CustomUI.SCT.SetSize(direction, key, scale)
-CustomUI.SCT.SetColorIndex(direction, key, idx)
-CustomUI.SCT.SetCustomColor(direction, key, rgb_or_nil)  -- nil = clear override
-CustomUI.SCT.SetFilter(direction, key, bool)
-CustomUI.SCT.SetCritFlags(shake, pulse, flash)           -- enforces shake/pulse exclusivity
-CustomUI.SCT.SetCritSizeScale(scale)
-CustomUI.SCT.SetTextFontIndex(idx)
-CustomUI.SCT.SetShowAbilityIcon(bool)
-```
-
-### 5.4 Slider mappers
-```lua
-CustomUI.SCT.ScaleToSliderPos(scale)
-CustomUI.SCT.SliderPosToScale(pos)
-CustomUI.SCT.CritSizeToSliderPos(scale)
-CustomUI.SCT.SliderPosToCritSize(pos)
-```
-
-### 5.5 Bulk operations
-```lua
-CustomUI.SCT.ResetColorsToStockDefault()
-CustomUI.SCT.ApplySctSettingsTabFullReset()
-```
-
-### 5.6 Internal-only state (NOT public; do not import from CustomUISettingsWindow)
-
-These exist on `CustomUI.SCT.*` but are not part of the public API. They are runtime-only flags. Settings UI must not read or write them.
-
-| Symbol | Purpose |
-| :-- | :-- |
-| `CustomUI.SCT.m_active` | Runtime gate; managed by Enable/Disable. |
-| `CustomUI.SCT.m_debug` | Verbose log gate (default false). Toggle from console only. |
-| `CustomUI.SCT.m_sctLayoutDebug` | Pink/cyan debug overlays. Toggle via `SetSctLayoutDebug` / `ToggleSctLayoutDebug`. |
-| `CustomUI.SCT._handlersInstalled`, `_stockWasRegistered` | Handler-swap bookkeeping. |
-| `CustomUI.SCT.Trackers`, `TrackersCrit` | Live tracker tables. |
-| `CustomUI.SCT.loading` | `true` between LOADING_BEGIN and LOADING_END. |
-
-Master enable/disable for the SCT component itself is owned by the **CustomUI component framework** (`CustomUI.RegisterComponent("SCT", …)`, `CustomUI.IsComponentEnabled("SCT")`), **not** by SCT's saved variables. Settings UI reads the master-enabled state via `CustomUI.IsComponentEnabled` and toggles via the framework's normal API — there is no `CustomUI.SCT.GetEnabled` getter.
-
-If any setting today reads or writes `CustomUI.Settings.SCT.*` from outside `SCTSettings.lua`, it must move behind a getter/setter in §5.2 / §5.3 or be deleted. Audit during Step 1.
-
-### 5.7 Reference setter implementation (copy this pattern)
-```lua
--- In SCTSettings.lua. `Settings()` is a private helper returning the migrated table.
-function CustomUI.SCT.SetSize(direction, key, scale)
-    assert(direction == "outgoing" or direction == "incoming", "bad direction")
-    local v = Settings()
-    if not v[direction] or not v[direction].size then return end
-    -- snap to the nearest tick
-    scale = CustomUI.SCT.SliderPosToScale(CustomUI.SCT.ScaleToSliderPos(scale))
-    v[direction].size[key] = scale
-end
-```
-
-The runtime reads through getters at the next event/frame, so setters never need to invalidate live windows. Existing displayed text continues with the values it captured at creation; new text picks up the new values. This matches stock behavior.
+**Verdict: feasible.** The override surface is small: `EventEntry:SetupText`, `PointGainEntry:SetupText`, optionally `EventEntry:Update` (only when crit flair is enabled), and `Tracker:DispatchOne` (only when ability icons or crit holders are enabled).
 
 ---
 
-## 6. Enable/Disable contract
+## 3. What "default" means
 
-The component has exactly two observable states: **disabled** and **enabled**. Both states must be reachable from the other an unbounded number of times without state drift. `Initialize` runs once at addon load. `Enable`/`Disable` may be called any number of times after that. `Shutdown` is `Disable` plus the promise that we will not be called again.
+The component has one master switch (CustomUI component framework: enabled/disabled). When enabled, the component always owns the SCT runtime so positioning uses the same holder-based path whether settings are default or customized. `IsAtDefault()` still describes whether the settings values are stock-equivalent, but it no longer controls handler ownership. Disable the SCT component to restore stock handlers. The settings and their default values:
 
-### 6.1 Enable sequence (in `SCTController:Enable`)
+| Setting | Default |
+| :--- | :--- |
+| `outgoing.filters.show*` (per combat type) | `true` for all 9 types |
+| `incoming.filters.show*` | `true` for all 9 types |
+| `outgoing.filters.showXP/showRenown/showInfluence` | `true` |
+| `outgoing.size[*]` / `incoming.size[*]` | `1.0` for all keys |
+| `outgoing.color[*]` / `incoming.color[*]` | `1` (engine default) |
+| `customColor.outgoing[*]` / `customColor.incoming[*]` | `nil` |
+| `offsets.outgoing.x` / `offsets.incoming.x` / `offsets.points.x` | `0` |
+| `critAnimShake` / `critAnimPulse` / `critAnimFlash` | `false` |
+| `critSizeScale` | `1.0` |
+| `textFont` | `1` (Default = stock font) |
+| `showAbilityIcon` | `false` |
 
-```
-1. SCTHandlers.Install()
-   1a. For each of the six stock handlers (see §6.3 for the list):
-       - Try UnregisterEventHandler(eventId, stockHandlerName).
-       - Record success/failure in CustomUI.SCT._stockWasRegistered[eventId].
-   1b. For each of the six CustomUI handlers:
-       - RegisterEventHandler(eventId, customUIHandlerName).
-   1c. CustomUI.SCT.m_active = true
-   1d. CustomUI.SCT._handlersInstalled = true
+`baseXOffset` is legacy saved-var compatibility only; active X offsets are per category.
 
-2. WindowSetShowing("CustomUISCTWindow", true)   -- starts the OnUpdate driver
-```
-
-### 6.2 Disable sequence (in `SCTController:Disable`)
-
-```
-1. WindowSetShowing("CustomUISCTWindow", false)  -- stops the OnUpdate driver immediately
-
-2. SCTHandlers.Restore()
-   2a. CustomUI.SCT.m_active = false
-   2b. For each of the six CustomUI handlers:
-       - UnregisterEventHandler(eventId, customUIHandlerName).
-   2c. For each eventId where _stockWasRegistered[eventId] was true:
-       - RegisterEventHandler(eventId, stockHandlerName).
-   2d. CustomUI.SCT._handlersInstalled = false
-
-3. SCTTracker.DestroyAll()  -- destroys every tracker, anchor, holder, label, icon SCT created
-```
-
-### 6.3 Handler table
-
-| Engine event | Stock handler name | CustomUI handler name |
-| :-- | :-- | :-- |
-| `WORLD_OBJ_COMBAT_EVENT` | `EA_System_EventText.AddCombatEventText` | `CustomUI.SCT.OnCombatEvent` |
-| `WORLD_OBJ_XP_GAINED` | `EA_System_EventText.AddXpText` | `CustomUI.SCT.OnXpText` |
-| `WORLD_OBJ_RENOWN_GAINED` | `EA_System_EventText.AddRenownText` | `CustomUI.SCT.OnRenownText` |
-| `WORLD_OBJ_INFLUENCE_GAINED` | `EA_System_EventText.AddInfluenceText` | `CustomUI.SCT.OnInfluenceText` |
-| `LOADING_BEGIN` | `EA_System_EventText.BeginLoading` | `CustomUI.SCT.OnLoadingBegin` |
-| `LOADING_END` | `EA_System_EventText.EndLoading` | `CustomUI.SCT.OnLoadingEnd` |
-
-### 6.4 Why this order
-
-- Stopping our OnUpdate before swapping handlers means we cannot half-process anything.
-- Restoring stock's registrations **before** destroying our trackers means any event the engine dispatches between those two steps reaches stock's handler — not nothing.
-- Recording which stock handlers were actually present before we unregistered them means Restore is symmetric: we never create phantom registrations stock didn't originally have.
-
-### 6.5 Idempotency
-
-Both `Install` and `Restore` early-return if `_handlersInstalled` already matches the desired state. Calling Enable twice is a no-op after the first; same for Disable. `Shutdown` calls `Disable`. There is no separate Shutdown body.
-
-### 6.6 Stock dormancy when enabled
-
-Stock's `EA_Window_EventText` window keeps ticking its own OnUpdate, but with no engine events reaching its trackers it stays at zero work and produces nothing visible. We do not modify stock window state, do not redefine stock globals, do not touch stock-owned windows. Other addons that read or extend stock see real stock objects.
-
-### 6.7 Component framework wiring
-
-`SCTController.lua` is the only place that calls `CustomUI.RegisterComponent("SCT", SCTComponent)`. The component table exposes `Initialize`, `Enable`, `Disable`, `Shutdown` — the framework calls these. Master enable state is read via `CustomUI.IsComponentEnabled("SCT")`. The component name string `"SCT"` must match what other parts of CustomUI (e.g. main `CustomUI.lua`, settings UI) use to reference this component; do not rename it without a global search.
-
----
-
-## 7. Window lifetime and naming
-
-All CustomUI SCT windows are children of CustomUI-owned parents — never of stock-owned containers. After `Tracker.DestroyAll()` runs, every window we created is gone.
-
-### 7.1 Tree
-
-```
-CustomUISCTWindow                                   (View/SCT.xml; OnUpdate driver)
-  CustomUI_SCT_EventTextAnchor<targetId>            per-target world-attached anchor (non-crit)
-    CustomUI_SCT_EventTextAnchor<targetId>Event<n>      non-crit event label
-      ...AbilityIcon                                    optional icon child
-    CustomUI_SCT_EventTextAnchor<targetId>PointGain<n>  XP / renown / influence label
-  CustomUI_SCT_EventTextAnchorCrit<targetId>        per-target crit anchor
-    ...Holder<n>                                        crit holder (carries lane/float motion)
-      ...Holder<n>Event<n>                              crit label (carries flair animation)
-        ...AbilityIcon                                  optional icon child
-```
-
-Anchors are attached to the world object via `AttachWindowToWorldObject`. `Tracker:Destroy` calls `DetachWindowFromWorldObject` before `DestroyWindow`.
-
-### 7.2 Reload-safe anchor creation
-
-A tracker is created on the first event for a target after Enable. On creation:
+CustomUI SCT branches on three categories — incoming combat, outgoing combat, and point gain (XP/RP/Inf). Per-category X offsets are absolute positions relative to the world-object anchor and are stored as:
 
 ```lua
-function SCTAnchors.CreateAnchor(anchorName)
-    if DoesWindowExist(anchorName) then
-        DestroyWindow(anchorName)  -- destroys all descendants too
-    end
-    CreateWindowFromTemplate(anchorName, "EA_Window_EventTextAnchor", "CustomUISCTWindow")
-end
-```
-
-This is the **single** path for anchor creation. Always destroy first if it exists. Because `DestroyWindow(anchor)` cascades to every child, the freshly recreated anchor has no `Event<n>` / `Holder<n>` / `PointGain<n>` descendants — and the new tracker's `m_NextEntryIndex` (§9.3) starts at `0`. Together these two invariants guarantee no window-name collision can survive a `/reloadui` and eliminate the "phantom child window blocks dispatch forever" failure mode.
-
-### 7.3 Destruction order (in `Tracker:Destroy`)
-
-**Hard rule:** before any `DestroyWindow(W)`, all engine-driven animations on `W` and on every descendant of `W` must be stopped. Engine alpha/position/scale animations hold internal references to the window; destroying a window with a live animation (or destroying its parent while it has live animations) has caused `WindowGetParent`-on-destroyed-window crashes in production. The rule is unconditional and applies to anchors, holders, labels, and icon children.
-
-`StopAllAnimations(windowName)` helper used everywhere below:
-```lua
-function StopAllAnimations(w)
-    if not DoesWindowExist(w) then return end
-    WindowStopAlphaAnimation(w)
-    WindowStopPositionAnimation(w)
-    WindowStopScaleAnimation(w)
-end
-```
-
-`Tracker:Destroy`:
-1. Drain `m_Displayed` queue, calling `entry:Destroy()` on each (which handles its own animation stops, see below).
-2. Drain `m_Pending` queue (no windows attached yet, just clear).
-3. `StopAllAnimations(m_Anchor)`.
-4. `DetachWindowFromWorldObject(m_Anchor, m_TargetObject)`.
-5. `DestroyWindow(m_Anchor)` — cascades to any remaining child holder/label.
-
-`entry:Destroy()`:
-1. If an ability icon child exists, `StopAllAnimations` on it then `DestroyWindow` it.
-2. `StopAllAnimations(m_Window)`.
-3. If `m_Holder` exists: `StopAllAnimations(m_Holder)` then `DestroyWindow(m_Holder)` (cascades to `m_Window`). Done.
-4. Otherwise `DestroyWindow(m_Window)`.
-5. If the entry held a crit lane slot, call `tracker:ReleaseLane(self.m_LaneSlot)`.
-
-`SCTTracker.DestroyAll()` iterates `Trackers` and `TrackersCrit`, calls `Destroy` on each, sets both tables to `{}`.
-
----
-
-## 8. Animation pipeline (unified)
-
-One model for every entry. Crit and non-crit run the same loop; crits add a list of overlay effects.
-
-### 8.1 Entry shape
-
-```lua
-entry = {
-    m_Window         = "<windowName>",       -- the label window
-    m_Holder         = "<holderName>",       -- crit holder, or nil
-    m_LifeSpan       = 0,
-    m_BaseAnim = {
-        start    = { x, y },
-        target   = { x, y },
-        current  = { x, y },
-        maxTime  = number,                   -- seconds; engine alpha animation aligns to this
-        targetWindow = "<windowName>",       -- the holder if present, else the label
-    },
-    m_Effects = {                            -- ordered list; each runs only during its own time window
-        { effect = SCTAnim.Effects.LaneMove,   startAt = 0.00, duration = 0.15, params = {...} },
-        { effect = SCTAnim.Effects.Grow,       startAt = 0.15, duration = 0.20, params = {...} },
-        { effect = SCTAnim.Effects.Shake,      startAt = 0.35, duration = 0.75, params = {...} },
-        { effect = SCTAnim.Effects.ColorFlash, startAt = 0.35, duration = 0.75, params = {...} },
-    },
+v.offsets = v.offsets or {
+    incoming = { x = 0 }, -- player-targeted combat
+    outgoing = { x = 0 }, -- non-player-targeted combat
+    points   = { x = 0 }, -- XP / Renown / Influence
 }
 ```
 
-For non-crits, `m_Holder` is nil, `m_Effects` is empty, and `m_BaseAnim.targetWindow` is the label.
+The active keys are `incoming`, `outgoing`, and `points`; `IsAtDefault()` treats `x = 0` for all three categories as the default. The override seam is documented in §5.3.
 
-**Point-gain entries** (XP, renown, influence) use the **same entry shape and same `Update` driver**. They are non-crit by construction: `m_Holder = nil`, `m_Effects = {}`, `m_BaseAnim.targetWindow` is the label. The only difference from a non-crit combat entry is in `SetupText` (different localized string, different default color) — not in animation. There is one driver, not two.
-
-### 8.1.1 Lifetime: single source of truth
-
-`m_BaseAnim.maxTime` is the authoritative lifetime of the entry. Both the tracker's destroy decision **and** the engine alpha animation are driven from it:
-
-- The tracker pops + destroys the entry when `entry.m_LifeSpan > entry.m_BaseAnim.maxTime`.
-- The engine alpha animation is started at dispatch time with arguments derived from the same number, **always targeting the label window** (`entry.m_Window`), never the holder. The holder, if present, exists to carry position/scale motion; the visible glyph fades on its own window. Fading the holder would also fade any descendant we add later (e.g. ability icon child) at unrelated rates — keep fade on the label only:
-  ```lua
-  local fadeDuration = ENTRY_FADE_DURATION              -- §8.6.1
-  local fadeDelay    = entry.m_BaseAnim.maxTime - fadeDuration
-  WindowStartAlphaAnimation(entry.m_Window, Window.AnimationType.EASE_OUT,
-      1, 0, fadeDuration, false, math.max(0, fadeDelay), 0)
-  -- Ability icon child (if present) gets its own matching alpha animation
-  -- so it fades in lockstep with the label glyph.
-  ```
-
-Anything that adjusts the lifetime (extra crit phases, longer flash) writes only to `m_BaseAnim.maxTime`; everything downstream re-derives. There is no second clock.
-
-### 8.2 Update loop (in `SCTEntry:Update`)
-
-```lua
-function EventEntry:Update(dt, simSpeed)
-    local simTime = dt * simSpeed
-    self.m_LifeSpan = self.m_LifeSpan + simTime
-
-    -- 1. Run any active effects (in declaration order).
-    for _, slot in ipairs(self.m_Effects) do
-        local localT = self.m_LifeSpan - slot.startAt
-        if localT >= 0 and localT <= slot.duration then
-            local p = slot.duration > 0 and (localT / slot.duration) or 1
-            slot.effect.Apply(self, p, slot.params)
-        elseif localT > slot.duration and not slot._finished then
-            slot.effect.Finish(self, slot.params)
-            slot._finished = true
-        end
-    end
-
-    -- 2. Run the base scroll/drift on whichever window owns motion.
-    local anim = self.m_BaseAnim
-    local step = simTime / anim.maxTime
-    anim.current.x = anim.current.x + (anim.target.x - anim.start.x) * step
-    anim.current.y = anim.current.y + (anim.target.y - anim.start.y) * step
-    WindowSetOffsetFromParent(anim.targetWindow, anim.current.x, anim.current.y)
-
-    return self.m_LifeSpan
-end
-```
-
-That is the entire driver. There are no phase strings, no nested if/elseif chains.
-
-### 8.3 Effect interface
-
-Every effect implements:
-
-```lua
-SCTAnim.Effects.<Name> = {
-    Apply  = function(entry, p, params) ... end,    -- p in [0,1] over the effect's window
-    Finish = function(entry, params) ... end,       -- restore neutral state
-}
-```
-
-### 8.4 The five effects
-
-Each effect is ~30–60 lines of math. No window-existence guards, no pcalls.
-
-- **LaneMove** — moves the holder horizontally from a side lane into the center column. `params = { fromX, toX, y }`. `Apply` interpolates X with ease-out; `Finish` writes the final X.
-- **Grow** — scales the label from `fromScale` to `toScale`. `params = { fromScale, toScale }`. `Apply` writes `WindowSetScale` and the center-pivot offset compensation. `Finish` writes `toScale` and the rest offset.
-- **Shake** — adds sinusoidal jitter to the holder's offset (or label if no holder). `params = { amplitude, frequency, verticalScale, baseX, baseY }`. `Apply` writes `base + amp*(1-p)*sin(2π·f·localT)`. `Finish` writes `(baseX, baseY)`.
-- **Pulse** — adds sinusoidal scale modulation to the label. `params = { frequency, scaleDelta, restScale, baseW, baseH }`. `Apply` writes `restScale * (1 + delta*(1-p)*sin(...))` plus center-pivot compensation. `Finish` writes `restScale`.
-- **ColorFlash** — drives the label color through Base→White→Base→Black→Base→…→target sequence. `params = { targetR, targetG, targetB }`. `Apply` writes `LabelSetTextColor`. `Finish` writes the target color.
-
-### 8.5 Composition rules
-
-- **Lane move + grow** are sequential: lane move first, then grow.
-- **Shake + pulse** are mutually exclusive (settings already enforce this; `SetCritFlags` re-checks).
-- **ColorFlash** runs concurrently with shake or pulse.
-- **Float** is the same base scroll/drift every entry already runs — the holder/label moves vertically toward `m_BaseAnim.target.y` continuously. There is no "float phase". For crits with a holder, the base anim targets the holder; for non-crits, it targets the label. That is the only difference between crit and non-crit motion.
-
-### 8.6 Building the effect list (in `Tracker:DispatchOne`)
-
-```lua
-local effects = {}
-local t = 0
-if entry.m_Holder then
-    table.insert(effects, { effect = LaneMove, startAt = t, duration = LANE_DUR, params = {...} })
-    t = t + LANE_DUR
-end
-if anyFlair then
-    table.insert(effects, { effect = Grow, startAt = t, duration = GROW_DUR, params = {...} })
-    t = t + GROW_DUR
-    local mainEnd = t
-    if shake  then table.insert(effects, { effect = Shake,      startAt = t, duration = SHAKE_DUR, params = {...} }); mainEnd = math.max(mainEnd, t + SHAKE_DUR) end
-    if pulse  then table.insert(effects, { effect = Pulse,      startAt = t, duration = PULSE_DUR, params = {...} }); mainEnd = math.max(mainEnd, t + PULSE_DUR) end
-    if flash  then table.insert(effects, { effect = ColorFlash, startAt = t, duration = FLASH_DUR, params = {...} }); mainEnd = math.max(mainEnd, t + FLASH_DUR) end
-    t = mainEnd
-end
-entry.m_Effects = effects
-entry.m_BaseAnim.maxTime = math.max(MIN_DISPLAY_TIME, t + FLOAT_TAIL)
-
--- Start fade. The label fades on its own animation; if an ability icon child
--- exists, start the same animation on it so the two fade in lockstep.
-local fadeDelay = math.max(0, entry.m_BaseAnim.maxTime - ENTRY_FADE_DURATION)
-WindowStartAlphaAnimation(entry.m_Window, Window.AnimationType.EASE_OUT,
-    1, 0, ENTRY_FADE_DURATION, false, fadeDelay, 0)
-if entry.m_AbilityIconWindow then
-    WindowStartAlphaAnimation(entry.m_AbilityIconWindow, Window.AnimationType.EASE_OUT,
-        1, 0, ENTRY_FADE_DURATION, false, fadeDelay, 0)
-end
-```
-
-### 8.6.1 Animation constants (define in `SCTAnim.lua`)
-
-These are the only timing constants in the animation system. All other timing is derived from these via §8.6 and §8.1.1.
-
-| Constant | Value | Meaning |
-| :-- | :-- | :-- |
-| `LANE_DUR` | `0.15` | Crit holder slides from off-axis lane into center column. |
-| `GROW_DUR` | `0.20` | Label scales from `fromScale` to crit `endScale`. |
-| `SHAKE_DUR` | `0.75` | Damped sinusoidal shake duration. |
-| `PULSE_DUR` | `0.75` | Damped scale pulse duration. |
-| `FLASH_DUR` | `0.75` | Color flash sequence duration. |
-| `FLOAT_TAIL` | `0.75` | Trailing base-drift time after the last crit effect ends, before fade-out completes. For non-crit entries this is the entire post-effect display window. |
-| `MIN_DISPLAY_TIME` | `4.0` | Lower bound on `m_BaseAnim.maxTime`; matches stock's `maximumDisplayTime` default so non-crit entries last at least as long as stock. |
-| `ENTRY_FADE_DURATION` | `0.75` | Engine alpha-animation duration; the alpha fade starts at `maxTime - ENTRY_FADE_DURATION`. |
-| `MINIMUM_EVENT_SPACING` | `36` | Vertical spacing between stacked entries in a tracker queue (also the threshold for "out of starting box"). |
-| `CRIT_LANE_OFFSET_X` | `80` | Horizontal lane offset for crit slots; slot 1 = `+80`, slot 2 = `-80`. |
-
-Tunable per-effect parameters (`amplitude`, `frequency`, `verticalScale`, `scaleDelta`, `endScale`, etc.) are passed in the `params` table of each effect slot and may be sourced from settings. They are not separate top-level constants here.
-
-### 8.7 Holder usage rule
-
-A holder window is created **only** when `m_Effects` contains at least one effect whose target is `"holder"` (currently: LaneMove, optionally Shake). Non-crits and crits-with-no-flair use the label window directly. The pipeline treats the holder as transparent: an effect targeting `"holder"` falls back to the label when no holder exists.
+`IsAtDefault()` returns `true` iff every value above matches its default. It is recomputed on every `Set*` call (cheap; ~30 comparisons) and cached for UI/reset state only.
 
 ---
 
-## 9. Tracker model
+## 4. Architecture: two runtime ownership modes
 
-`SCTTracker` is a plain Lua table-based class. It does not subclass any stock class. Per-target instance:
+### 4.1 Mode P (Passthrough) — SCT component disabled
 
-```lua
-{
-    m_TargetObject     = number,
-    m_Anchor           = "<anchorName>",
-    m_IsCritTracker    = bool,
-    m_Pending          = Queue:Create(),
-    m_Displayed        = Queue:Create(),
-    m_ScrollSpeed      = 1,
-    m_NextEntryIndex   = 0,                 -- monotonic counter for window names
-    m_LaneSlots        = { [1] = false, [2] = false }, -- crit only; false = free, true = taken
-}
+- Stock handlers stay registered.
+- `CustomUISCTWindow` is hidden; OnUpdate not active.
+- `CustomUI.SCT.Trackers` and `TrackersCrit` are empty.
+- Zero per-event Lua executes from CustomUI.
+
+### 4.2 Mode D (CustomUI runtime) — SCT component enabled
+
+- Stock handlers unregistered (recorded in `_stockWasRegistered`).
+- CustomUI handlers registered.
+- `CustomUISCTWindow` shown; OnUpdate runs CustomUI tracker updates.
+- Entry classes are `CustomUI.SCT.EventEntry` / `PointGainEntry`, which **inherit from stock** and override only the methods named below.
+
+### 4.3 Mode transitions
+
+`ApplyMode()` is the single function that reconciles runtime ownership with the component enabled state:
+
+```
+ApplyMode():
+    if not IsComponentEnabled("SCT"):
+        if currently in Mode D: switch to Mode P
+        return
+    if not currently in Mode D: switch to Mode D
 ```
 
-### 9.1 Lane slot reservation (crit trackers only)
+Switching to Mode P:
+1. Hide `CustomUISCTWindow`.
+2. Unregister CustomUI handlers.
+3. Re-register stock handlers (those `_stockWasRegistered` flagged true).
+4. Destroy all CustomUI trackers.
 
-```lua
-function Tracker:ReserveLane()
-    for slot = 1, 2 do
-        if not self.m_LaneSlots[slot] then
-            self.m_LaneSlots[slot] = true
-            return slot
-        end
-    end
-    return nil  -- no slot available; caller delays dispatch this frame
-end
+Switching to Mode D:
+1. Unregister stock handlers (record in `_stockWasRegistered`).
+2. Register CustomUI handlers.
+3. Show `CustomUISCTWindow`.
 
-function Tracker:ReleaseLane(slot)
-    if slot then self.m_LaneSlots[slot] = false end
-end
-```
+`ApplyMode()` is called from:
+- Component `Enable` / `Disable` / `Shutdown`
+- Every public setter (`SetSize`, `SetColorIndex`, `SetCritFlags`, ...) — settings changes can still happen while disabled/enabled, but only the component master switch controls stock vs CustomUI runtime.
 
-Slot 1 maps to `+CRIT_LANE_OFFSET_X`, slot 2 maps to `-CRIT_LANE_OFFSET_X`. The entry stores its `m_LaneSlot` so `entry:Destroy()` can call `tracker:ReleaseLane(entry.m_LaneSlot)`.
-
-If `ReserveLane` returns nil, leave the event at the front of `m_Pending` and try again next frame. This naturally throttles rapid crit bursts.
-
-### 9.2 Lifecycle
-
-- **Create** lazily on first event for a target. `OnCombatEvent` / `AddPointGain` looks up the right tracker table and creates if missing.
-- **Update** runs from `OnUpdate` per frame. Iterates `m_Displayed` from front to back, calls `entry:Update(dt, simSpeed)` on **every** entry every frame — `m_LifeSpan` and effect state advance for all displayed entries continuously, even when not at the front. This matches stock: trailing entries keep animating and fading on their own clocks; the front-only check governs only **destroy timing**, not lifespan accumulation. After updating, if the front entry's `m_LifeSpan > m_BaseAnim.maxTime`, pop it and call `entry:Destroy()`, then re-check the new front (an entry that has been waiting can be popped immediately on the same frame). Then dispatch from `m_Pending` if the queue has space.
-- **Destroy** when both queues are empty. Non-crit trackers destroy only when **also** out of combat: read `(GameData and GameData.Player and GameData.Player.inCombat) == true`. If `GameData.Player` is nil (pre-login / handoff) treat as **not in combat**. No debouncing — the check runs once per `OnUpdate` per tracker; transient `inCombat` flips between frames cause at most one extra/one fewer-frame delay before destruction, which is harmless. Crit trackers destroy as soon as both queues are empty regardless of combat state.
-- **DestroyAll** is the single sweep used on Disable / Shutdown.
-
-### 9.3 Window names
-
-```lua
-local newName = self.m_Anchor .. (eventType == COMBAT_EVENT and "Event" or "PointGain") .. self.m_NextEntryIndex
-self.m_NextEntryIndex = self.m_NextEntryIndex + 1
-```
-
-Use a monotonic counter, not `m_Displayed:End()`. The counter resets only when the tracker is destroyed and recreated. With reload-safe anchor creation (§7.2) collisions are impossible.
+Mid-combat transitions are safe: CustomUI's `:Destroy` already drains queues and detaches anchors; stock starts clean on its first event after restore.
 
 ---
 
-## 10. Error & logging policy
+## 5. Override surface (enabled SCT runtime)
 
-- **No defensive guards on engine globals.** Functions like `DoesWindowExist`, `WindowSetScale`, `LabelSetText` always exist in the RoR runtime. Call them directly. This removes ~150 lines of `if Fn then Fn(...) end` noise and stops masking real failures.
-- **No pcall around our own code paths.** A bug should fail loudly once, not silently every frame. The current double-pcall pattern in tracker→entry update is removed.
-- **Existence checks remain only where they are real branches** (`DoesWindowExist(anchor)` to decide create-vs-reuse; `DoesWindowExist(holder)` before `DestroyWindow`).
-- **Documented brittle-boundary exception.** A small set of engine calls are known to assert or otherwise mis-behave on edge inputs that we cannot fully validate from Lua. Wrap **only these** in `pcall`, with a comment explaining why:
-  - `AttachWindowToWorldObject(anchor, targetObjectNumber)` — target object may have despawned in the same frame.
-  - `DetachWindowFromWorldObject(anchor, targetObjectNumber)` — same as above.
-  - `CreateWindowFromTemplate(name, template, parent)` — asserts on duplicate names; we mitigate via §7.2 but leave the pcall as belt-and-braces.
-
-  Every other call stays unguarded. If a new candidate boundary appears in the future, add it to this list with its rationale; do not silently sprinkle pcalls.
-- **Logging is gated.** A new `CustomUI.SCT.m_debug` boolean (default `false`) controls per-event log lines. Helper:
+When SCT is enabled, CustomUI's classes inherit from stock and override only what's needed:
 
 ```lua
-local function SCTLog(msg)
-    if not CustomUI.SCT.m_debug then return end
-    local dbg = CustomUI.GetClientDebugLog()
-    if dbg then dbg("[SCT] " .. tostring(msg)) end
-end
+CustomUI.SCT.EventEntry      = StockEventEntry:Subclass("CustomUI_Window_EventTextLabel")
+CustomUI.SCT.PointGainEntry  = StockPointGainEntry:Subclass("CustomUI_Window_EventTextLabel")
+CustomUI.SCT.EventTracker    = setmetatable({}, { __index = StockEventTracker })
+CustomUI.SCT.EventTracker.__index = CustomUI.SCT.EventTracker
 ```
 
-Tracker-level errors (e.g. anchor creation failure) log unconditionally with a different prefix.
+### 5.1 EventEntry overrides
+
+| Method | When overridden | What we do |
+| :--- | :--- | :--- |
+| `:Create` | When SCT is enabled | Create a zero-size motion holder under the world-attached anchor, create the stock label under that holder, and center-anchor the label locally. |
+| `:SetupText` | When SCT is enabled | Call `StockEventEntry.SetupText(self, ...)`. Then post-process: apply size scale, `critSizeScale` (multiplied with size for crits), color override (preset or custom RGB), font, ability-icon child, crit flair pre-state. |
+| `:Update` | When SCT is enabled | Copy stock's animation math but move the holder, not the label. Run crit effects on the label visual layer. |
+| `:Destroy` | Always | Stop animations, destroy icon child/sibling, label, and holder. |
+
+#### 5.1.1 Holder-based scale isolation
+
+The label template is `400×100` with `textalign="center"`. `WindowSetScale` pivots from the window's top-left, so scaling the same window that owns the world-object offset causes visible displacement. This is especially fragile when user offsets, point-gain spray offsets, crit motion, and per-row size sliders all combine.
+
+The enabled CustomUI runtime therefore splits position from visuals:
+
+```text
+world-attached event anchor
+  -> zero-size motion holder (`EA_Window_EventTextAnchor`)
+      -> visible event label center-anchored to the holder
+```
+
+`EventEntry:Create` / `PointGainEntry:Create` create the holder under the world-attached anchor, create the stock label under that holder, and anchor the label `center` to holder `center` at local `0,0`.
+
+`EventEntry:Update` / `PointGainEntry:Update` copy stock's animation math but write `WindowSetOffsetFromParent` to the holder, not the label. `m_AnimationData` remains the source of truth for stock spacing and lifetime checks. Size sliders and crit pulse call `WindowSetScale` on the label only, so no anchor-offset compensation is required for normal centered text.
+
+When the ability icon is enabled, the icon is a sibling under the world-attached anchor and is anchored relative to the label. The label may switch to `textalign="left"` for the row layout, but base position is still owned by the holder.
+
+### 5.2 PointGainEntry overrides
+
+| Method | When overridden | What we do |
+| :--- | :--- | :--- |
+| `:Create` | When SCT is enabled | Same holder + center-anchored label model as `EventEntry`. |
+| `:SetupText` | When SCT is enabled | Call `StockPointGainEntry.SetupText(self, ...)`. Then post-process: size scale, color override, font. (No icon, no crit.) |
+| `:Update` / `:Destroy` | When SCT is enabled | Move/destroy the holder+label pair. |
+
+### 5.3 EventTracker overrides
+
+| Method | When overridden | What we do |
+| :--- | :--- | :--- |
+| `:InitializeAnimationData` | Always when SCT is enabled | Call stock to preserve Y/timing/fade defaults, then replace `start.x`, `target.x`, and `current.x` with the category X offset. Point-gain spray still adds to `target.x` later in `:Update`. The holder moves from this animation data; label scale stays local to the holder. |
+| `:Create` | Always | Identical to stock, but use `CustomUI.SCT.EventEntry` / `PointGainEntry` for the entries it dispatches. |
+| `:Destroy` | Never (stock already unparents and destroys cleanly) | Pure inheritance. |
+| `:Update` | Never | Pure inheritance — same float math, same destroy timing. |
+
+Crit holders (used by Shake/LaneMove) are an *additional* window inserted between anchor and label, only when crit flair is on. Implemented in `:DispatchOne` (which we override) or in `:SetupText` (preferred — no need to override DispatchOne if the holder is created lazily inside `:Create`).
+
+### 5.4 Handler functions
+
+Six handler functions (`OnCombatEvent`, `OnXpText`, `OnRenownText`, `OnInfluenceText`, `OnLoadingBegin`, `OnLoadingEnd`) replace the six stock handlers when SCT is enabled. They:
+
+1. Apply filters (drop events if filtered).
+2. Look up or create a `CustomUI.SCT.EventTracker`.
+3. Forward to `tracker:AddEvent` (inherited from stock).
+
+Filtering is the only logic in these handlers. Everything else delegates.
 
 ---
 
-## 11. Step-by-step implementation
+## 6. Module layout (target: ≤ 1000 lines total, down from ~2300)
 
-Each step ends with a verification gate. **Do not advance until the gate passes.** Each step should be one commit so it can be reverted independently.
+```
+Source/Components/SCT/
+  Controller/
+    SCTSettings.lua    (~450 ln)  Schema, defaults, IsAtDefault, public API.
+    SCTOverrides.lua   (~300 ln)  EventEntry / PointGainEntry / EventTracker subclasses.
+                                  All override methods live here. Stock delegation via __index.
+    SCTHandlers.lua    (~120 ln)  Six handlers + Install/Restore + filter checks.
+    SCTAnim.lua        (~120 ln)  Crit effect tables (Shake / Pulse / ColorFlash).
+    SCTController.lua  (~80 ln)   Component adapter + ApplyMode dispatcher.
+  View/
+    SCT.xml                       CustomUISCTWindow (OnUpdate hook only when SCT is enabled).
+    CustomUI_EventTextLabel.xml   Label template (unchanged).
+    SCTAbilityIcon.xml            Icon template (unchanged).
+```
 
-### Step 1 — Add the public API surface to existing `SCTSettings.lua`
-- Add every function from §5 as a thin wrapper around the existing settings table. No behavioral changes.
-- Internalize the existing `GetSettings()` as a file-local `Settings()` helper.
-- **Gate:** `grep -n "CustomUI.Settings.SCT" Source` returns matches **only** in `SCTSettings.lua`. Existing settings UI still loads and edits values correctly.
+### Files deleted in this refactor
 
-### Step 2 — Migrate CustomUISettingsWindow tabs to the public API
-- Replace every direct read/write of `CustomUI.Settings.SCT.*` in CustomUISettingsWindow with the corresponding getter/setter.
-- **Gate:** `grep -rn "CustomUI.Settings.SCT" CustomUISettingsWindow` returns zero matches. Open the SCT settings tab; every slider/checkbox/color picker reads its current value correctly and writes back correctly.
+- `SCTAnchors.lua` — anchor/holder/icon helpers move into `SCTOverrides.lua`, where they're used.
+- `SCTEntry.lua`, `SCTTracker.lua` — replaced by `SCTOverrides.lua`.
+- The unified-pipeline machinery: `m_BaseAnim`, `m_Effects` array, `_finished` tracking, `Effects.LaneMove`, `Effects.Grow` — gone. Stock's `:Update` is the base anim. `Effects.Shake`, `Effects.Pulse`, `Effects.ColorFlash` survive as small overlay functions invoked from `EventEntry:Update`.
 
-### Step 3 — Mechanical file split
-- Move the existing `SCTEventText.lua` content into `SCTAnchors.lua`, `SCTAnim.lua`, `SCTEntry.lua`, `SCTTracker.lua`, `SCTHandlers.lua` with **no behavioral changes**. Pure cut-and-paste plus the load-order update in `CustomUI.mod`.
-- Delete `SCTEventText.lua`.
-- **Gate:** SCT enabled, behavior indistinguishable from pre-split in all of these scenarios:
-  - solo target dummy: hits, abilities, blocks, parries, evades all show as before
-  - taking damage: incoming numbers in correct color/size/position
-  - XP / renown / influence gain show as before
-  - one crit per toggle combination plays as before
-  - `git diff` shows only file moves, load-order edits, and `require`/load wiring; no logic changes outside those.
+These items are not deleted in the same commit they become unused — they are marked as legacy first (§6.1), verified unused, then deleted in Step 5b.
 
-### Step 4 — Strip defensive guards and pcalls
-- In the moved files, remove all `if FunctionName then FunctionName(...) end` patterns and all pcalls that wrap our own code.
-- Keep `DoesWindowExist` checks only where they pick a code path.
-- **Gate:** SCT enabled in a fight — same visuals as Step 3. No new errors in client log.
+### 6.1 Legacy marking convention
 
-### Step 5 — Reparent + reload-safe anchor creation (§7.2)
-- **Reparent every SCT-owned anchor to `CustomUISCTWindow`.** Audit all `CreateWindowFromTemplate(...)` calls in the SCT component; any that pass `EA_Window_EventTextContainer` (or any non-CustomUI window) as the parent must be changed to `CustomUISCTWindow`. This includes anchors, holders, debug overlay windows, and the ability icon child template parent chain.
-- Replace all anchor-creation paths with the single `SCTAnchors.CreateAnchor` function shown in §7.2.
-- Replace `m_Displayed:End()`-based naming with the monotonic `m_NextEntryIndex` (§9.3).
-- Apply the §7.3 stop-animations-before-destroy rule everywhere a `DestroyWindow` is called.
-- **Gate (parenting):** `grep -rn "EA_Window_EventTextContainer" Source/Components/SCT/` returns zero matches. Every `CreateWindowFromTemplate` call in the component passes `"CustomUISCTWindow"` as parent (or a window that is itself a descendant of it).
-- **Gate (reload):** Enable SCT, take damage, `/reloadui` mid-fight, take damage again. New floating text appears. Run a temporary `/customui sct dumpwindows` console command (add it for this gate; remove after) that prints `DoesWindowExist("CustomUISCTWindow")` and the list of children — there are no `CustomUI_SCT_*` windows other than the live trackers' anchors.
-- **Gate (animations):** Enable SCT, take damage to spawn ~10 entries, run `/reloadui` while entries are mid-animation. No `WindowGetParent`-on-destroyed-window errors in the client log.
+When v2 code lands alongside v1 code that is destined for removal, mark the v1 code immediately so a future pass can delete it safely. Reuse the existing project convention (`<!-- LEGACY: -->` blocks already used in `CustomUI.mod`).
 
-### Step 6 — Unified animation pipeline (§8)
-- Implement `SCTAnim.lua` with the five effects per §8.4. Each effect is a small file-local table with `Apply` and `Finish`.
-- Replace `EventEntry:Update`'s phase soup with the loop in §8.2. The new `EventEntry:Update` is ≤30 lines.
-- Move effect-list construction into `Tracker:DispatchOne` per §8.6.
-- **Gate:** Test each crit toggle combination — `none`, `shake`, `pulse`, `flash`, `shake+flash`, `pulse+flash`. Each plays as before. Non-crit floats are unchanged. Diff against stock event text behavior with SCT disabled — they look the same as before this step.
+**Files (whole-file legacy):** add a header at the top of the file, on the very first line:
 
-### Step 7 — Enable/Disable sequencing (§6)
-- Implement `SCTHandlers.Install` / `SCTHandlers.Restore` per §6.1 / §6.2. Record which stock handlers were actually present (`_stockWasRegistered`).
-- Rewrite `SCTController:Enable` / `Disable` / `Shutdown` to the exact sequences in §6. `Shutdown` calls `Disable`.
-- Add a temporary debug helper `CustomUI.SCT._DumpHandlerState()` (remove after this step). For each of the six event ids in §6.3 it reports:
-  - the value of `_stockWasRegistered[eventId]` and `_handlersInstalled` (purely Lua-side state).
-  - **best-effort live registration probe**, in this order of preference:
-    1. If the engine exposes a registration-introspection function in this build, use it. Confirm in lua-stubs / docs before relying on it.
-    2. Otherwise, perform an unregister-then-reregister round-trip on a known-safe handler name and observe whether the unregister succeeded. This mutates state for one frame; do it only at idle (no live trackers, no pending events) to avoid masking a real event.
-  - **Do not** use synthetic engine-event injection in this helper. It can have gameplay side effects (XP toasts, combat-state changes, achievement triggers) and is unsafe outside a private dev client. If neither (1) nor (2) is feasible, drop live introspection and rely on the Lua-side bookkeeping plus the in-combat behavioral gates below.
-- The helper is **dev-only**: gate it behind `CustomUI.SCT.m_debug` and remove from the codebase once Step 7 verification passes.
-- **Gate (idempotence):** Call `Enable()` 5 times then `Disable()` 5 times. `_DumpHandlerState()` after the run reports the same handlers registered as before the test started.
-- **Gate (out of combat toggle):** Toggle SCT 20 times via the settings UI's enable checkbox. After the final toggle, `_DumpHandlerState()` matches the baseline captured before the test.
-- **Gate (in combat toggle):** Same as above while taking damage from a target dummy. No doubled text (each event produces one float, never two). No missed events lasting longer than one second after re-enable.
+```lua
+-- LEGACY (v2 SCT refactor, 2026-04-25): replaced by SCTOverrides.lua. Safe to delete once
+-- Step 5a verifies no remaining references. Do not extend or fix bugs in this file.
+```
 
-### Step 8 — Lane slot reservation (§9.1)
-- Replace the modulo-based lane assignment with reserve-on-dispatch / release-on-destroy.
-- **Gate:** Trigger a rapid burst of crits (e.g. AoE on multiple targets at once). No two simultaneously visible crits sit in the same lane.
+**Module manifest:** comment the file out in `CustomUI.mod` with a `LEGACY:` marker (matching the existing in-addon `*Tab.xml` block):
 
-### Step 9 — Drop redundant `m_active` reads from runtime
-- Handlers are only registered when active, so the entry-guards `if not CustomUI.SCT.m_active then return end` inside `OnCombatEvent`/`OnXpText`/etc. are redundant. Remove them.
-- The dead-code branch in `EventEntry:SetupText` that handles `not m_active` is unreachable. Remove it.
-- Keep `m_active` as a single boolean read by `OnUpdate`'s entry guard, or remove it entirely if `WindowSetShowing(false)` reliably stops OnUpdate (verify on your platform; if uncertain, keep the flag).
-- **Gate:** SCT enabled, behavior unchanged. SCT disabled, no CustomUI work happens (verify by adding a temporary print to OnUpdate and confirming no output when disabled).
+```xml
+<!-- LEGACY (v2 SCT, 2026-04-25): superseded by SCTOverrides.lua. Remove in Step 5b. -->
+<!-- <File name="Source/Components/SCT/Controller/SCTEntry.lua" /> -->
+```
 
-### Step 10 — Final cleanup
-- Confirm no file in the component exceeds the targets in §4. Split further if any does.
-- Confirm `grep -rn "CustomUI.Settings.SCT" Source/Components/SCT/` only matches `SCTSettings.lua`.
-- Confirm `grep -rn "EA_System_Event" Source/Components/SCT/` only appears in: (a) `SCTHandlers.lua` for handler-name strings, (b) docstrings.
-- Update this `plan.md` to a short "What this component does" doc, or delete it.
+**Functions / globals (partial-file legacy):** wrap the dead block with a comment fence and *delete the body*, leaving only a stub that errors if anyone calls it:
+
+```lua
+-- LEGACY (v2 SCT, 2026-04-25): replaced by EventEntry:Update center-pivot pattern. Remove with Step 5b.
+function CritFlashOffsetForCenterPivot(...) error("LEGACY: CritFlashOffsetForCenterPivot removed") end
+```
+
+This makes accidental callers fail loudly during gate testing rather than silently using the old code path.
+
+**Settings fields (saved-var legacy):** when a setting becomes a no-op (e.g. `baseXOffset` in Step 6), keep the field in `Settings()` migration but add a one-line `-- LEGACY (v2 SCT):` comment above it. Don't delete saved-var entries — that breaks user saves on first load. Field stays; consumer goes away.
+
+**Grep target.** All legacy markers use the literal token `LEGACY (v2 SCT` so they're easy to find:
+
+```
+grep -rn "LEGACY (v2 SCT" Source/
+```
+
+Step 5b's gate is "this grep returns zero matches and `IsAtDefault()`+all override behavior still works."
+
+### Code that survives unchanged
+
+- The public API on `SCTSettings.lua` (CustomUISettingsWindow already consumes it).
+- `SCTAbilityIcon.xml` — unchanged.
+- The reload-safe anchor invariant (destroy-then-create on `CreateAnchor`).
+
+### Code touched in this refactor
+
+- `CustomUI_EventTextLabel.xml` — set `textalign="center"` (currently `"left"`) so scale 1.0 matches stock and §5.1.1 centering math is valid. The icon-on case still flips to `"left"` at runtime.
 
 ---
 
-## 12. Acceptance criteria
+## 7. Default-state invariants
+
+These are testable claims, not aspirations:
+
+1. With component disabled: `EA_System_EventText.AddCombatEventText` is registered for `WORLD_OBJ_COMBAT_EVENT`. No CustomUI handler is registered for that event.
+2. With component enabled and `IsAtDefault() == true`: `EA_System_EventText.AddCombatEventText` is **not** registered. `CustomUI.SCT.OnCombatEvent` is registered.
+3. With component enabled and any single setting deviated: same handler ownership as #2; only render/filter behavior changes.
+4. Toggling a setting back to its default: handlers stay CustomUI-owned while SCT remains enabled. Disabling SCT restores stock.
+5. `/reloadui` while in Mode P: stock continues unmodified.
+6. `/reloadui` while SCT is enabled: CustomUI restarts in Mode D and re-swaps handlers.
+
+---
+
+## 8. Implementation steps
+
+Each step is one commit with a verification gate.
+
+### Step 1 — Add `IsAtDefault()` to `SCTSettings.lua`
+
+Pure addition, no behavioral change. Compares each field to its default constant. Used by Step 4 onward.
+
+**Gate:** Toggle one setting via the settings UI; `IsAtDefault()` flips correctly. Reset all; flips back to true.
+
+### Step 2 — Write `SCTOverrides.lua` (single file)
+
+Subclass stock. Implement `:SetupText` overrides for both entry classes by calling stock's then post-applying overrides. Implement `:Destroy` extension for ability icon. Subclass `EventTracker` so `:Create` dispatches our entry classes.
+
+Crit visuals are deferred to Step 3 — for now, `EventEntry:SetupText` post-processing only applies size/color/font/icon (no crit flair).
+
+**Gate:** Force Mode D (skip `IsAtDefault` check). With every setting at default, the in-game output is visually indistinguishable from stock. With size at 1.25× for "Hit", hits are 25% bigger and nothing else changes.
+
+### Step 3 — Crit overlay in `EventEntry:Update`
+
+Move Shake/Pulse/ColorFlash into `SCTAnim.lua`. In `EventEntry:Update`, always move the motion holder with stock's animation math. If the entry is crit and any crit flag is enabled, run effects on the label visual layer: Shake adjusts the label's local center-anchor offset, Pulse scales the label, and Flash changes label color.
+
+**Gate:** Enable Shake-only — crit shakes, non-crits unchanged. Enable Flash-only — crit color cycles, position unchanged. Combinations work.
+
+### Step 4 — `ApplyMode()` and mode reconciliation
+
+Add `ApplyMode()` to `SCTController.lua`. Call from Enable / Disable / Shutdown. Hook every public setter in `SCTSettings.lua` to call `ApplyMode()` after writing the value.
+
+**Gate (enabled runtime):** Component enabled. All settings default. CustomUI handler registered. Set `outgoing.size["Hit"]` to 1.25 via the settings UI, then back to 1.0. Handler ownership remains CustomUI until the SCT component is disabled.
+
+**Gate (mid-combat swap):** Take damage from a target dummy continuously while toggling a setting in and out of default. No double text, no missing text spans > 1 second.
+
+### Step 5a — Mark v1 modules legacy and unwire from load order
+
+Do **not** delete files yet. Per §6.1:
+
+1. Add `LEGACY (v2 SCT, <date>)` header line to `SCTAnchors.lua`, `SCTEntry.lua`, `SCTTracker.lua`.
+2. In `CustomUI.mod`, comment out the `<File>` lines for those modules with a `<!-- LEGACY (v2 SCT): … -->` marker. The new load order becomes: `SCTSettings → SCTAnim → SCTOverrides → SCTHandlers → SCTController → SCT.xml`.
+3. Inside `SCTAnim.lua`, mark dead constants/effects with `LEGACY (v2 SCT)` comments and replace their bodies with `error()` stubs (LaneMove, Grow, the `m_BaseAnim`/`m_Effects` pipeline glue). Step 6 of v1 code is not reached anymore but a stray reference would now fail loudly.
+
+**Gate:** Full settings reset. Output identical to stock side-by-side against an unmodified client. All v1 acceptance scenarios still pass. Run `grep -rn "SCT.EventTracker\|SCT.EventEntry\|SCT.PointGainEntry\|_SctAnchors\|_SctAnim" Source/Components/SCT/` and confirm only `SCTOverrides.lua`, `SCTAnim.lua`, and `SCTHandlers.lua` are matched — no references in marked-legacy files leak through.
+
+### Step 5b — Delete legacy after one stable session
+
+After Step 5a has soaked through at least one play session with no regressions, delete the marked-legacy files and stub functions outright. Remove the commented `<File>` lines from `CustomUI.mod`.
+
+**Gate:** `grep -rn "LEGACY (v2 SCT" Source/` returns zero matches under `Source/Components/SCT/`. Build and full SCT acceptance pass unchanged.
+
+### Step 6 — Remove `baseXOffset` from settings UI
+
+`baseXOffset` is no longer an applied deviation. Remove the slider row from `CustomUISettingsWindowTabSCT.xml/.lua`. Leave the saved-variable field and getter/setter present so old saves don't error, but the setter becomes a no-op (clamps to 0). `IsAtDefault()` ignores the field.
+
+**Gate:** SCT tab no longer shows a Base X Offset slider. Existing saves load without error. Setting field is forced to 0.
+
+### Step 7 — Documentation
+
+Trim or delete `implementation.md`. Trim this `plan.md` to a one-page "what this component does" doc, or delete it.
+
+---
+
+## 9. Acceptance criteria
 
 The refactor is done when **all** of the following hold:
 
-- Toggling SCT enabled/disabled in any state (out of combat, in combat, mid-crit, during loading screen, immediately before/after `/reloadui`) leaves no observable drift after one round-trip: same `CustomUI.Settings.SCT` table contents, same handlers registered (verified per Step 7's `_DumpHandlerState`), no orphan windows under `CustomUISCTWindow` or anywhere else (verified per Step 5's window-dump helper).
-- With SCT disabled, stock event text appears with stock visuals and stock timing — verified by comparing against an unmodified client.
-- With SCT enabled, no stock event text appears anywhere.
-- `/reloadui` mid-combat with SCT enabled: text continues on the next event with no orphan windows.
-- The SCT component has zero references to any `CustomUISettingsWindow*` symbol.
-- The CustomUISettingsWindow addon has zero references to `CustomUI.Settings.SCT` (only public getters/setters from §5).
-- `SCTEventText.lua` does not exist after the refactor; no single file in the component exceeds ~400 lines.
-- Per-event SCTLog output is empty unless `CustomUI.SCT.m_debug` is true.
+1. With component disabled OR all settings default: stock event text appears with stock visuals and stock timing. Confirmed by side-by-side compare against unmodified client.
+2. Toggling any single setting away from default and back: handlers swap to CustomUI then swap back to stock, with no orphan windows in either direction.
+3. The settings UI never directly reads or writes `CustomUI.Settings.SCT`.
+4. `SCTOverrides.lua` calls into `StockEventEntry.SetupText`, `StockPointGainEntry.SetupText`, and `StockEventTracker.Create`; entry `Update` / `Destroy` are documented deviations because holders own motion and cleanup.
+5. Total Lua line count under `Source/Components/SCT/` is ≤ 1000 (currently ~2300). No single file exceeds 500 lines.
+6. `/reloadui` mid-Mode-D continues correctly. `/reloadui` mid-Mode-P leaves stock untouched.
+
+---
+
+## 10. Risks and mitigations
+
+| Risk | Mitigation |
+| :--- | :--- |
+| Stock changes between RoR client patches and breaks our subclass assumptions. | The only stock methods we depend on are `:Create`, `:SetupText`, `:Update`, `:Destroy`, `:InitializeAnimationData` — names that have been stable. If a name changes we'll see immediate hard failures, not silent drift. |
+| User changes a setting mid-combat-burst — handler swap mid-burst. | `ApplyMode()` always runs in setter calls (out of combat path), but the engine event queue may have already-dispatched events in flight. Worst case: one frame of duplicated or missing text. Acceptable. |
+| Filter-only deviations (e.g., user only disables "show heals") still trigger Mode D and run the full subclass machinery, even though stock could just pre-filter. | This is fine. The cost is one extra function call per event. Filters being the most common deviation does not justify added complexity. |
+| Entry holder lifetime under custom `Tracker:Update`. | The tracker queue stores the entry object; `EventEntry:Destroy` / `PointGainEntry:Destroy` tear down icon, label, and holder together without delegating to stock destroy. |
+| `IsAtDefault()` cache invalidation. | Recomputed from scratch on every setter call. No incremental dirty tracking — too easy to get wrong. ~30 comparisons is cheap. |
+
+---
+
+## 11. Out of scope
+
+- Reproducing v1's `_DumpHandlerState` introspection helper. Behavioral gates replace it.
+- Supporting partial enable (e.g., "only color overrides apply, but filters and sizes are off"). Granularity is at the per-setting level — every setting is independently a deviation.
+- Migrating saved-variable schema. v1's schema stays.
+- Multi-step animation queuing across entries. Stock handles this, we delegate.

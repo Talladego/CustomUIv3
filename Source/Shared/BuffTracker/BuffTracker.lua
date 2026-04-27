@@ -313,6 +313,7 @@ function CustomUI.BuffTracker:Create( windowName, parentName,
         m_filterConfig      = nil,
         m_blacklist         = {},
         m_whitelist         = {},
+        m_forceShowTrackerPriority100 = false,
         m_compiledSortFunc  = nil,
         m_compressMultiCast = true,
         m_groupBuffs        = true,
@@ -393,6 +394,12 @@ end
 function CustomUI.BuffTracker:SetWhitelist( idTable )
     self.m_whitelist = idTable or {}
     self:_WarnListConflicts()
+    self:OnBuffsChanged()
+end
+
+function CustomUI.BuffTracker:SetForceShowTrackerPriority100( enabled )
+    self.m_forceShowTrackerPriority100 = enabled == true
+    self:_RebuildSortFunc()
     self:OnBuffsChanged()
 end
 
@@ -489,6 +496,7 @@ end
 function CustomUI.BuffTracker:_RebuildSortFunc()
     local priority  = c_SORT_PRIORITY[ self.m_sortMode ]
     local threshold = self.m_durationThreshold
+    local forceP100First = self.m_forceShowTrackerPriority100 == true
 
     if priority == nil then
         self.m_compiledSortFunc = nil
@@ -497,6 +505,15 @@ function CustomUI.BuffTracker:_RebuildSortFunc()
 
     self.m_compiledSortFunc = function( a, b )
         if a == nil or b == nil then return false end
+
+        if forceP100First then
+            local aP = tonumber( a.trackerPriority ) == 100
+            local bP = tonumber( b.trackerPriority ) == 100
+            if aP ~= bP then
+                return aP
+            end
+        end
+
         local catA = GetDurationCategory( a, threshold )
         local catB = GetDurationCategory( b, threshold )
         local priA = priority[ catA ]
@@ -716,6 +733,14 @@ function CustomUI.BuffTracker:OnBuffsChanged()
     local inResult   = {}
 
     for _, buffData in pairs( self.m_buffData ) do
+        if self.m_forceShowTrackerPriority100
+           and tonumber( buffData.trackerPriority ) == 100 then
+            local effectId = buffData.effectIndex
+            if effectId ~= nil and not inResult[ effectId ] then
+                table.insert( postFilter, buffData )
+                inResult[ effectId ] = true
+            end
+        else
         local effectId   = buffData.effectIndex
         local inBlack    = blacklist[ effectId ]
         local inWhite    = whitelist[ effectId ]
@@ -734,6 +759,7 @@ function CustomUI.BuffTracker:OnBuffsChanged()
                 table.insert( postFilter, buffData )
                 inResult[ effectId ] = true
             end
+        end
         end
     end
 

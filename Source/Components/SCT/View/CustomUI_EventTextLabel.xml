@@ -3,7 +3,9 @@
         <!-- Copy of EASystem_EventText `EA_Window_EventTextLabel` with left-aligned text.
              Ability icons are separate windows parented to this label's parent and anchored to this label
              (Labels cannot host child windows in the RoR client). -->
-        <Label name="CustomUI_Window_EventTextLabel" font="font_default_text_large" maxchars="32" textalign="left" layer="default"
+        <!-- textalign="center" matches stock EA_Window_EventTextLabel so scale-compensation math (plan §5.1.1) is valid.
+             Runtime overrides to "left" when ability icon is shown. -->
+        <Label name="CustomUI_Window_EventTextLabel" font="font_default_text_large" maxchars="64" textalign="center" layer="default"
                 autoresize="false" sticky="false" handleinput="false" wordwrap="false" ignoreFormattingTags="false" >
             <Size>
                 <AbsPoint x="400" y="100" />

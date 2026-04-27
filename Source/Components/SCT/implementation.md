@@ -1,89 +1,70 @@
-# CustomUI.SCT implementation notes (vs `plan.md`)
+# CustomUI.SCT — Implementation Notes (v2)
 
-This file records how the current tree differs from `plan.md`, client-specific gotchas, and **plan §11 step status**. Update it when behavior or the plan changes.
-
----
-
-## Status (smoke test)
-
-- **SCT loads:** `SCTHandlers.lua` parses (no BOM), `SystemData.Events` deferred until `InstallHandlers`, `OnUpdate` / handler swap work.
-- **Settings:** CustomUISettingsWindow SCT tab uses the §5 API only; persisted table stays behind `SCTSettings.lua` (`Settings()` helper).
-- **Ability icons:** Template `CustomUI_SCTAbilityIcon` is registered using **`Interface` / `Windows`** XML (not `<Root>`). Icons **create** without uilog template errors; **size and position** still need tuning / more in-game testing (no code change in this refresh).
+**Repo:** changes on `main`. **Plan:** `plan.md` (v2, deviation-only model).
 
 ---
 
-## Plan §11 — step checklist
+## Progress vs plan
 
-| Step | Topic | Status |
+### Completed steps
+
+| Step | Status | Notes |
 | :--- | :--- | :--- |
-| **1** | Public API on `SCTSettings.lua`, `Settings()` | **Done** |
-| **2** | Settings window off `CustomUI.Settings.SCT` | **Done** (grep `CustomUISettingsWindow`: zero matches; under `Source/` only `SCTSettings.lua` + this `.md` mention the string) |
-| **3** | Mechanical split into Anchors/Anim/Entry/Tracker/Handlers; delete monolith | **Partial:** `SCTHandlers.lua` + `_RuntimeForHandlers` bridge only; **`SCTEventText.lua`** still holds anchors, anim, entries, tracker |
-| **4** | Strip defensive `if Fn` / pcalls per §10 | **Not started** (client needed targeted `pcall` / `DoesWindowExist` in a few places, e.g. `WindowGetParent`, load quirks) |
-| **5** | Reparent anchors to `CustomUISCTWindow`; §7.2 single `CreateAnchor`; §7.3 animation stops | **Not started** — anchors still created under **`EA_Window_EventTextContainer`** (`SctEnsureEventTextRootAnchor`) |
-| **6** | Unified `SCTAnim` pipeline (§8) | **Not started** |
-| **7** | Enable/disable §6 + `_DumpHandlerState` | **Partial:** controller order, `_stockWasRegistered`, `_engineHandlerRowsCache`, boot probe / `pcall(InstallHandlers)`; **`_DumpHandlerState` not implemented** |
-| **8** | Lane reserve/release (§9.1) | **Not verified** against plan (may still use older lane logic) |
-| **9** | Drop redundant `m_active` in handlers | **Not started** |
-| **10** | Final grep / file size / doc trim | **Not started** |
+| **1** — `IsAtDefault()` + `notifyChange()` hooks | **Done** | Added to end of `SCTSettings.lua`. Every public setter calls `notifyChange()` which invalidates `_isAtDefault` cache and calls `ApplyMode()` lazily. `SetBaseXOffset` is now a no-op (LEGACY). |
+| **2** — `SCTOverrides.lua` | **Done** | New file. `EventEntry`, `PointGainEntry`, `EventTracker` subclass stock. Entries now use a zero-size motion holder with the visible label center-anchored inside it (plan §5.1.1), so label scale does not mutate animation offsets. Ability icon helpers inlined. |
+| **3** — Crit effects | **Done** | `SCTAnim.lua` rewritten: Shake, Pulse, ColorFlash only. Dead v1 pipeline stubs marked `LEGACY (v2 SCT)`. Effects called from `EventEntry:Update` in SCTOverrides. |
+| **4** — `SCTHandlers.lua` | **Done** | Thin filter+dispatch. `getOrCreateTracker()` helper. `OnUpdate` and `OnShutdown` driver here (called by `CustomUISCTWindow` XML). |
+| **4** — `SCTController.lua` | **Done** | `ApplyMode()`, `_switchToP()`, `_switchToD()`. Component adapter `Enable` switches directly to Mode D because the framework writes the saved enabled flag after `Enable` returns; setters still call `ApplyMode`. `Disable`/`Shutdown` call `_switchToP`. |
+| **5a** — Legacy marking + load order | **Done** | `SCTAnchors.lua`, `SCTEntry.lua`, `SCTTracker.lua` have `LEGACY (v2 SCT, 2026-04-25)` headers. Commented out of `CustomUI.mod`. New load order: `SCTSettings → SCTAnim → SCTOverrides → SCTHandlers → SCTController → SCT.xml`. |
+| **6** — Remove `baseXOffset` slider | **Done** | Slider `$parentRowBaseXOffset` removed from XML. `SyncBaseXOffsetSlider`, `OnBaseXOffsetChanged`, tooltip block removed from Lua. `c_SCT_ROW_ORDER` entry removed. `SetBaseXOffset` in `SCTSettings.lua` is now a no-op. |
+| **7** — Per-category X offsets | **Done** | Added Outgoing, Incoming, and Points X-offset sliders to CustomUISettingsWindow. Offsets replace stock X in `EventTracker:InitializeAnimationData`, so `0` is centered on the world-object anchor; point queue spray is added afterward. |
+| **Template** — `textalign="center"` | **Done** | `CustomUI_EventTextLabel.xml` changed to `textalign="center"` to match stock and support holder-local center anchoring. |
 
-Next logical chunk after your icon testing: **Step 5** (reparent to `CustomUISCTWindow`) or resume **Step 3** (full split with a shared `_internal` table) depending on whether you want behavior stability or structure first.
+### Pending steps
 
----
-
-## 1. RoR client Lua: `assert` return value
-
-Some UI Lua builds use a stub `assert` that does **not** return its first argument on success. Do not use `local x = assert(tbl, "msg")` for wiring; use `local x = tbl` then `if not x then error(...) end`.
+| Step | Status |
+| :--- | :--- |
+| **5b** — Delete legacy files | Pending — soak one play session first |
+| **7** — Trim docs | Pending |
 
 ---
 
-## 2. `SystemData.Events` must not run at `SCTHandlers.lua` chunk load
+## Mode P / Mode D invariants
 
-Build the six handler rows inside **`InstallHandlers`** via `sctEngineHandlers()`. Cache rows in **`_engineHandlerRowsCache`** for **`RestoreHandlers`** if `SystemData` is unavailable during teardown.
-
----
-
-## 3. Encoding and BOM (`SCTHandlers.lua`)
-
-The client rejects a **UTF-8 BOM** at file start (`'=' expected near` garbage). Keep **`SCTHandlers.lua`** as **UTF-8 without BOM** and ASCII-safe in comments/strings editors might re-save with BOM.
-
-Strip example:
-
-`node -e "const fs=require('fs');const p='.../SCTHandlers.lua';let b=fs.readFileSync(p);if(b[0]===0xEF&&b[1]===0xBB&&b[2]===0xBF)b=b.slice(3);fs.writeFileSync(p,b);"`
+- Component disabled → Mode P: `_mode = "P"`, `CustomUISCTWindow` hidden, stock handlers registered, `EventTrackers = {}`.
+- Component enabled → Mode D: `_mode = "D"`, `CustomUISCTWindow` shown, CustomUI handlers registered, holder-based runtime active even when `IsAtDefault() == true`.
+- `Enable` switches directly to Mode D; every public `Set*` setter calls `ApplyMode()` via `notifyChange()`.
+- `_switchToP()`: hide window → `RestoreHandlers()` → `DestroyAllTrackers()`.
+- `_switchToD()`: `InstallHandlers()` → show window.
 
 ---
 
-## 4. Module split (plan §4)
+## Architecture deviations from plan
 
-**Target load order:** `SCTSettings` → `SCTAnchors` → `SCTAnim` → `SCTEntry` → `SCTTracker` → `SCTHandlers` → `SCTController` → `SCT.xml`
-
-**Actual:** `SCTSettings` → `SCTEventText` → `SCTHandlers` → `SCTController` → `SCT.xml`
-
-**Bridge:** `CustomUI.SCT._RuntimeForHandlers` (defined at end of `SCTEventText.lua`) passes `SCTLog`, `SctLayoutDebugIsOn`, `SctAnchorName`, `SctEnsureEventTextRootAnchor` into handlers.
-
----
-
-## 5. Enable / disable (plan §6)
-
-Aligned: hide **`CustomUISCTWindow`** first, **`RestoreHandlers`**, **`DestroyAllTrackers`**. **`InstallHandlers`** sets **`m_active`** and **`_handlersInstalled`**. Stock restore uses **`_stockWasRegistered`**.
-
-**Deviation:** XML **`OnShutdown`** on `CustomUISCTWindow` also runs restore + destroy (overlap with component shutdown is intentional safety).
-
-**Legacy:** **`Deactivate()`** still exists; component **Disable** does not call it.
+| Point | Detail |
+| :--- | :--- |
+| `EventTracker:Update` override | Plan §5.3 said override `:Create`; actual override point is `:Update` because stock's `:Update` hardcodes `EA_System_EventEntry:Create`. Override copies stock's Update verbatim with our entry classes substituted. |
+| `EventTracker:Destroy` override | Added to drain `m_PendingEvents` (plan §7.3 gap) and stop anchor animations before `DetachWindowFromWorldObject`. |
+| Holder-based entry movement | `EventEntry:Update` / `PointGainEntry:Update` copy stock's animation math and move the holder. The label remains center-anchored to the holder, so size sliders and pulse scale the label without anchor compensation. |
+| Crit effects order in `EventEntry:Update` | Base float moves the holder first; Shake/Pulse/ColorFlash then affect only the label visual layer. |
+| Heal filter | Checked in `OnCombatEvent` against `outgoing.filters.showHeal`; consistent with v1 behaviour. Heal = positive hit/crit amount regardless of direction. |
 
 ---
 
-## 6. Logging (plan §10 vs shipped)
+## Client gotchas carried forward
 
-Plan §10 eventually gates **all** per-event **`SCTLog`** behind **`m_debug`**. Shipped today: **`CustomUI.SCT.m_debug`** + **`CustomUI.SCT.Trace()`** in **`SCTSettings.lua`** for optional traces; **`SCTEventText.lua`** **`SCTLog`** still logs whenever **`CustomUI.GetClientDebugLog`** exists (verbose). **`SCTController`** logs a one-line **boot probe** and **Enable** summary (`m_active`, `OnUpdate` type, `_handlersInstalled`); **`InstallHandlers`** wrapped in **`pcall`** with errors to uilog.
-
----
-
-## 7. XML
-
-- **`CustomUI_EventTextLabel.xml`:** matches plan intent (left align, `ignoreFormattingTags="false"`, etc.).
-- **`SCTAbilityIcon.xml`:** root is **`Interface` > `Windows` > `Window name="CustomUI_SCTAbilityIcon"`** so the template loads like other addon XML. **Layout follow-up:** icon **size/position** vs label (anchors in `SctApplyAbilityIconLayout`) — adjust after more combat testing.
+- `assert` return value: do not use `local x = assert(expr)` — some builds return nil. Use explicit nil check.
+- `SystemData.Events` must not run at file load — wrapped inside `sctEngineHandlers()` function.
+- BOM on Lua files — keep UTF-8 without BOM, especially `SCTHandlers.lua`.
 
 ---
 
-*Last updated: plan §11 status table, Step 1–2 noted done, Steps 3–10 honest backlog, ability icon XML + positioning note, logging §10 delta.*
+## Suggested next session
+
+1. Load in client. Verify SCT disabled uses stock event text with no CustomUI windows.
+2. Enable SCT at default settings — verify CustomUI handlers are active and text position is stable.
+3. Set one size slider to ≠ 1.0 — verify text scales correctly and stays centered on the world object.
+4. Test crit flags (Shake, Pulse, Flash individually and combined).
+5. Test ability icon toggle.
+6. `/reloadui` while SCT is enabled.
+7. If all pass: run Step 5b (delete legacy files, remove LEGACY comments).

@@ -69,15 +69,6 @@ local m_statusPollElapsed        = 0
 -- Helpers
 ----------------------------------------------------------------
 
-local function DebugLog(message)
-    local dbg = CustomUI.GetClientDebugLog()
-    if type(dbg) ~= "function" then
-        return
-    end
-
-    dbg("[CustomUI.GroupWindow] " .. tostring(message))
-end
-
 local function IsMemberValid(index)
     return (m_groupData ~= nil
         and m_groupData[index] ~= nil
@@ -336,12 +327,7 @@ local function TryGetRawMemberStatus(index)
         return nil
     end
 
-    local ok, status = pcall(GetGroupMemberStatusData, index)
-    if not ok then
-        return nil
-    end
-
-    return status
+    return GetGroupMemberStatusData(index)
 end
 
 local function IsHarnessActive()
@@ -786,7 +772,6 @@ local function EnsureStockGroupWindowRegistered()
     end
 
     if not DoesWindowExist(c_STOCK_WINDOW_NAME) then
-        DebugLog("Stock GroupWindow does not exist; cannot register.")
         return false
     end
 
@@ -1154,8 +1139,6 @@ local GroupWindowComponent = {
 }
 
 function GroupWindowComponent:Enable()
-    DebugLog("Enable start.")
-
     m_enabled = true
 
     if EnsureStockGroupWindowRegistered() then
@@ -1168,13 +1151,10 @@ function GroupWindowComponent:Enable()
     RefreshAllMemberStatuses()
     UpdateContainerVisibility()
 
-    DebugLog("Enable complete.")
     return true
 end
 
 function GroupWindowComponent:Disable()
-    DebugLog("Disable start.")
-
     m_enabled = false
     LayoutEditor.UserHide(self.WindowName)
     HideAllMemberRows()
@@ -1201,7 +1181,6 @@ function GroupWindowComponent:Disable()
         m_stockGroupRegistered = false
     end
 
-    DebugLog("Disable complete.")
     return true
 end
 
@@ -1271,35 +1250,4 @@ function CustomUI.GroupWindow.ApplyBuffSettings()
         end
     end
 end
-
--- ============================================================================
--- LEGACY (removal candidate) — in-addon settings: View/GroupWindowTab.xml, CustomUI.GroupWindow.Tab
--- Replaced by: CustomUISettingsWindow. Remove with: *Tab in CustomUI.mod, this block, BuffFilterSection
---   if last user. See README "Legacy code".
--- ============================================================================
-
-CustomUI.GroupWindow.Tab = {}
-
-function CustomUI.GroupWindow.Tab.OnShown(contentName)
-    local enabled = CustomUI.IsComponentEnabled("GroupWindow")
-    ButtonSetPressedFlag(contentName .. "EnableCheckBox", enabled)
-    LabelSetText(contentName .. "EnableLabel", L"Enabled")
-    CustomUI.BuffFilterSection.SetupLabels(contentName)
-    CustomUI.BuffFilterSection.RefreshControls(contentName, CustomUI.GroupWindow.GetSettings().buffs)
-end
-
-function CustomUI.GroupWindow.Tab.OnToggleEnable()
-    local newState = not CustomUI.IsComponentEnabled("GroupWindow")
-    CustomUI.SetComponentEnabled("GroupWindow", newState)
-    ButtonSetPressedFlag(SystemData.ActiveWindow.name, newState)
-end
-
-function CustomUI.GroupWindow.Tab.OnFilterChanged()
-    CustomUI.BuffFilterSection.OnFilterChanged(
-        function() return CustomUI.GroupWindow.GetSettings().buffs end,
-        function() CustomUI.GroupWindow.ApplyBuffSettings() end
-    )
-end
-
---CustomUI.SettingsWindow.RegisterTab("Group", "CustomUIGroupWindowTab", GroupWindowComponent, CustomUI.GroupWindow.Tab.OnShown)  -- LEGACY: remove with Tab block above
 CustomUI.RegisterComponent("GroupWindow", GroupWindowComponent)

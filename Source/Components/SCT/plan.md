@@ -1,5 +1,7 @@
 # CustomUI.SCT — Refactor Plan v2 (deviation-only model)
 
+**Status (2026-04-29):** v2 is **complete** (runtime: `SCTOverrides.lua`, `SCTHandlers.lua`, `SCTAnim.lua`, `SCTSettings.lua`). This document stays as design/reference; shipping docs live in the repo root `README.md`.
+
 This plan replaces the v1 plan. v1 attempted a full reimplementation of stock event text and tried to match it pixel-for-pixel. That goal is not load-bearing and produced ~2000 lines of code we have to maintain forever. v2 takes the opposite stance: **stock is the baseline; we layer deviations on top and only when needed.**
 
 ---

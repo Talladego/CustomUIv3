@@ -1,13 +1,15 @@
 # CustomUI Code Quality Backlog
 
-Last updated: 2026-04-24 (global cleanup: `CustomUI.MiniSettingsList`, `GetClientDebugLog`)
+Last updated: 2026-04-29 (README: SCT v2 marked **complete**; next focus `UnitFrames`)
 
 Notes: consolidated and refreshed after a focused code review of `Source/`, `CustomUISettingsWindow/`, and `CustomUI.mod`. This file tracks known bugs, design smells, and technical debt; items move into **Resolved** when fixed and are retained there for audit history.
+
+**SCT:** v2 is complete (handler swap + `SCTOverrides.lua`). Entries below that still cite removed **`SCTEventText.lua`** describe older builds — re-verify against `SCTOverrides.lua` / `SCTHandlers.lua` before filing fixes.
 
 ## Audit summary (2026-04-18, verified 2026-04-23)
 
 - The codebase is modular and well-documented: namespaced components (`CustomUI.*`), a clear Controller/View split, and reusable subsystems (`CustomUI.BuffTracker`, `CustomUI.TargetFrame`).
-- Primary risks: hooks on `PetWindow.UpdatePet` without error isolation, almost no `WindowUnregisterEventHandler` pairing, unguarded `GameData` in some view paths, and SCT-specific issues (heal keying, `GetSettings` on hot paths, global/class overrides in `SCTEventText.lua`).
+- Primary risks: hooks on `PetWindow.UpdatePet` without error isolation, almost no `WindowUnregisterEventHandler` pairing, unguarded `GameData` in some view paths, and residual SCT audit items (verify against v2 — `SCTOverrides.lua`, not legacy `SCTEventText.lua`).
 - `UnitFrames` correctly unregisters its window event handlers; most other components do not (see below).
 
 ## Component pattern verification (2026-04-18) — **resolved 2026-04-23**

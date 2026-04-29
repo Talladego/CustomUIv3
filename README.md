@@ -9,9 +9,9 @@ CustomUI is a modular Return of Reckoning addon that replaces and enhances stock
 - **`plan.md`**: historical implementation plan notes (some sections reflect older patterns; treat as reference, not the current source of truth).
 - **`CustomUISettingsWindow/README.md`**: developer notes for the **separate** settings UI addon (tab layout + XML anchoring pitfalls + diagnostics).
 - **Component refactor plans** (scoped follow-ups):
-  - **`Source/Components/SCT/plan.md`**: SCT refactor notes (stock isolation + handler swap).
+  - **`Source/Components/SCT/plan.md`**: historical notes from the v2 SCT migration (handler swap + stock subclasses); v2 is **complete** — runtime lives in `SCTOverrides.lua` / `SCTHandlers.lua`.
   - **`Source/Components/PlayerStatusWindow/plan.md`**: PlayerPetWindow stock-hook lifecycle tightening.
-  - **`Source/Components/UnitFrames/plan.md`**: BattlegroupHUD stock-hook lifecycle tightening.
+  - **`Source/Components/UnitFrames/plan.md`**: BattlegroupHUD stock-hook lifecycle tightening (**next open component work** — see Components table).
 
 ## Installation
 
@@ -36,9 +36,9 @@ Place **CustomUI** and **CustomUISettingsWindow** under the game’s `Interface\
 | `TargetHUD` | — (new world-attached HUDs for hostile and friendly targets) | ✅ Implemented |
 | `UnitFrames` | `ea_groupwindow` warband layout and scenario group frames | 🚧 In progress (adapter pattern not yet integrated) |
 | `GroupIcons` | — (career icons on world objects for party / warband / scenario members) | ✅ Implemented |
-| `SCT` | `easystem_eventtext` combat/point-gain floating text | ✅ Implemented |
+| `SCT` | `easystem_eventtext` combat/point-gain floating text | ✅ **Complete** (v2: handler swap + `SCTOverrides`; settings tab in CustomUISettingsWindow) |
 
-All components default to **disabled** except `PlayerStatusWindow`.
+All components default to **disabled** except `PlayerStatusWindow`. **Next engineering focus:** `UnitFrames` (adapter integration — still 🚧 in the table above).
 
 ## Settings window
 
@@ -106,7 +106,7 @@ Each component uses:
 
 **Load order (important):** `CustomUI.mod` lists each component’s `Controller/*.lua` **before** that component’s `View/*.xml` so the `CustomUI.<Name>.*` API exists when the template is parsed. **Do not** add a second `<Script file="...Controller/...">` in the same XML; that re-executes the controller. The one exception to “controller not in XML” is **PlayerStatusWindow**: `PlayerStatusWindow.xml` loads **only** `View/PlayerStatusWindow.lua` (no controller script) because the mod already included `PlayerStatusWindowController.lua` earlier.
 
-**File headers:** `Source/CustomUI.lua` and the top of each `*Controller.lua` / `View/*.lua` state what belongs in that file (state vs presentation, engine hooks vs tooltips, etc.). **SCT** uses `SCTEventText.lua` / `SCTSettings.lua` in `Controller/` for engine and data, not a `View/` split — the tab UI is the CustomUISettingsWindow addon. Match those headers when you add new code.
+**File headers:** `Source/CustomUI.lua` and the top of each `*Controller.lua` / `View/*.lua` state what belongs in that file (state vs presentation, engine hooks vs tooltips, etc.). **SCT** uses `SCTSettings.lua`, `SCTOverrides.lua`, `SCTHandlers.lua`, `SCTAnim.lua`, and `SCTController.lua` under `Controller/` (no separate View lua); templates live under `View/` — the `/cui` settings grid is the **CustomUISettingsWindow** addon. Match those headers when you add new code.
 
 ### Window visibility contract
 
@@ -183,12 +183,18 @@ CustomUI/
 					UnitFrames.xml
 			SCT/
 				Controller/
-					SCTSettings.lua               ← settings helpers, GetSettings(), color/size/filter keys
-					SCTEventText.lua              ← EA_System_EventEntry/PointGainEntry/EventTracker/EventText overrides
-					SCTController.lua             ← component adapter only (no settings-window bindings)
+					SCTSettings.lua
+					SCTAbilityIconCache.lua
+					SCTAnim.lua
+					SCTOverrides.lua              ← stock EventEntry / PointGainEntry / EventTracker subclasses
+					SCTHandlers.lua               ← engine handler swap + dispatch
+					SCTController.lua             ← RegisterComponent adapter
 				View/
-					SCT.xml                       ← anchor/container window definitions
-					(SCT settings grid lives in the CustomUISettingsWindow addon, not in CustomUI.)
+					CustomUI_EventTextLabel.xml
+					CustomUI_SCTAbilityNameSuffix.xml
+					SCTAbilityIcon.xml
+					SCT.xml                       ← CustomUISCTWindow + OnUpdate
+					(settings tab: CustomUISettingsWindowTabSCT.* — not in this mod)
 ```
 
 ### `Source/Shared` (what is current)
@@ -275,7 +281,7 @@ The SCT component cannot follow the standard window-visibility contract because 
 
 ### Architecture
 
-`SCTEventText.lua` implements CustomUI SCT by **inheriting stock classes** and **swapping engine event-handler registrations** on enable/disable (so stock and CustomUI SCT cannot both process the same engine events).
+`SCTOverrides.lua` + `SCTHandlers.lua` implement CustomUI SCT by **subclassing stock `EA_System_*` entry/tracker classes** and **swapping engine event-handler registrations** on enable/disable (so stock and CustomUI SCT cannot both process the same engine events).
 
 - `CustomUI.SCT.EventEntry` and `CustomUI.SCT.PointGainEntry` subclass the stock entry classes (custom scale, color, and crit animation).
 - `CustomUI.SCT.EventTracker` is derived from the stock tracker but spawns CustomUI entries.

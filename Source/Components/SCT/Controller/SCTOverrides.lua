@@ -481,8 +481,8 @@ local function SctFindWeaponIconForProcAbilityId(procAbilityId)
         return normHaystackMatchesAbilityNeedle(blob, wantNorm)
     end
 
-    -- Base item bonuses and enhancement/talisman slots (itemtooltips iterates both).
-    local function itemMatchesProcById(itemData)
+    -- Base bonuses + enhancement slots (same traversal as itemtooltips).
+    local function itemScanBonuses(itemData, bonusPred)
         if type(itemData) ~= "table" then
             return false
         end
@@ -491,7 +491,7 @@ local function SctFindWeaponIconForProcAbilityId(procAbilityId)
                 return false
             end
             for _, b in pairs(bonusTbl) do
-                if bonusMatchesProcById(b) then
+                if bonusPred(b) then
                     return true
                 end
             end
@@ -510,31 +510,20 @@ local function SctFindWeaponIconForProcAbilityId(procAbilityId)
         return false
     end
 
+    local function itemMatchesProcById(itemData)
+        return itemScanBonuses(itemData, bonusMatchesProcById)
+    end
+
     local function itemMatchesProcByTooltipText(itemData)
         if wantNorm == "" or type(itemData) ~= "table" then
             return false
         end
         local ilevel = tonumber(itemData.iLevel) or 0
-        local function scanBonusTable(bonusTbl)
-            if type(bonusTbl) ~= "table" then
-                return false
-            end
-            for _, b in pairs(bonusTbl) do
-                if passiveBonusTextMatchesAbilityName(b, ilevel) then
-                    return true
-                end
-            end
-            return false
+        local function bonusMatchesTooltip(b)
+            return passiveBonusTextMatchesAbilityName(b, ilevel)
         end
-        if scanBonusTable(itemData.bonus) then
+        if itemScanBonuses(itemData, bonusMatchesTooltip) then
             return true
-        end
-        local n = tonumber(itemData.numEnhancementSlots) or 0
-        for i = 1, n do
-            local es = itemData.enhSlot and itemData.enhSlot[i]
-            if type(es) == "table" and scanBonusTable(es.bonus) then
-                return true
-            end
         end
         -- Rare: proc name only on item flavor/description line.
         if itemData.description ~= nil then

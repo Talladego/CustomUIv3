@@ -106,9 +106,7 @@ CustomUI.SCT._SctAnim = {
     FLASH_DUR = FLASH_DUR,
 }
 
--- LEGACY (v2 SCT, 2026-04-25): v1 constants exposed so SCTEntry.lua / SCTTracker.lua
--- (still loaded as legacy files) don't nil-error on their local reads.
--- Remove these entries in Step 5b when legacy files are deleted.
+-- v1-era numeric slots kept zero / stubbed; v2 uses Effects.Shake/Pulse/ColorFlash only.
 local _Z = 0
 CustomUI.SCT._SctAnim.LANE_DUR              = _Z
 CustomUI.SCT._SctAnim.GROW_DUR              = _Z
@@ -116,7 +114,6 @@ CustomUI.SCT._SctAnim.FLOAT_TAIL            = _Z
 CustomUI.SCT._SctAnim.MIN_DISPLAY_TIME      = _Z
 CustomUI.SCT._SctAnim.ENTRY_FADE_DURATION   = _Z
 CustomUI.SCT._SctAnim.MINIMUM_EVENT_SPACING = _Z
--- v1 constants still referenced by SCTTracker.lua legacy file.
 CustomUI.SCT._SctAnim.CRIT_LANE_TRAVEL_DURATION = _Z
 CustomUI.SCT._SctAnim.CRIT_GROW_DURATION        = _Z
 CustomUI.SCT._SctAnim.CRIT_FLOAT_DURATION       = _Z

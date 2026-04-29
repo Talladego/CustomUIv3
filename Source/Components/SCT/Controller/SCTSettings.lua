@@ -5,7 +5,7 @@
 --   here, no engine hooks — data and defaults only. Call sites must not add saved-variable
 --   paths to a specific settings window; tabs live in the CustomUISettingsWindow addon.
 if not CustomUI.SCT then CustomUI.SCT = {} end
--- Mirror SCT hard failures to LogLuaMessage + uilog text log (see SCTAnchors). Default on.
+-- Mirror SCT hard failures to LogLuaMessage where supported. Default on.
 -- Legacy: old saves used `m_uilog`; when nil we migrate.
 if CustomUI.SCT.m_sctFileLog == nil then
     if type(CustomUI.SCT.m_uilog) == "boolean" then

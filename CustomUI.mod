@@ -70,10 +70,6 @@
             <File name="Source/Components/SCT/Controller/SCTHandlers.lua" />
             <File name="Source/Components/SCT/Controller/SCTController.lua" />
             <File name="Source/Components/SCT/View/SCT.xml" />
-            <!-- LEGACY (v2 SCT, 2026-04-25): superseded by SCTOverrides.lua. Remove in Step 5b. -->
-            <!-- <File name="Source/Components/SCT/Controller/SCTAnchors.lua" /> -->
-            <!-- <File name="Source/Components/SCT/Controller/SCTEntry.lua" /> -->
-            <!-- <File name="Source/Components/SCT/Controller/SCTTracker.lua" /> -->
         </Files>
         <OnInitialize>
             <!-- Component root windows: instantiated in Source/CustomUI.lua (EnsureRootWindowInstances) -->

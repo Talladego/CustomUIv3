@@ -118,15 +118,16 @@ end
 
 ----------------------------------------------------------------
 -- X offsets (pixels) — absolute category positions relative to the world-object anchor.
--- Defaults are 0 (centered on the anchor). Exposed as sliders in CustomUISettingsWindow.
+-- Defaults are 0 (CustomUI baseline; stock pixel positions differ once holder/text layout is applied).
+-- Exposed as sliders in CustomUISettingsWindow.
 ----------------------------------------------------------------
 
-local X_OFFSET_MIN = -100
-local X_OFFSET_MAX = 100
+local X_OFFSET_MIN = -300
+local X_OFFSET_MAX = 300
 
 -- Y offsets (pixels) — category vertical offsets relative to stock animation Y.
-local Y_OFFSET_MIN = -200
-local Y_OFFSET_MAX = 200
+local Y_OFFSET_MIN = -300
+local Y_OFFSET_MAX = 300
 
 function CustomUI.SCT.XOffsetToSliderPos(px)
     if type(px) ~= "number" or px ~= px then px = 0 end
@@ -324,6 +325,18 @@ local function Settings()
     end
     v.showAbilityIcon = v.showAbilityIcon == true
 
+    -- Ability icons always render before text when enabled.
+    v.abilityIconBeforeText = nil
+
+    -- Append ability name to ability hit/crit numeric lines, e.g. "-551 (Sapping Strike)".
+    if v.showAbilityNameInText == nil then
+        v.showAbilityNameInText = false
+    end
+    v.showAbilityNameInText = v.showAbilityNameInText == true
+
+    -- Strip leading +/- from combat amounts is always on (setting removed from UI).
+    v.stripCombatAmountSign = true
+
     -- Per-category X offsets (pixels): absolute positions relative to the world-object anchor.
     if type(v.offsets) ~= "table" then v.offsets = {} end
     if type(v.offsets.outgoing) ~= "table" then v.offsets.outgoing = {} end
@@ -353,6 +366,9 @@ local function Settings()
     if type(v.textFont) ~= "number" or v.textFont < 1 or v.textFont > nFonts or v.textFont ~= math.floor(v.textFont) then
         v.textFont = 1
     end
+
+    -- SCT ability icon hints (LRU); normalized on use in SCTAbilityIconCache.lua.
+    v.abilityIconCache = v.abilityIconCache or {}
 
     return v
 end
@@ -485,6 +501,18 @@ end
 
 function CustomUI.SCT.GetShowAbilityIcon()
     return Settings().showAbilityIcon == true
+end
+
+function CustomUI.SCT.GetAbilityIconBeforeText()
+    return true
+end
+
+function CustomUI.SCT.GetShowAbilityNameInText()
+    return Settings().showAbilityNameInText == true
+end
+
+function CustomUI.SCT.GetStripCombatAmountSign()
+    return true
 end
 
 function CustomUI.SCT.GetBaseXOffset()
@@ -658,6 +686,19 @@ function CustomUI.SCT.SetShowAbilityIcon(enabled)
     notifyChange()
 end
 
+function CustomUI.SCT.SetAbilityIconBeforeText(enabled)
+    -- Legacy no-op: icon-before-text is now the only supported placement.
+end
+
+function CustomUI.SCT.SetShowAbilityNameInText(enabled)
+    Settings().showAbilityNameInText = enabled == true
+    notifyChange()
+end
+
+function CustomUI.SCT.SetStripCombatAmountSign(_enabled)
+    -- Legacy no-op: +/- stripping is always enabled.
+end
+
 -- LEGACY (v2 SCT, 2026-04-25): baseXOffset no longer applied.
 -- Field preserved so old saves load without error. Setter is a no-op.
 function CustomUI.SCT.SetBaseXOffset(_px)
@@ -734,6 +775,9 @@ function CustomUI.SCT.ApplySctSettingsTabFullReset()
     v.critSizeScale = 1.0
     v.textFont = 1
     v.sctTextFontV2 = true
+    v.abilityIconBeforeText = nil
+    v.showAbilityNameInText = false
+    v.stripCombatAmountSign = false
     v.offsets = v.offsets or {}
     v.offsets.outgoing = { x = 0, y = 0 }
     v.offsets.incoming = { x = 0, y = 0 }
@@ -859,6 +903,7 @@ local function checkDefault(v)
     if (v.critSizeScale or 1.0) ~= 1.0 then return false end
     if (v.textFont or 1) ~= 1           then return false end
     if v.showAbilityIcon == true        then return false end
+    if v.showAbilityNameInText == true  then return false end
     if v.offsets then
         if type(v.offsets.outgoing) == "table" and (v.offsets.outgoing.x or 0) ~= 0 then return false end
         if type(v.offsets.incoming) == "table" and (v.offsets.incoming.x or 0) ~= 0 then return false end

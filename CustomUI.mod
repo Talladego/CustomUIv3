@@ -61,7 +61,9 @@
             <File name="Source/Components/GroupIcons/View/GroupIcons.xml" />
             <!-- SCT component (v2 load order) -->
             <File name="Source/Components/SCT/Controller/SCTSettings.lua" />
+            <File name="Source/Components/SCT/Controller/SCTAbilityIconCache.lua" />
             <File name="Source/Components/SCT/View/CustomUI_EventTextLabel.xml" />
+            <File name="Source/Components/SCT/View/CustomUI_SCTAbilityNameSuffix.xml" />
             <File name="Source/Components/SCT/View/SCTAbilityIcon.xml" />
             <File name="Source/Components/SCT/Controller/SCTAnim.lua" />
             <File name="Source/Components/SCT/Controller/SCTOverrides.lua" />

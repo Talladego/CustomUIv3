@@ -133,39 +133,252 @@ local function SctUpdateEntryPosition(entry, elapsedTime, simulationSpeed)
     return entry.m_LifeSpan
 end
 
+-- Optional combat text tweaks (amount formatting / ability name suffix).
+local function SctStripLeadingCombatAmountSign(wName)
+    if not wName or wName == "" or not DoesWindowExist(wName) then
+        return
+    end
+    local t = LabelGetText(wName)
+    if not t or t == L"" then
+        return
+    end
+    local c1 = wstring.sub(t, 1, 1)
+    if c1 == L"+" or c1 == L"-" then
+        LabelSetText(wName, wstring.sub(t, 2))
+    end
+end
+
+local function SctNormalizeAbilityDisplayName(raw)
+    if raw == nil then
+        return nil
+    end
+    local clean = tostring(towstring(raw))
+    clean = string.gsub(clean, "%^.", "")
+    clean = string.gsub(clean, "^%s+", "")
+    clean = string.gsub(clean, "%s+$", "")
+    if clean == "" then
+        return nil
+    end
+    return clean
+end
+
+-- Resolve display name for the optional beside-amount suffix label (same sources as legacy inline suffix).
+local function SctTryGetAbilityDisplayNameForSuffix(abilityId, hintAbilityData)
+    if not abilityId or abilityId == 0 then
+        return nil
+    end
+    local clean
+    if type(hintAbilityData) == "table" and hintAbilityData.name ~= nil then
+        clean = SctNormalizeAbilityDisplayName(hintAbilityData.name)
+    end
+    if not clean and type(GetAbilityName) == "function" then
+        clean = SctNormalizeAbilityDisplayName(GetAbilityName(abilityId))
+    end
+    return clean
+end
+
+local function SctDestroyAbilityNameSuffix(entry)
+    if not entry then return end
+    local sw = entry.m_AbilityNameSuffixWindow
+    if sw and entry.m_AbilityIconAnchorRightWindow == sw then
+        entry.m_AbilityIconAnchorRightWindow = nil
+    end
+    if not sw then return end
+    SctStopAnimations(sw)
+    if DoesWindowExist(sw) then
+        DestroyWindow(sw)
+    end
+    entry.m_AbilityNameSuffixWindow = nil
+end
+
+-- Second label under holder, anchored to the right of the amount label (RoR anchor quirk matches ability icon).
+local function SctApplyAbilityNameSuffix(entry, wName, holderName, cleanName, fontName, scale)
+    if not cleanName or cleanName == "" or not wName or wName == "" or not DoesWindowExist(wName) then
+        return false
+    end
+    if not holderName or holderName == "" or not DoesWindowExist(holderName) then
+        return false
+    end
+    local suffixWin = wName .. "AbilityNameSuffix"
+    if DoesWindowExist(suffixWin) then
+        DestroyWindow(suffixWin)
+    end
+    CreateWindowFromTemplate(suffixWin, "CustomUI_SCTAbilityNameSuffix", holderName)
+    if not DoesWindowExist(suffixWin) then
+        return false
+    end
+
+    LabelSetText(suffixWin, L" (" .. towstring(cleanName) .. L")")
+    if fontName and fontName ~= "" and fontName ~= "font_default_text_large" then
+        LabelSetFont(suffixWin, fontName, WindowUtils.FONT_DEFAULT_TEXT_LINESPACING)
+    end
+    if type(LabelGetTextColor) == "function" then
+        local r, g, b = LabelGetTextColor(wName)
+        if r ~= nil and g ~= nil and b ~= nil then
+            LabelSetTextColor(suffixWin, r, g, b)
+        end
+    end
+    LabelSetTextAlign(suffixWin, "left")
+
+    local sc = scale or 1.0
+    WindowSetScale(suffixWin, sc)
+    WindowSetRelativeScale(suffixWin, sc)
+
+    local sufW, sufH = LabelGetTextDimensions(suffixWin)
+    sufW = (sufW and sufW > 0) and sufW or 40
+    sufH = (sufH and sufH > 0) and sufH or 24
+    WindowSetDimensions(suffixWin, sufW, sufH)
+
+    local _, mainH = LabelGetTextDimensions(wName)
+    mainH = (mainH and mainH > 0) and mainH or sufH
+    local yOff = math.floor(((mainH - sufH) / 2) + 0.5)
+    -- Same inverted pairing as SctPositionAbilityIcon ("after text"): places suffix to the RIGHT of the amount.
+    local gap = math.floor((2 * sc) + 0.5)
+    WindowClearAnchors(suffixWin)
+    WindowAddAnchor(suffixWin, "topright", wName, "topleft", gap, yOff)
+    SctForceProcessAnchors(suffixWin)
+    WindowSetShowing(suffixWin, true)
+
+    entry.m_AbilityNameSuffixWindow = suffixWin
+    entry.m_AbilityIconAnchorRightWindow = suffixWin
+    return true
+end
+
+-- Merge icon resolver payload with a name-only peek so suffix can use disk/session name when
+-- GetAbilityData(abilityId).name is empty but persistent/session cache has the label.
+local function SctMergeAbilityNameHintForSuffix(preIconAbilityData, abilityId, abilityLine, sct)
+    if not abilityLine or not sct or sct.showAbilityNameInText ~= true or not abilityId or abilityId == 0 then
+        return preIconAbilityData
+    end
+    local h = CustomUI.SCT.AbilityIconCachePeekHint(abilityId)
+    if not h or not h.name then
+        return preIconAbilityData
+    end
+    if type(preIconAbilityData) ~= "table" then
+        return h
+    end
+    if preIconAbilityData.name == nil or tostring(preIconAbilityData.name or "") == "" then
+        local m = {}
+        for k, v in pairs(preIconAbilityData) do
+            m[k] = v
+        end
+        m.name = h.name
+        return m
+    end
+    return preIconAbilityData
+end
+
 -- Ability icon helpers --------------------------------------------------------
 
-local function SctGetEquippedWeaponIconNum()
-    if not DataUtils or type(DataUtils.GetEquipmentData) ~= "function" then
-        return nil
+-- Normalized ability/buff name for cross-source matching (matches GetAbilityTable path).
+local function SctNormAbilityNameText(s)
+    s = tostring(s or "")
+    s = string.gsub(s, "%^.", "")
+    s = string.lower(s)
+    s = string.gsub(s, "[%p%c]", " ")
+    s = string.gsub(s, "%s+", " ")
+    s = string.gsub(s, "^%s+", "")
+    s = string.gsub(s, "%s+$", "")
+    return s
+end
+
+local function SctLogAbilityIconResolveOnce(abilityId, path, detail)
+    if not abilityId or abilityId == 0 or not path or path == "" then
+        return
+    end
+    CustomUI.SCT._abilityIconResolveLog = CustomUI.SCT._abilityIconResolveLog or {}
+    local key = tostring(abilityId) .. "\0" .. tostring(path)
+    if CustomUI.SCT._abilityIconResolveLog[key] then
+        return
+    end
+    CustomUI.SCT._abilityIconResolveLog[key] = true
+    local msg = "[CustomUI.SCT] abilityIconResolve abilityId=" .. tostring(abilityId)
+        .. " path=" .. tostring(path)
+        .. (detail and detail ~= "" and (" detail=" .. tostring(detail)) or "")
+    if LogLuaMessage and SystemData and SystemData.UiLogFilters and type(towstring) == "function" then
+        LogLuaMessage("Lua", SystemData.UiLogFilters.DEBUG, towstring(msg))
+    elseif type(d) == "function" then
+        d(msg)
+    end
+end
+
+-- Scan live buff lists (player + current target) when ability tables lack iconNum.
+local function SctTryBuffListIconResolve(abilityId, isIncoming)
+    if not abilityId or abilityId == 0 then
+        return nil, nil, nil
+    end
+    if type(GetBuffs) ~= "function" then
+        return nil, nil, nil
+    end
+    if type(GameData) ~= "table" or type(GameData.BuffTargetType) ~= "table" then
+        return nil, nil, nil
     end
 
-    local ok, eq = pcall(DataUtils.GetEquipmentData)
-    if not ok or type(eq) ~= "table" then
-        return nil
+    local now = nil
+    if type(GetGameTime) == "function" then
+        local ok, t = pcall(GetGameTime)
+        if ok then now = tonumber(t) end
+    end
+    CustomUI.SCT._sctBuffScanMiss = CustomUI.SCT._sctBuffScanMiss or {}
+    local lastMiss = CustomUI.SCT._sctBuffScanMiss[abilityId]
+    if now and lastMiss and (now - lastMiss) < 1 then
+        return nil, nil, nil
     end
 
-    local best = nil
-    for _, item in pairs(eq) do
-        if type(item) == "table" and item.iconNum and item.iconNum > 0 then
-            local dps = tonumber(item.dps) or 0
-            -- Prefer an actual weapon (dps>0). If none, fall back to first icon-bearing entry.
-            if not best then
-                best = item
-            else
-                local bestDps = tonumber(best.dps) or 0
-                if dps > bestDps then
-                    best = item
+    local B = GameData.BuffTargetType
+    local scanOrder = {}
+    if isIncoming == true then
+        scanOrder[#scanOrder + 1] = { tt = B.SELF,             tag = "buff:self" }
+        scanOrder[#scanOrder + 1] = { tt = B.TARGET_HOSTILE,  tag = "buff:targetHostile" }
+        scanOrder[#scanOrder + 1] = { tt = B.TARGET_FRIENDLY, tag = "buff:targetFriendly" }
+    elseif isIncoming == false then
+        scanOrder[#scanOrder + 1] = { tt = B.TARGET_HOSTILE,  tag = "buff:targetHostile" }
+        scanOrder[#scanOrder + 1] = { tt = B.TARGET_FRIENDLY, tag = "buff:targetFriendly" }
+        scanOrder[#scanOrder + 1] = { tt = B.SELF,             tag = "buff:self" }
+    else
+        scanOrder[#scanOrder + 1] = { tt = B.SELF,             tag = "buff:self" }
+        scanOrder[#scanOrder + 1] = { tt = B.TARGET_HOSTILE,  tag = "buff:targetHostile" }
+        scanOrder[#scanOrder + 1] = { tt = B.TARGET_FRIENDLY, tag = "buff:targetFriendly" }
+    end
+
+    local wantNorm = ""
+    if type(GetAbilityName) == "function" then
+        local raw = GetAbilityName(abilityId)
+        if raw ~= nil then
+            wantNorm = SctNormAbilityNameText(raw)
+        end
+    end
+
+    local function startsWith(s, prefix)
+        return prefix ~= "" and string.sub(s, 1, string.len(prefix)) == prefix
+    end
+
+    for _, ent in ipairs(scanOrder) do
+        if ent.tt ~= nil then
+            local okList, allBuffs = pcall(GetBuffs, ent.tt)
+            if okList and type(allBuffs) == "table" then
+                for _, bd in pairs(allBuffs) do
+                    if type(bd) == "table" and bd.iconNum and bd.iconNum > 0 then
+                        local bid = tonumber(bd.abilityId)
+                        if bid and bid == tonumber(abilityId) then
+                            return bd.iconNum, bd.name, ent.tag
+                        end
+                        if wantNorm ~= "" and bd.name then
+                            local bn = SctNormAbilityNameText(bd.name)
+                            if bn ~= "" and (bn == wantNorm or startsWith(bn, wantNorm) or startsWith(wantNorm, bn)) then
+                                return bd.iconNum, bd.name, ent.tag
+                            end
+                        end
+                    end
                 end
             end
         end
     end
 
-    if not best or not best.iconNum or best.iconNum <= 0 then
-        return nil
+    if now then
+        CustomUI.SCT._sctBuffScanMiss[abilityId] = now
     end
-
-    return best.iconNum, best
+    return nil, nil, nil
 end
 
 local function SctFindWeaponIconForProcAbilityId(procAbilityId)
@@ -175,56 +388,225 @@ local function SctFindWeaponIconForProcAbilityId(procAbilityId)
     if not DataUtils or type(DataUtils.GetEquipmentData) ~= "function" then
         return nil
     end
-    if not GameDefs or type(GameDefs) ~= "table" or not GameDefs.ITEMBONUS_CONTINUOUS then
-        return nil
+
+    -- Normalized combat ability label (GetAbilityName); used when bonus.reference != combat abilityId.
+    local wantNorm = ""
+    if type(GetAbilityName) == "function" then
+        local okN, rawName = pcall(GetAbilityName, procAbilityId)
+        if okN and rawName ~= nil then
+            wantNorm = SctNormAbilityNameText(rawName)
+        end
     end
 
-    local ok, eq = pcall(DataUtils.GetEquipmentData)
-    if not ok or type(eq) ~= "table" then
-        return nil
-    end
+    -- Stock GameDefs (easystem_utils/gamedefs.lua): CONTINUOUS=5 links proc text via GetAbilityDesc(reference).
+    -- ITEMBONUS_PROC=4 exists for the same reference pattern on some data paths; do not require GameDefs
+    -- table (load order) — fall back to numeric literals.
+    local TYPE_CONTINUOUS = (type(GameDefs) == "table" and GameDefs.ITEMBONUS_CONTINUOUS) or 5
+    local TYPE_PROC = (type(GameDefs) == "table" and GameDefs.ITEMBONUS_PROC) or 4
 
-    local function itemHasProc(itemData)
-        if type(itemData) ~= "table" or type(itemData.bonus) ~= "table" then
+    -- Match combat abilityId to item bonus rows. Stock tooltips use reference for GetAbilityDesc;
+    -- gamedefs also documents value for some CONTINUOUS rows — check both.
+    local function fieldMatchesProcAbilityId(fieldVal)
+        if fieldVal == nil or fieldVal == false then
             return false
         end
-        for _, b in ipairs(itemData.bonus) do
-            if type(b) == "table"
-                and b.type == GameDefs.ITEMBONUS_CONTINUOUS
-                and b.reference
-                and tonumber(b.reference) == tonumber(procAbilityId)
-            then
+        local fv = tonumber(fieldVal)
+        local pid = tonumber(procAbilityId)
+        if fv and pid and fv == pid then
+            return true
+        end
+        return tostring(fieldVal) == tostring(procAbilityId)
+    end
+
+    local function bonusMatchesProcById(b)
+        if type(b) ~= "table" then
+            return false
+        end
+        local t = b.type
+        if t ~= TYPE_CONTINUOUS and t ~= TYPE_PROC then
+            return false
+        end
+        return fieldMatchesProcAbilityId(b.reference) or fieldMatchesProcAbilityId(b.value)
+    end
+
+    -- Tooltip-style proc text (same source as ItemUtils passives): compare normalized strings when IDs differ.
+    local function normHaystackMatchesAbilityNeedle(hay, needle)
+        if hay == "" or needle == "" then
+            return false
+        end
+        if hay == needle then
+            return true
+        end
+        local function startsWith(s, prefix)
+            return prefix ~= "" and string.sub(s, 1, string.len(prefix)) == prefix
+        end
+        if string.find(hay, needle, 1, true) ~= nil then
+            return true
+        end
+        if startsWith(hay, needle) or startsWith(needle, hay) then
+            return true
+        end
+        return false
+    end
+
+    local function passiveBonusTextMatchesAbilityName(b, itemLevel)
+        if type(b) ~= "table" then
+            return false
+        end
+        local t = b.type
+        if t ~= TYPE_CONTINUOUS and t ~= TYPE_PROC then
+            return false
+        end
+        local ref = b.reference
+        if ref == nil or ref == false or tonumber(ref) == 0 then
+            return false
+        end
+        if type(GetAbilityDesc) ~= "function" then
+            return false
+        end
+        local ok, desc = pcall(GetAbilityDesc, ref, itemLevel or 0)
+        if not ok or desc == nil then
+            return false
+        end
+        local blob = SctNormAbilityNameText(desc)
+        return normHaystackMatchesAbilityNeedle(blob, wantNorm)
+    end
+
+    -- Base item bonuses and enhancement/talisman slots (itemtooltips iterates both).
+    local function itemMatchesProcById(itemData)
+        if type(itemData) ~= "table" then
+            return false
+        end
+        local function scanBonusTable(bonusTbl)
+            if type(bonusTbl) ~= "table" then
+                return false
+            end
+            for _, b in pairs(bonusTbl) do
+                if bonusMatchesProcById(b) then
+                    return true
+                end
+            end
+            return false
+        end
+        if scanBonusTable(itemData.bonus) then
+            return true
+        end
+        local n = tonumber(itemData.numEnhancementSlots) or 0
+        for i = 1, n do
+            local es = itemData.enhSlot and itemData.enhSlot[i]
+            if type(es) == "table" and scanBonusTable(es.bonus) then
                 return true
             end
         end
         return false
     end
 
-    -- Pick the weapon with matching proc; if both match, prefer higher dps.
-    local best = nil
-    for _, item in pairs(eq) do
-        if itemHasProc(item) and item.iconNum and item.iconNum > 0 then
-            if not best then
-                best = item
-            else
-                local dps = tonumber(item.dps) or 0
-                local bestDps = tonumber(best.dps) or 0
-                if dps > bestDps then
-                    best = item
+    local function itemMatchesProcByTooltipText(itemData)
+        if wantNorm == "" or type(itemData) ~= "table" then
+            return false
+        end
+        local ilevel = tonumber(itemData.iLevel) or 0
+        local function scanBonusTable(bonusTbl)
+            if type(bonusTbl) ~= "table" then
+                return false
+            end
+            for _, b in pairs(bonusTbl) do
+                if passiveBonusTextMatchesAbilityName(b, ilevel) then
+                    return true
                 end
+            end
+            return false
+        end
+        if scanBonusTable(itemData.bonus) then
+            return true
+        end
+        local n = tonumber(itemData.numEnhancementSlots) or 0
+        for i = 1, n do
+            local es = itemData.enhSlot and itemData.enhSlot[i]
+            if type(es) == "table" and scanBonusTable(es.bonus) then
+                return true
+            end
+        end
+        -- Rare: proc name only on item flavor/description line.
+        if itemData.description ~= nil then
+            local dn = SctNormAbilityNameText(itemData.description)
+            if dn ~= "" and normHaystackMatchesAbilityNeedle(dn, wantNorm) then
+                return true
+            end
+        end
+        return false
+    end
+
+    local ok, eq = pcall(DataUtils.GetEquipmentData)
+    if not ok or type(eq) ~= "table" then
+        eq = {}
+    end
+
+    local trophy = {}
+    if type(DataUtils.GetTrophyData) == "function" then
+        local okT, tr = pcall(DataUtils.GetTrophyData)
+        if okT and type(tr) == "table" then
+            trophy = tr
+        end
+    end
+
+    -- Prefer ID match; else tooltip/description text match. Higher DPS breaks ties (dual wield).
+    local bestId, bestText = nil, nil
+    local bestIdDps, bestTextDps = -1, -1
+    local function considerItem(item)
+        if type(item) ~= "table" or not item.iconNum or item.iconNum <= 0 then
+            return
+        end
+        local dps = tonumber(item.dps) or 0
+        if itemMatchesProcById(item) then
+            if not bestId or dps > bestIdDps then
+                bestId = item
+                bestIdDps = dps
+            end
+        elseif itemMatchesProcByTooltipText(item) then
+            if not bestText or dps > bestTextDps then
+                bestText = item
+                bestTextDps = dps
             end
         end
     end
 
+    for _, item in pairs(eq) do
+        considerItem(item)
+    end
+    for _, item in pairs(trophy) do
+        considerItem(item)
+    end
+
+    local best = bestId or bestText
+    local matchKind = bestId and "bonusRef" or (bestText and "tooltipText") or nil
     if best and best.iconNum and best.iconNum > 0 then
-        return best.iconNum, best
+        return best.iconNum, best, matchKind
     end
 
     return nil
 end
 
-local function SctGetAbilityIconInfo(abilityId)
+-- Session + persistent icon hints live in SCTAbilityIconCache.lua (LRU disk, RAM fast path).
+local function SctStoreResolvedAbilityIcon(abilityId, iconNum, abilityData)
+    CustomUI.SCT.AbilityIconSessionPut(abilityId, iconNum, abilityData)
+    CustomUI.SCT.AbilityIconCacheRecordResolve(abilityId, iconNum, abilityData)
+end
+
+local function SctGetAbilityIconInfo(abilityId, isIncoming)
     if not abilityId or abilityId == 0 then return nil, nil, nil end
+
+    local cachedInfo, cachedData = CustomUI.SCT.AbilityIconSessionTryGet(abilityId)
+    if cachedInfo then
+        return cachedInfo, cachedData, nil
+    end
+
+    local diskInfo, diskData = CustomUI.SCT.AbilityIconCacheTryLoad(abilityId, isIncoming)
+    if diskInfo then
+        return diskInfo, diskData, nil
+    end
+
+    local resolveSource = nil
 
     -- Primary path: combat ability data
     local data = GetAbilityData and GetAbilityData(abilityId)
@@ -249,18 +631,7 @@ local function SctGetAbilityIconInfo(abilityId)
                 local pData = Player.GetAbilityData(abilityId, ent.v)
                 if type(pData) == "table" and pData.iconNum and pData.iconNum > 0 then
                     data = pData
-                    -- One-time note so we can confirm which domain produced an icon.
-                    CustomUI.SCT._abilityIconDomainDbg = CustomUI.SCT._abilityIconDomainDbg or {}
-                    if not CustomUI.SCT._abilityIconDomainDbg[abilityId] then
-                        CustomUI.SCT._abilityIconDomainDbg[abilityId] = true
-                        local msg = "[CustomUI.SCT] icon resolved via Player.GetAbilityData domain=" .. tostring(ent.label)
-                            .. " abilityId=" .. tostring(abilityId)
-                        if LogLuaMessage and SystemData and SystemData.UiLogFilters and type(towstring) == "function" then
-                            LogLuaMessage("Lua", SystemData.UiLogFilters.DEBUG, towstring(msg))
-                        elseif type(d) == "function" then
-                            d(msg)
-                        end
-                    end
+                    resolveSource = "playerDomain:" .. tostring(ent.label)
                     break
                 end
             end
@@ -277,25 +648,14 @@ local function SctGetAbilityIconInfo(abilityId)
         and type(GameData.AbilityType) == "table"
     then
         local NORM_VER = 2
-        local function norm(s)
-            s = tostring(s or "")
-            -- Strip WAR UI formatting escapes (e.g. "^n", "^r") that can appear in ability names.
-            -- These show up as "^n" bytes 94,110 and break name matching.
-            s = string.gsub(s, "%^.", "")
-            s = string.lower(s)
-            s = string.gsub(s, "[%p%c]", " ")
-            s = string.gsub(s, "%s+", " ")
-            s = string.gsub(s, "^%s+", "")
-            s = string.gsub(s, "%s+$", "")
-            return s
-        end
 
-        local want = norm(GetAbilityName(abilityId))
+        local want = SctNormAbilityNameText(GetAbilityName(abilityId))
         if want ~= "" then
             -- Cache per missing combat abilityId so we only do the heavier scan once.
             CustomUI.SCT._abilityTableResolvedByName = CustomUI.SCT._abilityTableResolvedByName or {}
             if CustomUI.SCT._abilityTableResolvedByName[abilityId] then
                 data = CustomUI.SCT._abilityTableResolvedByName[abilityId]
+                resolveSource = "abilityTableName"
             else
                 CustomUI.SCT._abilityTableNameIndex = CustomUI.SCT._abilityTableNameIndex or {}
                 local function dbgStr(label, s)
@@ -324,7 +684,7 @@ local function SctGetAbilityIconInfo(abilityId)
                     if ok and type(tbl) == "table" then
                         for _, a in pairs(tbl) do
                             if type(a) == "table" and a.name and a.iconNum and a.iconNum > 0 then
-                                local k = norm(a.name)
+                                local k = SctNormAbilityNameText(a.name)
                                 if k ~= "" and not t[k] then
                                     t[k] = a
                                     t.__count = t.__count + 1
@@ -381,7 +741,7 @@ local function SctGetAbilityIconInfo(abilityId)
                             if ok and type(tbl) == "table" then
                                 for _, a in pairs(tbl) do
                                     if type(a) == "table" and a.name and a.iconNum and a.iconNum > 0 then
-                                        local n = norm(a.name)
+                                        local n = SctNormAbilityNameText(a.name)
                                         if n ~= "" then
                                             for _, cand in ipairs(candidates) do
                                                 if n == cand or startsWith(n, cand) or startsWith(cand, n) then
@@ -402,128 +762,89 @@ local function SctGetAbilityIconInfo(abilityId)
                 if found then
                     data = found
                     CustomUI.SCT._abilityTableResolvedByName[abilityId] = found
-                    CustomUI.SCT._abilityIconTableFallbackDbg = CustomUI.SCT._abilityIconTableFallbackDbg or {}
-                    if not CustomUI.SCT._abilityIconTableFallbackDbg[abilityId] then
-                        CustomUI.SCT._abilityIconTableFallbackDbg[abilityId] = true
-                        local msg = "[CustomUI.SCT] icon resolved via GetAbilityTable name match"
-                            .. " abilityId=" .. tostring(abilityId)
-                            .. " name=" .. tostring(GetAbilityName(abilityId))
-                            .. " -> id=" .. tostring(found.id)
-                            .. " iconNum=" .. tostring(found.iconNum)
-                        if type(d) == "function" then d(msg) end
-                        if LogLuaMessage and SystemData and SystemData.UiLogFilters and type(towstring) == "function" then
-                            LogLuaMessage("Lua", SystemData.UiLogFilters.DEBUG, towstring(msg))
-                        end
-                    end
+                    resolveSource = "abilityTableName"
                 end
                 -- If we still didn't find anything, log once so we can diagnose the miss.
                 if not found then
-                    CustomUI.SCT._abilityIconTableMissDbg = CustomUI.SCT._abilityIconTableMissDbg or {}
-                    if not CustomUI.SCT._abilityIconTableMissDbg[abilityId] then
-                        CustomUI.SCT._abilityIconTableMissDbg[abilityId] = true
-                        local rawName = GetAbilityName(abilityId)
-                        local infoParts = {
-                            dbgStr("rawName", rawName),
-                            dbgStr("normName", want),
-                        }
-                        local parts = {}
-                        for _, ty in ipairs(probeTypes) do
-                            if ty ~= nil then
-                                local idx = ensureIndex(ty)
-                                local cnt = (type(idx) == "table" and idx.__count) or 0
-                                parts[#parts + 1] = tostring(ty) .. "=" .. tostring(cnt)
-                            end
-                        end
-                        -- Try to find a "nearby" candidate in the TACTIC table by prefix and log the first few.
-                        local sample = {}
-                        local function pushSample(tag, a)
-                            if #sample >= 6 then return end
-                            sample[#sample + 1] = tag .. ":" .. tostring(a.id) .. ":" .. tostring(a.name) .. ":iconNum=" .. tostring(a.iconNum)
-                        end
-                        local okT, tblT = pcall(GetAbilityTable, GameData.AbilityType.TACTIC)
-                        if okT and type(tblT) == "table" then
-                            for _, a in pairs(tblT) do
-                                if type(a) == "table" and a.name and a.iconNum and a.iconNum > 0 then
-                                    local nn = norm(a.name)
-                                    if nn ~= "" and (string.find(nn, want, 1, true) ~= nil or string.find(want, nn, 1, true) ~= nil) then
-                                        pushSample("TACTIC", a)
-                                    end
-                                end
-                                if #sample >= 6 then break end
-                            end
-                        end
-                        local msg = "[CustomUI.SCT] GetAbilityTable name lookup miss"
-                            .. " abilityId=" .. tostring(abilityId)
-                            .. " name=" .. tostring(rawName)
-                            .. " candidates=" .. table.concat(candidates, "|")
-                            .. " idxCounts{" .. table.concat(parts, ",") .. "}"
-                            .. " {" .. table.concat(infoParts, " ; ") .. "}"
-                            .. (#sample > 0 and (" samples=" .. table.concat(sample, " | ")) or "")
-                        if type(d) == "function" then d(msg) end
-                        if LogLuaMessage and SystemData and SystemData.UiLogFilters and type(towstring) == "function" then
-                            LogLuaMessage("Lua", SystemData.UiLogFilters.DEBUG, towstring(msg))
+                    local rawName = GetAbilityName(abilityId)
+                    local infoParts = {
+                        dbgStr("rawName", rawName),
+                        dbgStr("normName", want),
+                    }
+                    local parts = {}
+                    for _, ty in ipairs(probeTypes) do
+                        if ty ~= nil then
+                            local idx = ensureIndex(ty)
+                            local cnt = (type(idx) == "table" and idx.__count) or 0
+                            parts[#parts + 1] = tostring(ty) .. "=" .. tostring(cnt)
                         end
                     end
+                    -- Try to find a "nearby" candidate in the TACTIC table by prefix and log the first few.
+                    local sample = {}
+                    local function pushSample(tag, a)
+                        if #sample >= 6 then return end
+                        sample[#sample + 1] = tag .. ":" .. tostring(a.id) .. ":" .. tostring(a.name) .. ":iconNum=" .. tostring(a.iconNum)
+                    end
+                    local okT, tblT = pcall(GetAbilityTable, GameData.AbilityType.TACTIC)
+                    if okT and type(tblT) == "table" then
+                        for _, a in pairs(tblT) do
+                            if type(a) == "table" and a.name and a.iconNum and a.iconNum > 0 then
+                                local nn = SctNormAbilityNameText(a.name)
+                                if nn ~= "" and (string.find(nn, want, 1, true) ~= nil or string.find(want, nn, 1, true) ~= nil) then
+                                    pushSample("TACTIC", a)
+                                end
+                            end
+                            if #sample >= 6 then break end
+                        end
+                    end
+                    local detail = "name=" .. tostring(rawName)
+                        .. " candidates=" .. table.concat(candidates, "|")
+                        .. " idxCounts{" .. table.concat(parts, ",") .. "}"
+                        .. " {" .. table.concat(infoParts, " ; ") .. "}"
+                        .. (#sample > 0 and (" samples=" .. table.concat(sample, " | ")) or "")
+                    SctLogAbilityIconResolveOnce(abilityId, "abilityTableMiss", detail)
                 end
             end
         end
     end
 
-    if type(data) ~= "table" or not data.iconNum or data.iconNum <= 0 then
-        -- Deterministic weapon-proc fallback: item tooltips render proc lines from
-        -- `itemData.bonus` entries of type ITEMBONUS_CONTINUOUS, where `bonus.reference`
-        -- is the proc abilityId passed to GetAbilityDesc(...).
-        local procIconNum, procItem = SctFindWeaponIconForProcAbilityId(abilityId)
+    -- Weapon proc (gear ITEMBONUS_CONTINUOUS reference == abilityId): works without a target.
+    -- Use before GetBuffs so direct-hit / no-target lines still show the proc item icon; buff scan
+    -- may replace with the on-unit effect icon once a target/self lists the DoT.
+    local weaponProcAsFallback = false
+    if (type(data) ~= "table" or not data.iconNum or data.iconNum <= 0) then
+        local procIconNum, procItem, procMatchKind = SctFindWeaponIconForProcAbilityId(abilityId)
         if procIconNum and type(GetIconData) == "function" then
-            local texture, x, y = GetIconData(procIconNum)
-            if texture and texture ~= "" and texture ~= "icon000000" then
-                CustomUI.SCT._weaponProcIconDbg = CustomUI.SCT._weaponProcIconDbg or {}
-                if not CustomUI.SCT._weaponProcIconDbg[abilityId] then
-                    CustomUI.SCT._weaponProcIconDbg[abilityId] = true
-                    local msg = "[CustomUI.SCT] icon resolved via weapon proc match"
-                        .. " procAbilityId=" .. tostring(abilityId)
-                        .. (procItem and (" weapon=" .. tostring(procItem.name) .. " iconNum=" .. tostring(procItem.iconNum)) or "")
-                    if LogLuaMessage and SystemData and SystemData.UiLogFilters and type(towstring) == "function" then
-                        LogLuaMessage("Lua", SystemData.UiLogFilters.DEBUG, towstring(msg))
-                    elseif type(d) == "function" then
-                        d(msg)
-                    end
+            local ptex, _, _ = GetIconData(procIconNum)
+            if ptex and ptex ~= "" and ptex ~= "icon000000" then
+                local abiLabel = nil
+                if type(GetAbilityName) == "function" then
+                    abiLabel = GetAbilityName(abilityId)
                 end
-
-                local fauxData = {
+                data = {
                     iconNum = procIconNum,
-                    name = procItem and procItem.name or nil,
+                    name = abiLabel,
+                    weaponFallback = true,
                 }
-                return { texture = texture, x = x or 0, y = y or 0 }, fauxData, "weaponProcMatch"
+                resolveSource = "weaponProcMatch"
+                weaponProcAsFallback = true
+                SctLogAbilityIconResolveOnce(abilityId, "weaponProcMatch",
+                    procItem and ("weapon=" .. tostring(procItem.name) .. " iconNum=" .. tostring(procItem.iconNum)
+                        .. " match=" .. tostring(procMatchKind or "?")) or "")
             end
         end
+    end
 
-        -- Final fallback: if this looks like a "weapon proc ability" with no resolvable icon,
-        -- show the player's equipped weapon icon instead of nothing.
-        local wepIconNum, wepItem = SctGetEquippedWeaponIconNum()
-        if wepIconNum and type(GetIconData) == "function" then
-            local texture, x, y = GetIconData(wepIconNum)
-            if texture and texture ~= "" and texture ~= "icon000000" then
-                CustomUI.SCT._weaponProcIconDbg = CustomUI.SCT._weaponProcIconDbg or {}
-                if not CustomUI.SCT._weaponProcIconDbg[abilityId] then
-                    CustomUI.SCT._weaponProcIconDbg[abilityId] = true
-                    local msg = "[CustomUI.SCT] icon resolved via equipped weapon fallback"
-                        .. " abilityId=" .. tostring(abilityId)
-                        .. (wepItem and (" weapon=" .. tostring(wepItem.name) .. " iconNum=" .. tostring(wepItem.iconNum)) or "")
-                    if LogLuaMessage and SystemData and SystemData.UiLogFilters and type(towstring) == "function" then
-                        LogLuaMessage("Lua", SystemData.UiLogFilters.DEBUG, towstring(msg))
-                    elseif type(d) == "function" then
-                        d(msg)
-                    end
-                end
-
-                local fauxData = {
-                    iconNum = wepIconNum,
-                    name = wepItem and wepItem.name or nil,
-                }
-                return { texture = texture, x = x or 0, y = y or 0 }, fauxData, "weaponItemIcon"
-            end
+    -- Live buff lists: by abilityId or normalized name; may refine weaponProcMatch for DoTs on target.
+    if (type(data) ~= "table" or not data.iconNum or data.iconNum <= 0) or weaponProcAsFallback then
+        local bIcon, bName, bTag = SctTryBuffListIconResolve(abilityId, isIncoming)
+        if bIcon and bIcon > 0 then
+            data = { iconNum = bIcon, name = bName, weaponFallback = false }
+            resolveSource = bTag
         end
+    end
+
+    if type(data) ~= "table" or not data.iconNum or data.iconNum <= 0 then
         return nil, data, "iconNum<=0"
     end
 
@@ -531,6 +852,11 @@ local function SctGetAbilityIconInfo(abilityId)
     if not texture or texture == "" or texture == "icon000000" then
         return nil, data, "GetIconData empty/icon000000"
     end
+    local okDetail = (type(data) == "table" and data.name)
+        and ("name=" .. tostring(data.name) .. " iconNum=" .. tostring(data.iconNum))
+        or ("iconNum=" .. tostring(data.iconNum))
+    SctLogAbilityIconResolveOnce(abilityId, resolveSource or "GetAbilityData", okDetail)
+    SctStoreResolvedAbilityIcon(abilityId, data.iconNum, data)
     return { texture = texture, x = x or 0, y = y or 0 }, data, nil
 end
 
@@ -658,9 +984,20 @@ local function SctPositionAbilityIcon(entry, iconWinName, textW, textH)
     -- IMPORTANT: LabelGetTextDimensions can change after scale/font updates, and crit animations
     -- can drive scale over time (pulse). Re-measure whenever we lay out the icon.
     local wName = entry:GetName()
-    local curW, curH = LabelGetTextDimensions(wName)
+    local before = CustomUI.SCT.GetAbilityIconBeforeText and CustomUI.SCT.GetAbilityIconBeforeText()
+    -- Icon after text: attach to the right edge of the optional ability-name suffix label when present.
+    local anchorRight = wName
+    if not before and entry.m_AbilityIconAnchorRightWindow and entry.m_AbilityIconAnchorRightWindow ~= ""
+        and DoesWindowExist(entry.m_AbilityIconAnchorRightWindow)
+    then
+        anchorRight = entry.m_AbilityIconAnchorRightWindow
+    end
+
+    local _, mainH = LabelGetTextDimensions(wName)
+    local curW, curH = LabelGetTextDimensions(anchorRight)
     if curW and curW > 0 then textW = curW end
     if curH and curH > 0 then textH = curH end
+    if mainH and mainH > 0 then textH = mainH end
     textW = (textW and textW > 0) and textW or 80
     textH = (textH and textH > 0) and textH or 24
 
@@ -681,7 +1018,12 @@ local function SctPositionAbilityIcon(entry, iconWinName, textW, textH)
     -- User-tuned spacing: 10px at scale 1.0, multiplied by effective visual scale.
     local gap = math.floor((10 * scale) + 0.5)
     local yOff = math.floor(((textH - baseSize) / 2) + 0.5) - math.floor((3 * scale) + 0.5)
-    WindowAddAnchor(iconWinName, "topright", wName, "topleft", gap, yOff)
+    if before then
+        -- Mirror of the "icon after text" case: inverted client anchor semantics (see comment above).
+        WindowAddAnchor(iconWinName, "topleft", wName, "topright", -gap, yOff)
+    else
+        WindowAddAnchor(iconWinName, "topright", anchorRight, "topleft", gap, yOff)
+    end
     SctForceProcessAnchors(iconWinName)
 end
 
@@ -732,6 +1074,11 @@ function CustomUI.SCT.EventEntry:SetVisualScale(scale)
     self.m_CurrentVisualScale = scale or self.m_EffectiveScale or 1.0
     WindowSetScale(wName, self.m_CurrentVisualScale)
     WindowSetRelativeScale(wName, self.m_CurrentVisualScale)
+    local sfx = self.m_AbilityNameSuffixWindow
+    if sfx and sfx ~= "" and DoesWindowExist(sfx) then
+        WindowSetScale(sfx, self.m_CurrentVisualScale)
+        WindowSetRelativeScale(sfx, self.m_CurrentVisualScale)
+    end
     self:UpdateAbilityIconLayout()
 end
 
@@ -756,15 +1103,53 @@ function CustomUI.SCT.EventEntry:SetupText(hitTargetObjectNumber, hitAmount, tex
     StockEventEntry.SetupText(self, hitTargetObjectNumber, hitAmount, textType)
 
     local wName = self:GetName()
+    SctDestroyAbilityNameSuffix(self)
+    self.m_AbilityIconAnchorRightWindow = nil
+
     local sct   = CustomUI.SCT.GetSettings()
 
-    -- 2. Determine direction and key.
-    local isIncoming = (hitTargetObjectNumber == GameData.Player.worldObjNum)
-    local key = CustomUI.SCT.KeyForCombatType(textType)
     local isHitOrCrit = (textType == GameData.CombatEvent.HIT)
                      or (textType == GameData.CombatEvent.ABILITY_HIT)
                      or (textType == GameData.CombatEvent.CRITICAL)
                      or (textType == GameData.CombatEvent.ABILITY_CRITICAL)
+    local abilityLine = (textType == GameData.CombatEvent.ABILITY_HIT)
+                     or (textType == GameData.CombatEvent.ABILITY_CRITICAL)
+
+    local isIncoming = (type(GameData) == "table" and GameData.Player
+        and hitTargetObjectNumber == GameData.Player.worldObjNum)
+
+    -- Pre-resolve ability icon / hint data once so name suffix and icon share cache (session + disk).
+    local preIconInfo, preIconAbilityData, preIconReason = nil, nil, nil
+    if abilityId and abilityId ~= 0 then
+        if sct.showAbilityIcon then
+            preIconInfo, preIconAbilityData, preIconReason = SctGetAbilityIconInfo(abilityId, isIncoming)
+        end
+    end
+    local nameHintAbilityData = preIconAbilityData
+    if abilityLine and sct.showAbilityNameInText and abilityId and abilityId ~= 0 then
+        nameHintAbilityData = SctMergeAbilityNameHintForSuffix(preIconAbilityData, abilityId, abilityLine, sct)
+    end
+
+    local suffixClean = nil
+    if abilityLine and sct.showAbilityNameInText and abilityId and abilityId ~= 0 then
+        suffixClean = SctTryGetAbilityDisplayNameForSuffix(abilityId, nameHintAbilityData)
+    end
+
+    -- 1b. Optional text mutations (must run before font/scale so measurements match on-screen text).
+    if isHitOrCrit then
+        SctStripLeadingCombatAmountSign(wName)
+    end
+    -- Left-align only when we render a beside-text ability icon (measured width + holder layout).
+    -- Ability-name suffix alone stays stock-centered so horizontal anchor matches vanilla SCT.
+    local layoutLeft = (preIconInfo ~= nil)
+    if layoutLeft then
+        LabelSetTextAlign(wName, "left")
+    else
+        LabelSetTextAlign(wName, "center")
+    end
+
+    -- 2. Direction and key (isIncoming computed above).
+    local key = CustomUI.SCT.KeyForCombatType(textType)
     if isHitOrCrit and hitAmount > 0 then key = "Heal" end
 
     local isCrit = (textType == GameData.CombatEvent.CRITICAL)
@@ -780,7 +1165,7 @@ function CustomUI.SCT.EventEntry:SetupText(hitTargetObjectNumber, hitAmount, tex
             SctDbgAbilityEventMissingAbilityId(textType, hitAmount)
         end
 
-        iconInfo, iconAbilityData, iconReason = SctGetAbilityIconInfo(abilityId)
+        iconInfo, iconAbilityData, iconReason = preIconInfo, preIconAbilityData, preIconReason
         -- If the row is "Ability" but we still have no icon, log it (covers non-ABILITY_* edge cases).
         if not iconInfo and key == "Ability" then
             SctDbgAbilityTextNoIcon(textType, hitAmount, abilityId)
@@ -844,17 +1229,31 @@ function CustomUI.SCT.EventEntry:SetupText(hitTargetObjectNumber, hitAmount, tex
     self.m_EffectiveScale = scale
     self:SetVisualScale(scale)
 
+    -- Tight amount-label bounds before optional name suffix / icon (template is 400×100).
+    local needsTightMain = (suffixClean ~= nil) or (iconInfo ~= nil)
+    if needsTightMain then
+        local tw, th = LabelGetTextDimensions(wName)
+        tw = (tw and tw > 0) and tw or 80
+        th = (th and th > 0) and th or 24
+        WindowSetDimensions(wName, tw, th)
+    end
+
+    local holderName = self.m_HolderWindow
+    if suffixClean and holderName and holderName ~= "" and DoesWindowExist(holderName) then
+        SctApplyAbilityNameSuffix(self, wName, holderName, suffixClean, fontName, scale)
+    end
+
     -- 6. Ability icon. Parent it to the same holder as the label so it cannot drift
     -- away from the text during animations/offsets; we still position it using measured
-    -- glyph extents so it sits to the right of the rendered number.
+    -- glyph extents so it sits to the right of the rendered number (and name suffix if any).
     if iconInfo then
         local textW, textH = LabelGetTextDimensions(wName)
         textW = (textW and textW > 0) and textW or 80
         textH = (textH and textH > 0) and textH or 24
 
-        -- Shrink label window to glyph bounds so anchoring uses real text extents
-        -- (template is 400×100, which would otherwise create huge phantom spacing).
-        WindowSetDimensions(wName, textW, textH)
+        if not needsTightMain then
+            WindowSetDimensions(wName, textW, textH)
+        end
 
         local iconWin = wName .. "AbilityIcon"
         local parent  = self.m_HolderWindow
@@ -902,6 +1301,8 @@ end
 
 function CustomUI.SCT.EventEntry:Destroy()
     SctDestroyAbilityIcon(self)
+    SctDestroyAbilityNameSuffix(self)
+    self.m_AbilityIconAnchorRightWindow = nil
     SctStopAnimations(self:GetName())
     SctDestroyWindow(self:GetName())
     SctDestroyWindow(self.m_HolderWindow)
@@ -1000,14 +1401,30 @@ function CustomUI.SCT.EventTracker:InitializeAnimationData(displayType)
 
     local xOffset = CustomUI.SCT.GetXOffset and CustomUI.SCT.GetXOffset(category) or 0
     local yOffset = CustomUI.SCT.GetYOffset and CustomUI.SCT.GetYOffset(category) or 0
-    -- In CustomUI's holder model, category X is absolute relative to the world-object
-    -- anchor. Stock Y/timing remain intact; point-gain spray is added later in Update.
-    animData.start.x = xOffset
-    animData.target.x = xOffset
-    animData.current.x = xOffset
-    animData.start.y  = (animData.start.y or 0) + yOffset
-    animData.target.y = (animData.target.y or 0) + yOffset
-    animData.current.y = (animData.current.y or 0) + yOffset
+
+    if category == "points" then
+        -- Stock DEFAULT_POINT_GAIN_* uses a hard-coded pixel anchor (e.g. x=-200,y=-90).
+        -- Points offsets are relative to the world-object (self): default (0,0) is the anchor.
+        -- Preserve stock start→target deltas so float timing/distance stay stock; only re-base XY.
+        local sx = animData.start.x or 0
+        local sy = animData.start.y or 0
+        local tx = animData.target.x or 0
+        local ty = animData.target.y or 0
+        animData.start.x = xOffset
+        animData.start.y = yOffset
+        animData.target.x = xOffset + (tx - sx)
+        animData.target.y = yOffset + (ty - sy)
+        animData.current.x = animData.start.x
+        animData.current.y = animData.start.y
+    else
+        -- Combat text: category X is absolute relative to the world-object anchor; Y adds to stock.
+        animData.start.x = xOffset
+        animData.target.x = xOffset
+        animData.current.x = xOffset
+        animData.start.y = (animData.start.y or 0) + yOffset
+        animData.target.y = (animData.target.y or 0) + yOffset
+        animData.current.y = (animData.current.y or 0) + yOffset
+    end
     return animData
 end
 
@@ -1048,9 +1465,14 @@ function CustomUI.SCT.EventTracker:Update(elapsedTime)
                     WindowSetShowing(frame:GetName(), true)
                     WindowStartAlphaAnimation(frame:GetName(), Window.AnimationType.EASE_OUT,
                         1, 0, animData.fadeDuration, false, animData.fadeDelay, 0)
-                    -- Sync icon fade.
+                    -- Sync icon / ability-name suffix fade.
                     if frame.m_AbilityIconWindow and DoesWindowExist(frame.m_AbilityIconWindow) then
                         WindowStartAlphaAnimation(frame.m_AbilityIconWindow, Window.AnimationType.EASE_OUT,
+                            1, 0, animData.fadeDuration, false, animData.fadeDelay, 0)
+                    end
+                    local sfx = frame.m_AbilityNameSuffixWindow
+                    if sfx and sfx ~= "" and DoesWindowExist(sfx) then
+                        WindowStartAlphaAnimation(sfx, Window.AnimationType.EASE_OUT,
                             1, 0, animData.fadeDuration, false, animData.fadeDelay, 0)
                     end
                     self.m_DisplayedEvents:PushBack(frame)

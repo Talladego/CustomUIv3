@@ -96,11 +96,11 @@
                         </Window>
 						<!-- End General -->
 
-                        <!-- Begin Appearance (SCT / floating combat & point text) -->
+                        <!-- Begin Appearance (SCT combat text: filters, colors, combat offsets) -->
                         <Window name="$parentSCT">
-                            <!-- Same horizontal stretch as $parentGeneral: dual anchors to ScrollChild. A single anchor + fixed Width (850) left the section narrower than General so right-edge controls (e.g. Incoming color) sat outside the section background. -->
+                            <!-- Same horizontal stretch as $parentGeneral: dual anchors to ScrollChild. -->
                             <Size>
-                                <AbsPoint x="850" y="904" />
+                                <AbsPoint x="850" y="200" />
                             </Size>
                             <Anchors>
                                 <Anchor point="topleft" relativePoint="topleft">
@@ -123,7 +123,7 @@
                                     </Anchors>
                                 </Label>
 
-								<!-- Crit controls (moved from General): placed above Font row; anchored by ReanchorSctRows() -->
+								<!-- Crit controls (moved from General); anchored by ReanchorSctRows() -->
 								<Window name="$parentRowCritAnimation">
 									<Size>
 										<AbsPoint x="850" y="37" />
@@ -239,6 +239,61 @@
 
 								<!-- LEGACY (v2 SCT, 2026-04-25): BaseXOffset slider removed; stock offsets used. Remove in Step 5b. -->
 
+								<!-- Ability: Icon / Name toggles use EA_LabelCheckButton labels like Crit Shake/Pulse (x=270 / 400). -->
+								<Window name="$parentRowAbilityIcon">
+									<Size>
+										<AbsPoint x="850" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+											<AbsPoint x="0" y="45" />
+										</Anchor>
+										<Anchor point="topright" relativePoint="topright" relativeTo="$parent">
+											<AbsPoint x="0" y="45" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+										<Label name="$parentAbilityRowTitleLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+											<Size>
+												<AbsPoint x="220" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="45" y="2" />
+												</Anchor>
+											</Anchors>
+										</Label>
+										<Window name="$parentShowAbilityIcon" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+											<Size>
+												<AbsPoint x="100" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="270" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnToggleAbilityIcon" />
+											</EventHandlers>
+										</Window>
+										<Window name="$parentShowAbilityNameInText" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+											<Size>
+												<AbsPoint x="100" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="400" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnToggleAbilityNameInText" />
+											</EventHandlers>
+										</Window>
+									</Windows>
+								</Window>
+
 								<Window name="$parentRowTextFont">
 									<Size>
 										<AbsPoint x="850" y="37" />
@@ -278,7 +333,8 @@
 									</Windows>
 								</Window>
 
-								<Window name="$parentRowAbilityIcon">
+								<!-- Column headers for combat text positioning. -->
+								<Window name="$parentRowCombatOffsetHeaders">
 									<Size>
 										<AbsPoint x="850" y="37" />
 									</Size>
@@ -291,9 +347,10 @@
 										</Anchor>
 									</Anchors>
 									<Windows>
-										<Label name="$parentAbilityIconLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+										<!-- Left descriptor column (labeled Outgoing in Lua); distance sliders align under Incoming column header only (duplicate Outgoing header removed). -->
+										<Label name="$parentOffsetsHdr" font="font_default_text_small" textalign="left" handleinput="false" layer="background">
 											<Size>
-												<AbsPoint x="220" y="20" />
+												<AbsPoint x="118" y="18" />
 											</Size>
 											<Anchors>
 												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
@@ -301,20 +358,16 @@
 												</Anchor>
 											</Anchors>
 										</Label>
-										<Window name="$parentShowAbilityIcon" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+										<Label name="$parentIncomingDistanceHdr" font="font_default_text_small" textalign="left" handleinput="false" layer="background">
 											<Size>
-												<AbsPoint x="300" y="25" />
+												<AbsPoint x="175" y="18" />
 											</Size>
 											<Anchors>
 												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
-													<AbsPoint x="270" y="2" />
+													<AbsPoint x="478" y="2" />
 												</Anchor>
 											</Anchors>
-											<EventHandlers>
-												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
-												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnToggleAbilityIcon" />
-											</EventHandlers>
-										</Window>
+										</Label>
 									</Windows>
 								</Window>
 
@@ -333,7 +386,7 @@
 									<Windows>
 										<Label name="$parentCombatXOffsetLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
 											<Size>
-												<AbsPoint x="170" y="20" />
+												<AbsPoint x="118" y="20" />
 											</Size>
 											<Anchors>
 												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
@@ -341,13 +394,13 @@
 												</Anchor>
 											</Anchors>
 										</Label>
-										<Label name="$parentOutgoingXOffsetLabel" font="font_default_text_small" textalign="left" handleinput="false" layer="background">
+										<Label name="$parentCombatXOffsetIncomingLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
 											<Size>
-												<AbsPoint x="80" y="18" />
+												<AbsPoint x="118" y="20" />
 											</Size>
 											<Anchors>
 												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
-													<AbsPoint x="220" y="4" />
+													<AbsPoint x="478" y="2" />
 												</Anchor>
 											</Anchors>
 										</Label>
@@ -357,7 +410,7 @@
 											</Size>
 											<Anchors>
 												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
-													<AbsPoint x="300" y="0" />
+													<AbsPoint x="163" y="0" />
 												</Anchor>
 											</Anchors>
 											<EventHandlers>
@@ -366,23 +419,13 @@
 												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
 											</EventHandlers>
 										</SliderBar>
-										<Label name="$parentIncomingXOffsetLabel" font="font_default_text_small" textalign="left" handleinput="false" layer="background">
-											<Size>
-												<AbsPoint x="80" y="18" />
-											</Size>
-											<Anchors>
-												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
-													<AbsPoint x="500" y="4" />
-												</Anchor>
-											</Anchors>
-										</Label>
 										<SliderBar name="$parentIncomingXOffset" inherits="EA_Default_SliderBar" handleinput="true" numticks="9">
 											<Size>
 												<AbsPoint x="175" y="25" />
 											</Size>
 											<Anchors>
 												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
-													<AbsPoint x="580" y="0" />
+													<AbsPoint x="596" y="0" />
 												</Anchor>
 											</Anchors>
 											<EventHandlers>
@@ -409,7 +452,7 @@
 									<Windows>
 										<Label name="$parentCombatYOffsetLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
 											<Size>
-												<AbsPoint x="170" y="20" />
+												<AbsPoint x="118" y="20" />
 											</Size>
 											<Anchors>
 												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
@@ -417,13 +460,13 @@
 												</Anchor>
 											</Anchors>
 										</Label>
-										<Label name="$parentOutgoingYOffsetLabel" font="font_default_text_small" textalign="left" handleinput="false" layer="background">
+										<Label name="$parentCombatYOffsetIncomingLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
 											<Size>
-												<AbsPoint x="80" y="18" />
+												<AbsPoint x="118" y="20" />
 											</Size>
 											<Anchors>
 												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
-													<AbsPoint x="220" y="4" />
+													<AbsPoint x="478" y="2" />
 												</Anchor>
 											</Anchors>
 										</Label>
@@ -433,7 +476,7 @@
 											</Size>
 											<Anchors>
 												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
-													<AbsPoint x="300" y="0" />
+													<AbsPoint x="163" y="0" />
 												</Anchor>
 											</Anchors>
 											<EventHandlers>
@@ -442,23 +485,13 @@
 												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
 											</EventHandlers>
 										</SliderBar>
-										<Label name="$parentIncomingYOffsetLabel" font="font_default_text_small" textalign="left" handleinput="false" layer="background">
-											<Size>
-												<AbsPoint x="80" y="18" />
-											</Size>
-											<Anchors>
-												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
-													<AbsPoint x="500" y="4" />
-												</Anchor>
-											</Anchors>
-										</Label>
 										<SliderBar name="$parentIncomingYOffset" inherits="EA_Default_SliderBar" handleinput="true" numticks="9">
 											<Size>
 												<AbsPoint x="175" y="25" />
 											</Size>
 											<Anchors>
 												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
-													<AbsPoint x="580" y="0" />
+													<AbsPoint x="596" y="0" />
 												</Anchor>
 											</Anchors>
 											<EventHandlers>
@@ -470,17 +503,39 @@
 									</Windows>
 								</Window>
 
+								<Window name="$parentRowCombatTextDivider">
+									<Size>
+										<AbsPoint x="850" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentRowCombatYOffset">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+										<Anchor point="bottomright" relativePoint="topright" relativeTo="$parentRowCombatYOffset">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+										<HorizontalResizeImage name="$parentHorizontalBar" inherits="EA_BrownHorizontalRule">
+											<Anchors>
+												<Anchor point="topleft"  relativePoint="topleft"  relativeTo="$parent"><AbsPoint x="10" y="18" /></Anchor>
+												<Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="18" /></Anchor>
+											</Anchors>
+										</HorizontalResizeImage>
+									</Windows>
+								</Window>
+
 								<!-- Column headers: Show / Size / Color above Outgoing and Incoming (aligned to first data row). -->
 								<Window name="$parentRowSctColumnHeaders">
 									<Size>
 										<AbsPoint x="850" y="37" />
 									</Size>
 									<Anchors>
-										<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
-											<AbsPoint x="0" y="45" />
+										<Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentRowCombatTextDivider">
+											<AbsPoint x="0" y="0" />
 										</Anchor>
-										<Anchor point="topright" relativePoint="topright" relativeTo="$parent">
-											<AbsPoint x="0" y="45" />
+										<Anchor point="bottomright" relativePoint="topright" relativeTo="$parentRowCombatTextDivider">
+											<AbsPoint x="0" y="0" />
 										</Anchor>
 									</Anchors>
 									<Windows>
@@ -670,10 +725,10 @@
 										<AbsPoint x="850" y="37" />
 									</Size>
 									<Anchors>
-										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowHit">
+										<Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentRowHit">
 											<AbsPoint x="0" y="0" />
 										</Anchor>
-										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowHit">
+										<Anchor point="bottomright" relativePoint="topright" relativeTo="$parentRowHit">
 											<AbsPoint x="0" y="0" />
 										</Anchor>
 									</Anchors>
@@ -787,10 +842,10 @@
 										<AbsPoint x="850" y="37" />
 									</Size>
 									<Anchors>
-										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowAbility">
+										<Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentRowAbility">
 											<AbsPoint x="0" y="0" />
 										</Anchor>
-										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowAbility">
+										<Anchor point="bottomright" relativePoint="topright" relativeTo="$parentRowAbility">
 											<AbsPoint x="0" y="0" />
 										</Anchor>
 									</Anchors>
@@ -900,10 +955,10 @@
 										<AbsPoint x="850" y="37" />
 									</Size>
 									<Anchors>
-										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowHeal">
+										<Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentRowHeal">
 											<AbsPoint x="0" y="0" />
 										</Anchor>
-										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowHeal">
+										<Anchor point="bottomright" relativePoint="topright" relativeTo="$parentRowHeal">
 											<AbsPoint x="0" y="0" />
 										</Anchor>
 									</Anchors>
@@ -1013,10 +1068,10 @@
 										<AbsPoint x="850" y="37" />
 									</Size>
 									<Anchors>
-										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowBlock">
+										<Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentRowBlock">
 											<AbsPoint x="0" y="0" />
 										</Anchor>
-										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowBlock">
+										<Anchor point="bottomright" relativePoint="topright" relativeTo="$parentRowBlock">
 											<AbsPoint x="0" y="0" />
 										</Anchor>
 									</Anchors>
@@ -1126,10 +1181,10 @@
 										<AbsPoint x="850" y="37" />
 									</Size>
 									<Anchors>
-										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowParry">
+										<Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentRowParry">
 											<AbsPoint x="0" y="0" />
 										</Anchor>
-										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowParry">
+										<Anchor point="bottomright" relativePoint="topright" relativeTo="$parentRowParry">
 											<AbsPoint x="0" y="0" />
 										</Anchor>
 									</Anchors>
@@ -1239,10 +1294,10 @@
 										<AbsPoint x="850" y="37" />
 									</Size>
 									<Anchors>
-										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowEvade">
+										<Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentRowEvade">
 											<AbsPoint x="0" y="0" />
 										</Anchor>
-										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowEvade">
+										<Anchor point="bottomright" relativePoint="topright" relativeTo="$parentRowEvade">
 											<AbsPoint x="0" y="0" />
 										</Anchor>
 									</Anchors>
@@ -1352,10 +1407,10 @@
 										<AbsPoint x="850" y="37" />
 									</Size>
 									<Anchors>
-										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowDisrupt">
+										<Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentRowDisrupt">
 											<AbsPoint x="0" y="0" />
 										</Anchor>
-										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowDisrupt">
+										<Anchor point="bottomright" relativePoint="topright" relativeTo="$parentRowDisrupt">
 											<AbsPoint x="0" y="0" />
 										</Anchor>
 									</Anchors>
@@ -1465,10 +1520,10 @@
 										<AbsPoint x="850" y="37" />
 									</Size>
 									<Anchors>
-										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowAbsorb">
+										<Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentRowAbsorb">
 											<AbsPoint x="0" y="0" />
 										</Anchor>
-										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowAbsorb">
+										<Anchor point="bottomright" relativePoint="topright" relativeTo="$parentRowAbsorb">
 											<AbsPoint x="0" y="0" />
 										</Anchor>
 									</Anchors>
@@ -1571,44 +1626,97 @@
 									</Windows>
 								</Window>
 								<!-- End Immune Row -->
-								
-						        <Window name="$parentRowHorizontalBar">
+
+								<!-- End SCT settings -->
+
+                            </Windows>
+                        </Window>
+						<!-- End Appearance -->
+
+                        <!-- Begin Combat Text (combat offsets + combat event rows) -->
+                        <Window name="$parentCombatText">
+                            <Size>
+                                <AbsPoint x="850" y="577" />
+                            </Size>
+                            <Anchors>
+                                <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentSCT">
+                                    <AbsPoint x="0" y="20" />
+                                </Anchor>
+                                <Anchor point="bottomright" relativePoint="topright" relativeTo="$parentSCT">
+                                    <AbsPoint x="0" y="20" />
+                                </Anchor>
+                            </Anchors>
+                            <Windows>
+                                <FullResizeImage name="$parentBackground" inherits="SettingsSectionBackground" handleinput="false" layer="background" />
+                                <Label name="$parentTitle" inherits="EA_Settings_SectionTitle">
+                                    <Size>
+                                        <AbsPoint x="400" y="25" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+                                            <AbsPoint x="10" y="10" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+                            </Windows>
+                        </Window>
+                        <!-- End Combat Text -->
+
+                        <!-- Begin Points (offsets + XP / Renown / Influence) -->
+                        <Window name="$parentPoints">
+                            <Size>
+                                <AbsPoint x="850" y="210" />
+                            </Size>
+                            <Anchors>
+                                <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentCombatText">
+                                    <AbsPoint x="0" y="20" />
+                                </Anchor>
+                                <Anchor point="bottomright" relativePoint="topright" relativeTo="$parentCombatText">
+                                    <AbsPoint x="0" y="20" />
+                                </Anchor>
+                            </Anchors>
+                            <Windows>
+                                <FullResizeImage name="$parentBackground" inherits="SettingsSectionBackground" handleinput="false" layer="background" />
+                                <Label name="$parentTitle" inherits="EA_Settings_SectionTitle">
+                                    <Size>
+                                        <AbsPoint x="400" y="25" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+                                            <AbsPoint x="10" y="10" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+
+								<!-- Left column: offset sliders only (430px). Right column: Points/Size/Color + XP rows (x≈478/596/791 in panel coords → 48/166/361 inside Right). -->
+								<Window name="$parentLeft">
 									<Size>
-										<AbsPoint x="850" y="37" />
+										<AbsPoint x="424" y="220" />
 									</Size>
 									<Anchors>
-										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowImmune">
-											<AbsPoint x="0" y="0" />
-										</Anchor>
-										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowImmune">
-											<AbsPoint x="0" y="0" />
-										</Anchor>
-									</Anchors>
-
-																			<HorizontalResizeImage name="$parentHorizontalBar" inherits="EA_BrownHorizontalRule">
-											<Anchors>
-												<Anchor point="topleft"  relativePoint="topleft"  relativeTo="$parent"><AbsPoint x="10" y="0" /></Anchor>
-												<Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="0" /></Anchor>
-											</Anchors>
-										</HorizontalResizeImage>
-								</Window>
-
-								<Window name="$parentRowPointXOffset">
-									<Size>
-										<AbsPoint x="850" y="37" />
-									</Size>
-									<Anchors>
-										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowHorizontalBar">
-											<AbsPoint x="0" y="0" />
-										</Anchor>
-										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowHorizontalBar">
+										<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
 											<AbsPoint x="0" y="0" />
 										</Anchor>
 									</Anchors>
 									<Windows>
-										<Label name="$parentPointXOffsetLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+								<!-- Column headers for point offsets -->
+								<Window name="$parentRowSctPointOffsetHeaders">
+									<Size>
+										<AbsPoint x="424" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+										<Anchor point="topright" relativePoint="topright" relativeTo="$parent">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+										<!-- Label Y matches RowCombatOffsetHeaders (font_default_text_small @ y=2 in a 37px row). -->
+										<Label name="$parentOffsetsHdr" font="font_default_text_small" text="Offsets" textalign="left" handleinput="false" layer="background">
 											<Size>
-												<AbsPoint x="170" y="20" />
+												<AbsPoint x="118" y="18" />
 											</Size>
 											<Anchors>
 												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
@@ -1616,13 +1724,39 @@
 												</Anchor>
 											</Anchors>
 										</Label>
-										<Label name="$parentPointsXOffsetLabel" font="font_default_text_small" textalign="left" handleinput="false" layer="background">
+										<Label name="$parentDistanceHdr" font="font_default_text_small" text="Distance" textalign="left" handleinput="false" layer="background">
 											<Size>
-												<AbsPoint x="80" y="18" />
+												<AbsPoint x="175" y="18" />
 											</Size>
 											<Anchors>
 												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
-													<AbsPoint x="220" y="4" />
+													<AbsPoint x="163" y="2" />
+												</Anchor>
+											</Anchors>
+										</Label>
+									</Windows>
+								</Window>
+
+								<Window name="$parentRowPointXOffset">
+									<Size>
+										<AbsPoint x="424" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentRowSctPointOffsetHeaders">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+										<Anchor point="bottomright" relativePoint="topright" relativeTo="$parentRowSctPointOffsetHeaders">
+											<AbsPoint x="0" y="0" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+										<Label name="$parentPointXOffsetLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+											<Size>
+												<AbsPoint x="118" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="45" y="2" />
 												</Anchor>
 											</Anchors>
 										</Label>
@@ -1632,7 +1766,7 @@
 											</Size>
 											<Anchors>
 												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
-													<AbsPoint x="300" y="0" />
+													<AbsPoint x="163" y="0" />
 												</Anchor>
 											</Anchors>
 											<EventHandlers>
@@ -1646,34 +1780,24 @@
 
 								<Window name="$parentRowPointYOffset">
 									<Size>
-										<AbsPoint x="850" y="37" />
+										<AbsPoint x="424" y="37" />
 									</Size>
 									<Anchors>
-										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowPointXOffset">
+										<Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentRowPointXOffset">
 											<AbsPoint x="0" y="0" />
 										</Anchor>
-										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowPointXOffset">
+										<Anchor point="bottomright" relativePoint="topright" relativeTo="$parentRowPointXOffset">
 											<AbsPoint x="0" y="0" />
 										</Anchor>
 									</Anchors>
 									<Windows>
 										<Label name="$parentPointYOffsetLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
 											<Size>
-												<AbsPoint x="170" y="20" />
+												<AbsPoint x="118" y="20" />
 											</Size>
 											<Anchors>
 												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
 													<AbsPoint x="45" y="2" />
-												</Anchor>
-											</Anchors>
-										</Label>
-										<Label name="$parentPointsYOffsetLabel" font="font_default_text_small" textalign="left" handleinput="false" layer="background">
-											<Size>
-												<AbsPoint x="80" y="18" />
-											</Size>
-											<Anchors>
-												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
-													<AbsPoint x="220" y="4" />
 												</Anchor>
 											</Anchors>
 										</Label>
@@ -1683,7 +1807,7 @@
 											</Size>
 											<Anchors>
 												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
-													<AbsPoint x="300" y="0" />
+													<AbsPoint x="163" y="0" />
 												</Anchor>
 											</Anchors>
 											<EventHandlers>
@@ -1695,16 +1819,30 @@
 									</Windows>
 								</Window>
 
-								<!-- Column headers: Show / Size / Color above Outgoing for XP, Renown, Influence (outgoing only). -->
-								<Window name="$parentRowSctPointColumnHeaders">
+									</Windows>
+								</Window>
+
+								<Window name="$parentRight">
 									<Size>
-										<AbsPoint x="850" y="37" />
+										<AbsPoint x="426" y="220" />
 									</Size>
 									<Anchors>
-										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowPointXOffset">
+										<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+											<AbsPoint x="424" y="0" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+
+								<!-- Column headers: Points / Size / Color (panel abs x 478/596/791 → locals 54/172/367 @ Right origin 424). -->
+								<Window name="$parentRowSctPointColumnHeaders">
+									<Size>
+										<AbsPoint x="426" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
 											<AbsPoint x="0" y="0" />
 										</Anchor>
-										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowPointXOffset">
+										<Anchor point="topright" relativePoint="topright" relativeTo="$parent">
 											<AbsPoint x="0" y="0" />
 										</Anchor>
 									</Anchors>
@@ -1715,7 +1853,7 @@
 											</Size>
 											<Anchors>
 												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
-													<AbsPoint x="45" y="2" />
+													<AbsPoint x="54" y="2" />
 												</Anchor>
 											</Anchors>
 										</Label>
@@ -1725,7 +1863,7 @@
 											</Size>
 											<Anchors>
 												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
-													<AbsPoint x="163" y="2" />
+													<AbsPoint x="172" y="2" />
 												</Anchor>
 											</Anchors>
 										</Label>
@@ -1735,37 +1873,34 @@
 											</Size>
 											<Anchors>
 												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
-													<AbsPoint x="358" y="2" />
+													<AbsPoint x="367" y="2" />
 												</Anchor>
 											</Anchors>
 										</Label>
 									</Windows>
 								</Window>
 
-								
-								<!-- Begin Xp Row -->
+								<!-- Begin XP row -->
 								<Window name="$parentRowXP">
 									<Size>
-										<AbsPoint x="850" y="37" />
+										<AbsPoint x="426" y="37" />
 									</Size>
 									<Anchors>
-										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowSctPointColumnHeaders">
+										<Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentRowSctPointColumnHeaders">
 											<AbsPoint x="0" y="0" />
 										</Anchor>
-										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowSctPointColumnHeaders">
+										<Anchor point="bottomright" relativePoint="topright" relativeTo="$parentRowSctPointColumnHeaders">
 											<AbsPoint x="0" y="0" />
 										</Anchor>
 									</Anchors>
 									<Windows>
-
-											<!-- Begin Xp -->
 										<Window name="$parentOutShow" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
 											<Size>
 												<AbsPoint x="118" y="25" />
 											</Size>
 											<Anchors>
 												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
-													<AbsPoint x="45" y="2" />
+													<AbsPoint x="54" y="2" />
 												</Anchor>
 											</Anchors>
 											<EventHandlers>
@@ -1773,7 +1908,6 @@
 												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnFilterChanged" />
 											</EventHandlers>
 										</Window>
-
 										<SliderBar name="$parentOutSize" inherits="EA_Default_SliderBar" handleinput="true" numticks="5">
 											<Size>
 												<AbsPoint x="175" y="25" />
@@ -1789,7 +1923,6 @@
 												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
 											</EventHandlers>
 										</SliderBar>
-
 										<FullResizeImage name="$parentOutColorSwatch" inherits="EA_FullResizeImage_WhiteTransparent" handleinput="true" layer="default" alpha="1.0">
 											<Size>
 												<AbsPoint x="20" y="20" />
@@ -1803,35 +1936,30 @@
 												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnSctColorSwatchClick" />
 											</EventHandlers>
 										</FullResizeImage>
-										<!-- End Xp -->
-
 									</Windows>
 								</Window>
-								<!-- End Xp Row -->
 
 								<!-- Begin Renown Row -->
 								<Window name="$parentRowRenown">
 									<Size>
-										<AbsPoint x="850" y="37" />
+										<AbsPoint x="426" y="37" />
 									</Size>
 									<Anchors>
-										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowXP">
+										<Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentRowXP">
 											<AbsPoint x="0" y="0" />
 										</Anchor>
-										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowXP">
+										<Anchor point="bottomright" relativePoint="topright" relativeTo="$parentRowXP">
 											<AbsPoint x="0" y="0" />
 										</Anchor>
 									</Anchors>
 									<Windows>
-
-											<!-- Begin Renown -->
 										<Window name="$parentOutShow" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
 											<Size>
 												<AbsPoint x="118" y="25" />
 											</Size>
 											<Anchors>
 												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
-													<AbsPoint x="45" y="2" />
+													<AbsPoint x="54" y="2" />
 												</Anchor>
 											</Anchors>
 											<EventHandlers>
@@ -1839,7 +1967,6 @@
 												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnFilterChanged" />
 											</EventHandlers>
 										</Window>
-
 										<SliderBar name="$parentOutSize" inherits="EA_Default_SliderBar" handleinput="true" numticks="5">
 											<Size>
 												<AbsPoint x="175" y="25" />
@@ -1855,7 +1982,6 @@
 												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
 											</EventHandlers>
 										</SliderBar>
-
 										<FullResizeImage name="$parentOutColorSwatch" inherits="EA_FullResizeImage_WhiteTransparent" handleinput="true" layer="default" alpha="1.0">
 											<Size>
 												<AbsPoint x="20" y="20" />
@@ -1869,35 +1995,30 @@
 												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnSctColorSwatchClick" />
 											</EventHandlers>
 										</FullResizeImage>
-										<!-- End Renown -->
-
 									</Windows>
 								</Window>
-								<!-- End Renown Row -->
 
 								<!-- Begin Influence Row -->
 								<Window name="$parentRowInfluence">
 									<Size>
-										<AbsPoint x="850" y="37" />
+										<AbsPoint x="426" y="37" />
 									</Size>
 									<Anchors>
-										<Anchor point="topleft" relativePoint="bottomleft" relativeTo="$parentRowRenown">
+										<Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentRowRenown">
 											<AbsPoint x="0" y="0" />
 										</Anchor>
-										<Anchor point="topright" relativePoint="bottomright" relativeTo="$parentRowRenown">
+										<Anchor point="bottomright" relativePoint="topright" relativeTo="$parentRowRenown">
 											<AbsPoint x="0" y="0" />
 										</Anchor>
 									</Anchors>
 									<Windows>
-
-											<!-- Begin Influence -->
 										<Window name="$parentOutShow" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
 											<Size>
 												<AbsPoint x="118" y="25" />
 											</Size>
 											<Anchors>
 												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
-													<AbsPoint x="45" y="2" />
+													<AbsPoint x="54" y="2" />
 												</Anchor>
 											</Anchors>
 											<EventHandlers>
@@ -1905,7 +2026,6 @@
 												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnFilterChanged" />
 											</EventHandlers>
 										</Window>
-
 										<SliderBar name="$parentOutSize" inherits="EA_Default_SliderBar" handleinput="true" numticks="5">
 											<Size>
 												<AbsPoint x="175" y="25" />
@@ -1921,7 +2041,6 @@
 												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
 											</EventHandlers>
 										</SliderBar>
-
 										<FullResizeImage name="$parentOutColorSwatch" inherits="EA_FullResizeImage_WhiteTransparent" handleinput="true" layer="default" alpha="1.0">
 											<Size>
 												<AbsPoint x="20" y="20" />
@@ -1935,18 +2054,15 @@
 												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnSctColorSwatchClick" />
 											</EventHandlers>
 										</FullResizeImage>
-										<!-- End Influence -->
+									</Windows>
+								</Window>
 
 									</Windows>
 								</Window>
-								<!-- End Influence Row -->
-
-
-								<!-- End SCT settings -->
 
                             </Windows>
                         </Window>
-						<!-- End Appearance -->
+                        <!-- End Points -->
 
                                 
                     </Windows>

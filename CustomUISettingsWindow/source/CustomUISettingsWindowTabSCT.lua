@@ -2,6 +2,11 @@ CustomUISettingsWindowTabSCT = {}
 
 local c_SCROLL_CHILD = "SWTabSCTContentsScrollChild"
 local c_SCT_PREFIX   = c_SCROLL_CHILD .. "SCT"
+local c_COMBAT_TEXT_PREFIX = c_SCROLL_CHILD .. "CombatText"
+local c_POINTS_PREFIX = c_SCROLL_CHILD .. "Points"
+-- Points section is split: offset sliders (left) vs Points/Size/Color + XP/Renown/Influence (right).
+local c_POINTS_LEFT_PREFIX = c_POINTS_PREFIX .. "Left"
+local c_POINTS_RIGHT_PREFIX = c_POINTS_PREFIX .. "Right"
 -- Tab is instanced as <Window name="SWTabSCT" inherits="CustomUISettingsWindowTabSCT"/> in CustomUISettingsWindowTabbed.xml, so the template root is SWTabSCT, not the template file name.
 -- SctColorPickerHost lives on CustomUISettingsWindowTabbed (last in XML) so it stacks above the footer buttons and receives hits when overlapping them / near window edges.
 local c_SCT_TAB_ROOT = "SWTabSCT"
@@ -448,7 +453,7 @@ local function SyncXOffsetSliders()
     local sliders = {
         { name = c_SCT_PREFIX .. "RowCombatXOffsetOutgoingXOffset", category = "outgoing" },
         { name = c_SCT_PREFIX .. "RowCombatXOffsetIncomingXOffset", category = "incoming" },
-        { name = c_SCT_PREFIX .. "RowPointXOffsetPointsXOffset", category = "points" },
+        { name = c_POINTS_LEFT_PREFIX .. "RowPointXOffsetPointsXOffset", category = "points" },
     }
     local wasRefreshing = m_refreshing
     m_refreshing = true
@@ -464,7 +469,7 @@ local function SyncYOffsetSliders()
     local sliders = {
         { name = c_SCT_PREFIX .. "RowCombatYOffsetOutgoingYOffset", category = "outgoing" },
         { name = c_SCT_PREFIX .. "RowCombatYOffsetIncomingYOffset", category = "incoming" },
-        { name = c_SCT_PREFIX .. "RowPointYOffsetPointsYOffset", category = "points" },
+        { name = c_POINTS_LEFT_PREFIX .. "RowPointYOffsetPointsYOffset", category = "points" },
     }
     local wasRefreshing = m_refreshing
     m_refreshing = true
@@ -476,14 +481,21 @@ local function SyncYOffsetSliders()
     m_refreshing = wasRefreshing
 end
 
-local function RefreshSctControls(contentPrefix)
-    if not contentPrefix or not DoesWindowExist(contentPrefix) then
+local function ContentPrefixForRowSuffix(suffix)
+    if suffix == "XP" or suffix == "Renown" or suffix == "Influence" then
+        return c_POINTS_RIGHT_PREFIX
+    end
+    return c_SCT_PREFIX
+end
+
+local function RefreshSctControls()
+    if not DoesWindowExist(c_SCT_PREFIX) then
         return
     end
     SctHideColorPicker()
     m_refreshing = true
     for _, d in ipairs(CustomUI.SCT.GetSettingsRowDescriptors()) do
-        SetupRow(contentPrefix, d.suffix)
+        SetupRow(ContentPrefixForRowSuffix(d.suffix), d.suffix)
     end
     m_refreshing = false
 end
@@ -668,10 +680,44 @@ local c_SCT_ROW_ORDER = {
     "CritAnimation",
     "CritSize",
     -- LEGACY (v2 SCT, 2026-04-25): "BaseXOffset" row removed. Remove this comment in Step 5b.
-    "TextFont",
     "AbilityIcon",
+    "TextFont",
+}
+local c_SCT_ROW_HEIGHT = 37
+local c_SCT_FIRST_ROW_Y = 45
+
+local function ReparentIfPossible(windowName, parentName)
+    if type(WindowSetParent) == "function"
+        and DoesWindowExist(windowName)
+        and DoesWindowExist(parentName)
+    then
+        WindowSetParent(windowName, parentName)
+    end
+end
+
+local function ReanchorRows(rowOrder, rowPrefix, parentName)
+    for i, name in ipairs(rowOrder) do
+        local rowWin = rowPrefix .. "Row" .. name
+        if DoesWindowExist(rowWin) then
+            ReparentIfPossible(rowWin, parentName)
+            local y = c_SCT_FIRST_ROW_Y + (i - 1) * c_SCT_ROW_HEIGHT
+            WindowClearAnchors(rowWin)
+            WindowAddAnchor(rowWin, "topleft", parentName, "topleft", 0, y)
+            WindowAddAnchor(rowWin, "topright", parentName, "topright", 0, y)
+            WindowForceProcessAnchors(rowWin)
+        end
+    end
+end
+
+local function ReanchorSctRows()
+    ReanchorRows(c_SCT_ROW_ORDER, c_SCT_PREFIX, c_SCT_PREFIX)
+end
+
+local c_COMBAT_TEXT_ROW_ORDER = {
+    "CombatOffsetHeaders",
     "CombatXOffset",
     "CombatYOffset",
+    "CombatTextDivider",
     "SctColumnHeaders",
     "Hit",
     "Ability",
@@ -682,27 +728,37 @@ local c_SCT_ROW_ORDER = {
     "Disrupt",
     "Absorb",
     "Immune",
-    "HorizontalBar",
+}
+
+local function ReanchorCombatTextRows()
+    if not DoesWindowExist(c_COMBAT_TEXT_PREFIX) then
+        return
+    end
+    ReanchorRows(c_COMBAT_TEXT_ROW_ORDER, c_SCT_PREFIX, c_COMBAT_TEXT_PREFIX)
+end
+
+local c_POINTS_LEFT_ROW_ORDER = {
+    "SctPointOffsetHeaders",
     "PointXOffset",
     "PointYOffset",
+}
+
+local c_POINTS_RIGHT_ROW_ORDER = {
     "SctPointColumnHeaders",
     "XP",
     "Renown",
     "Influence",
 }
-local c_SCT_ROW_HEIGHT = 37
-local c_SCT_FIRST_ROW_Y = 45
 
-local function ReanchorSctRows()
-    for i, name in ipairs(c_SCT_ROW_ORDER) do
-        local rowWin = c_SCT_PREFIX .. "Row" .. name
-        if DoesWindowExist(rowWin) then
-            local y = c_SCT_FIRST_ROW_Y + (i - 1) * c_SCT_ROW_HEIGHT
-            WindowClearAnchors(rowWin)
-            WindowAddAnchor(rowWin, "topleft", c_SCT_PREFIX, "topleft", 0, y)
-            WindowAddAnchor(rowWin, "topright", c_SCT_PREFIX, "topright", 0, y)
-            WindowForceProcessAnchors(rowWin)
-        end
+local function ReanchorPointsRows()
+    if not DoesWindowExist(c_POINTS_PREFIX) then
+        return
+    end
+    if DoesWindowExist(c_POINTS_LEFT_PREFIX) then
+        ReanchorRows(c_POINTS_LEFT_ROW_ORDER, c_POINTS_LEFT_PREFIX, c_POINTS_LEFT_PREFIX)
+    end
+    if DoesWindowExist(c_POINTS_RIGHT_PREFIX) then
+        ReanchorRows(c_POINTS_RIGHT_ROW_ORDER, c_POINTS_RIGHT_PREFIX, c_POINTS_RIGHT_PREFIX)
     end
 end
 
@@ -715,16 +771,27 @@ local function SyncAbilityIconButton()
     if DoesWindowExist(p .. "ShowAbilityIconButton") then
         ButtonSetPressedFlag(p .. "ShowAbilityIconButton", CustomUI.SCT.GetShowAbilityIcon())
     end
+    if DoesWindowExist(p .. "ShowAbilityNameInTextButton") then
+        ButtonSetPressedFlag(p .. "ShowAbilityNameInTextButton", CustomUI.SCT.GetShowAbilityNameInText())
+    end
 end
 
 function CustomUISettingsWindowTabSCT.Initialize()
     m_pointerLastMouseOver = nil
     m_pointerLastActive = nil
     ReanchorSctRows()
+    ReanchorCombatTextRows()
+    ReanchorPointsRows()
     SctEnsureColorPickerGrid()
     SctHideColorPicker()
 
     LabelSetText( c_SCROLL_CHILD .. "GeneralTitle",          L"General" )
+    if DoesWindowExist(c_SCROLL_CHILD .. "CombatTextTitle") then
+        LabelSetText(c_SCROLL_CHILD .. "CombatTextTitle", L"Combat Text")
+    end
+    if DoesWindowExist(c_SCROLL_CHILD .. "PointsTitle") then
+        LabelSetText(c_SCROLL_CHILD .. "PointsTitle", L"Points")
+    end
     LabelSetText( c_SCROLL_CHILD .. "GeneralSCTEnabledLabel", L"Enabled" )
     ButtonSetCheckButtonFlag( c_SCROLL_CHILD .. "GeneralSCTEnabledButton", true )
 
@@ -751,37 +818,56 @@ function CustomUISettingsWindowTabSCT.Initialize()
 
     LabelSetText( c_SCT_PREFIX .. "Title", L"Appearance" )
     LabelSetText( c_SCT_PREFIX .. "RowTextFontTextFontLabel", L"Font" )
-    if DoesWindowExist(c_SCT_PREFIX .. "RowAbilityIconAbilityIconLabel") then
-        LabelSetText( c_SCT_PREFIX .. "RowAbilityIconAbilityIconLabel", L"Ability Icon" )
+    if DoesWindowExist(c_SCT_PREFIX .. "RowAbilityIconAbilityRowTitleLabel") then
+        LabelSetText(c_SCT_PREFIX .. "RowAbilityIconAbilityRowTitleLabel", L"Ability")
     end
+    -- Same embedded Label child as Crit Shake/Pulse (EA_LabelCheckButton $parentLabel).
     if DoesWindowExist(c_SCT_PREFIX .. "RowAbilityIconShowAbilityIconLabel") then
-        LabelSetText( c_SCT_PREFIX .. "RowAbilityIconShowAbilityIconLabel", L"Show" )
+        LabelSetText(c_SCT_PREFIX .. "RowAbilityIconShowAbilityIconLabel", L"Icon")
+    end
+    if DoesWindowExist(c_SCT_PREFIX .. "RowAbilityIconShowAbilityNameInTextLabel") then
+        LabelSetText(c_SCT_PREFIX .. "RowAbilityIconShowAbilityNameInTextLabel", L"Name")
     end
     if DoesWindowExist(c_SCT_PREFIX .. "RowAbilityIconShowAbilityIconButton") then
         ButtonSetCheckButtonFlag( c_SCT_PREFIX .. "RowAbilityIconShowAbilityIconButton", true )
     end
+    if DoesWindowExist(c_SCT_PREFIX .. "RowAbilityIconShowAbilityNameInTextButton") then
+        ButtonSetCheckButtonFlag( c_SCT_PREFIX .. "RowAbilityIconShowAbilityNameInTextButton", true )
+    end
     LabelSetText( c_SCT_PREFIX .. "RowCombatXOffsetCombatXOffsetLabel", L"X Offset" )
-    LabelSetText( c_SCT_PREFIX .. "RowCombatXOffsetOutgoingXOffsetLabel", L"Outgoing" )
-    LabelSetText( c_SCT_PREFIX .. "RowCombatXOffsetIncomingXOffsetLabel", L"Incoming" )
+    LabelSetText( c_SCT_PREFIX .. "RowCombatXOffsetCombatXOffsetIncomingLabel", L"X Offset" )
     LabelSetText( c_SCT_PREFIX .. "RowCombatYOffsetCombatYOffsetLabel", L"Y Offset" )
-    LabelSetText( c_SCT_PREFIX .. "RowCombatYOffsetOutgoingYOffsetLabel", L"Outgoing" )
-    LabelSetText( c_SCT_PREFIX .. "RowCombatYOffsetIncomingYOffsetLabel", L"Incoming" )
+    LabelSetText( c_SCT_PREFIX .. "RowCombatYOffsetCombatYOffsetIncomingLabel", L"Y Offset" )
+    local combatOffsetHdr = c_SCT_PREFIX .. "RowCombatOffsetHeaders"
+    LabelSetText( combatOffsetHdr .. "OffsetsHdr", L"Outgoing" )
+    LabelSetText( combatOffsetHdr .. "IncomingDistanceHdr", L"Incoming" )
     local hdr = c_SCT_PREFIX .. "RowSctColumnHeaders"
-    LabelSetText( hdr .. "OutShowHdr", L"Show" )
+    LabelSetText( hdr .. "OutShowHdr", L"Outgoing" )
     LabelSetText( hdr .. "OutSizeHdr", L"Size" )
     LabelSetText( hdr .. "OutColorHdr", L"Color" )
-    LabelSetText( hdr .. "InShowHdr", L"Show" )
+    LabelSetText( hdr .. "InShowHdr", L"Incoming" )
     LabelSetText( hdr .. "InSizeHdr", L"Size" )
     LabelSetText( hdr .. "InColorHdr", L"Color" )
 
-    local pHdr = c_SCT_PREFIX .. "RowSctPointColumnHeaders"
-    LabelSetText( c_SCT_PREFIX .. "RowPointXOffsetPointXOffsetLabel", L"X Offset" )
-    LabelSetText( c_SCT_PREFIX .. "RowPointXOffsetPointsXOffsetLabel", L"Points" )
-    LabelSetText( c_SCT_PREFIX .. "RowPointYOffsetPointYOffsetLabel", L"Y Offset" )
-    LabelSetText( c_SCT_PREFIX .. "RowPointYOffsetPointsYOffsetLabel", L"Points" )
-    LabelSetText( pHdr .. "OutShowHdr", L"Show" )
-    LabelSetText( pHdr .. "OutSizeHdr", L"Size" )
-    LabelSetText( pHdr .. "OutColorHdr", L"Color" )
+    local pHdr = c_POINTS_RIGHT_PREFIX .. "RowSctPointColumnHeaders"
+    LabelSetText( c_POINTS_LEFT_PREFIX .. "RowPointXOffsetPointXOffsetLabel", L"X Offset" )
+    LabelSetText( c_POINTS_LEFT_PREFIX .. "RowPointYOffsetPointYOffsetLabel", L"Y Offset" )
+    local offHdr = c_POINTS_LEFT_PREFIX .. "RowSctPointOffsetHeaders"
+    if DoesWindowExist(offHdr .. "OffsetsHdr") then
+        LabelSetText( offHdr .. "OffsetsHdr", L"Offsets" )
+    end
+    if DoesWindowExist(offHdr .. "DistanceHdr") then
+        LabelSetText( offHdr .. "DistanceHdr", L"Distance" )
+    end
+    if DoesWindowExist(pHdr .. "OutShowHdr") then
+        LabelSetText( pHdr .. "OutShowHdr", L"Points" )
+    end
+    if DoesWindowExist(pHdr .. "OutSizeHdr") then
+        LabelSetText( pHdr .. "OutSizeHdr", L"Size" )
+    end
+    if DoesWindowExist(pHdr .. "OutColorHdr") then
+        LabelSetText( pHdr .. "OutColorHdr", L"Color" )
+    end
 
     LabelSetText( c_SCT_PREFIX .. "RowHitOutShowLabel",       L"Hit" )
     LabelSetText( c_SCT_PREFIX .. "RowAbilityOutShowLabel",   L"Ability" )
@@ -801,9 +887,9 @@ function CustomUISettingsWindowTabSCT.Initialize()
     LabelSetText( c_SCT_PREFIX .. "RowDisruptInShowLabel",    L"Disrupt" )
     LabelSetText( c_SCT_PREFIX .. "RowAbsorbInShowLabel",     L"Absorb" )
     LabelSetText( c_SCT_PREFIX .. "RowImmuneInShowLabel",     L"Immune" )
-    LabelSetText( c_SCT_PREFIX .. "RowXPOutShowLabel",        L"XP" )
-    LabelSetText( c_SCT_PREFIX .. "RowRenownOutShowLabel",    L"Renown" )
-    LabelSetText( c_SCT_PREFIX .. "RowInfluenceOutShowLabel", L"Influence" )
+    LabelSetText( c_POINTS_RIGHT_PREFIX .. "RowXPOutShowLabel",        L"XP" )
+    LabelSetText( c_POINTS_RIGHT_PREFIX .. "RowRenownOutShowLabel",    L"Renown" )
+    LabelSetText( c_POINTS_RIGHT_PREFIX .. "RowInfluenceOutShowLabel", L"Influence" )
 
     SyncSctTextFontCombo()
     SyncCritSizeSlider()
@@ -821,7 +907,7 @@ function CustomUISettingsWindowTabSCT.UpdateSettings()
     SyncXOffsetSliders()
     SyncYOffsetSliders()
     SyncAbilityIconButton()
-    RefreshSctControls(c_SCT_PREFIX)
+    RefreshSctControls()
     SctTabDbg("UpdateSettings: done")
 end
 
@@ -903,6 +989,17 @@ function CustomUISettingsWindowTabSCT.OnToggleAbilityIcon()
     local w = AbilityIconButtonPrefix() .. "ShowAbilityIconButton"
     local enabled = DoesWindowExist(w) and ButtonGetPressedFlag(w)
     CustomUI.SCT.SetShowAbilityIcon(enabled == true)
+    SyncAbilityIconButton()
+end
+
+function CustomUISettingsWindowTabSCT.OnToggleAbilityNameInText()
+    if m_refreshing then
+        return
+    end
+    EA_LabelCheckButton.Toggle()
+    local w = AbilityIconButtonPrefix() .. "ShowAbilityNameInTextButton"
+    local enabled = DoesWindowExist(w) and ButtonGetPressedFlag(w)
+    CustomUI.SCT.SetShowAbilityNameInText(enabled == true)
     SyncAbilityIconButton()
 end
 

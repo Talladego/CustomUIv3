@@ -1,0 +1,12 @@
+<Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <Windows>
+        <!-- Ability name beside combat amount: separate label so the amount label stays centered/measured on digits only. -->
+        <Label name="CustomUI_SCTAbilityNameSuffix" font="font_default_text_large" maxchars="96" textalign="left" layer="default"
+                autoresize="false" sticky="false" handleinput="false" wordwrap="false" ignoreFormattingTags="false">
+            <Size>
+                <AbsPoint x="360" y="100" />
+            </Size>
+            <Color r="255" g="255" b="255" a="255" />
+        </Label>
+    </Windows>
+</Interface>

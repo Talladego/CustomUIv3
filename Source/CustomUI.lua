@@ -199,7 +199,7 @@ function CustomUI.PrintComponentStatuses()
 end
 
 function CustomUI.PrintHelp()
-    CustomUI.PrintMessage(L"Commands: /customui, /customui status, /customui components, /customui enable <name>, /customui disable <name>, /customui toggle <name>, /customui help")
+    CustomUI.PrintMessage(L"Commands: /customui, /customui status, /customui components, /customui enable <name>, /customui disable <name>, /customui toggle <name>, /customui clear icon cache, /customui help")
 end
 
 function CustomUI.RegisterSlashCommands()
@@ -273,6 +273,19 @@ function CustomUI.HandleSlashCommand(input)
     if command == "help" then
         CustomUI.PrintHelp()
         return
+    end
+
+    if command == "clear" then
+        local arg = string.lower(string.gsub((argument or ""):match("^%s*(.-)%s*$") or "", "%s+", " "))
+        if arg == "icon cache" then
+            if CustomUI.SCT and type(CustomUI.SCT.AbilityIconCacheClearAll) == "function" then
+                CustomUI.SCT.AbilityIconCacheClearAll()
+                CustomUI.PrintMessage(L"SCT ability icon cache cleared (session + saved hints).")
+            else
+                CustomUI.PrintMessage(L"SCT module not loaded; icon cache not cleared.")
+            end
+            return
+        end
     end
 
     if command == "enable" or command == "disable" or command == "toggle" then

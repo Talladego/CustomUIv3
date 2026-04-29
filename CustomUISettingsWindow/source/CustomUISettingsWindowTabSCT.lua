@@ -507,20 +507,22 @@ local function ResolveSliderBarWindow(startName)
     return nil, nil, nil, nil
 end
 
-local function ResolveXOffsetSliderWindow(startName)
+-- axisLetter "X"|"Y" → window name suffix XOffset|YOffset (Outgoing/Incoming/Points).
+local function ResolveAxisOffsetSliderWindow(startName, axisLetter)
+    local tail = axisLetter .. "Offset"
     local w = startName
     for depth = 0, MAX_PARENT_WALK do
         if not w or w == "" then
             break
         end
-        if string.len(w) >= 7 and string.sub(w, -7) == "XOffset" then
-            if string.find(w, "OutgoingXOffset", 1, true) then
+        if string.len(w) >= 7 and string.sub(w, -7) == tail then
+            if string.find(w, "Outgoing" .. tail, 1, true) then
                 return w, "outgoing", L"Outgoing", depth
             end
-            if string.find(w, "IncomingXOffset", 1, true) then
+            if string.find(w, "Incoming" .. tail, 1, true) then
                 return w, "incoming", L"Incoming", depth
             end
-            if string.find(w, "PointsXOffset", 1, true) then
+            if string.find(w, "Points" .. tail, 1, true) then
                 return w, "points", L"Points", depth
             end
         end
@@ -529,26 +531,12 @@ local function ResolveXOffsetSliderWindow(startName)
     return nil, nil, nil, nil
 end
 
+local function ResolveXOffsetSliderWindow(startName)
+    return ResolveAxisOffsetSliderWindow(startName, "X")
+end
+
 local function ResolveYOffsetSliderWindow(startName)
-    local w = startName
-    for depth = 0, MAX_PARENT_WALK do
-        if not w or w == "" then
-            break
-        end
-        if string.len(w) >= 7 and string.sub(w, -7) == "YOffset" then
-            if string.find(w, "OutgoingYOffset", 1, true) then
-                return w, "outgoing", L"Outgoing", depth
-            end
-            if string.find(w, "IncomingYOffset", 1, true) then
-                return w, "incoming", L"Incoming", depth
-            end
-            if string.find(w, "PointsYOffset", 1, true) then
-                return w, "points", L"Points", depth
-            end
-        end
-        w = SafeWindowGetParent(w)
-    end
-    return nil, nil, nil, nil
+    return ResolveAxisOffsetSliderWindow(startName, "Y")
 end
 
 local function SctResolveColorSwatchFromWindow(startName)

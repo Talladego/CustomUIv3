@@ -34,6 +34,18 @@ CustomUI.SCT.EventTrackers = CustomUI.SCT.EventTrackers or {}
 -- Helpers
 ----------------------------------------------------------------
 
+local function SctLogLuaDebug(msg)
+    if LogLuaMessage and SystemData and SystemData.UiLogFilters and type(towstring) == "function" then
+        LogLuaMessage("Lua", SystemData.UiLogFilters.DEBUG, towstring(msg))
+    end
+end
+
+local function SctLogLuaWarning(msg)
+    if LogLuaMessage and SystemData and SystemData.UiLogFilters and type(towstring) == "function" then
+        LogLuaMessage("Lua", SystemData.UiLogFilters.WARNING, towstring(msg))
+    end
+end
+
 local function SctStopAnimations(w)
     if not w or not DoesWindowExist(w) then return end
     WindowStopAlphaAnimation(w)
@@ -282,6 +294,14 @@ local function SctNormAbilityNameText(s)
     return s
 end
 
+-- Prefix match without allocating substrings (used by buff scan + proc/equipment matching).
+local function SctStrStartsWith(s, prefix)
+    if not s or not prefix or prefix == "" then
+        return false
+    end
+    return string.sub(s, 1, string.len(prefix)) == prefix
+end
+
 local function SctLogAbilityIconResolveOnce(abilityId, path, detail)
     if not abilityId or abilityId == 0 or not path or path == "" then
         return
@@ -295,11 +315,7 @@ local function SctLogAbilityIconResolveOnce(abilityId, path, detail)
     local msg = "[CustomUI.SCT] abilityIconResolve abilityId=" .. tostring(abilityId)
         .. " path=" .. tostring(path)
         .. (detail and detail ~= "" and (" detail=" .. tostring(detail)) or "")
-    if LogLuaMessage and SystemData and SystemData.UiLogFilters and type(towstring) == "function" then
-        LogLuaMessage("Lua", SystemData.UiLogFilters.DEBUG, towstring(msg))
-    elseif type(d) == "function" then
-        d(msg)
-    end
+    SctLogLuaDebug(msg)
 end
 
 -- Scan live buff lists (player + current target) when ability tables lack iconNum.
@@ -349,10 +365,6 @@ local function SctTryBuffListIconResolve(abilityId, isIncoming)
         end
     end
 
-    local function startsWith(s, prefix)
-        return prefix ~= "" and string.sub(s, 1, string.len(prefix)) == prefix
-    end
-
     for _, ent in ipairs(scanOrder) do
         if ent.tt ~= nil then
             local okList, allBuffs = pcall(GetBuffs, ent.tt)
@@ -365,7 +377,7 @@ local function SctTryBuffListIconResolve(abilityId, isIncoming)
                         end
                         if wantNorm ~= "" and bd.name then
                             local bn = SctNormAbilityNameText(bd.name)
-                            if bn ~= "" and (bn == wantNorm or startsWith(bn, wantNorm) or startsWith(wantNorm, bn)) then
+                            if bn ~= "" and (bn == wantNorm or SctStrStartsWith(bn, wantNorm) or SctStrStartsWith(wantNorm, bn)) then
                                 return bd.iconNum, bd.name, ent.tag
                             end
                         end
@@ -437,13 +449,10 @@ local function SctFindWeaponIconForProcAbilityId(procAbilityId)
         if hay == needle then
             return true
         end
-        local function startsWith(s, prefix)
-            return prefix ~= "" and string.sub(s, 1, string.len(prefix)) == prefix
-        end
         if string.find(hay, needle, 1, true) ~= nil then
             return true
         end
-        if startsWith(hay, needle) or startsWith(needle, hay) then
+        if SctStrStartsWith(hay, needle) or SctStrStartsWith(needle, hay) then
             return true
         end
         return false
@@ -732,9 +741,6 @@ local function SctGetAbilityIconInfo(abilityId, isIncoming)
                 -- This catches cases where the engine adds hidden suffixes, spacing, or formatting,
                 -- but the normalized name still begins with the combat name (e.g. Enchantment → Enchantments).
                 if not found then
-                    local function startsWith(s, prefix)
-                        return prefix ~= "" and string.sub(s, 1, string.len(prefix)) == prefix
-                    end
                     for _, ty in ipairs(probeTypes) do
                         if ty ~= nil then
                             local ok, tbl = pcall(GetAbilityTable, ty)
@@ -744,7 +750,7 @@ local function SctGetAbilityIconInfo(abilityId, isIncoming)
                                         local n = SctNormAbilityNameText(a.name)
                                         if n ~= "" then
                                             for _, cand in ipairs(candidates) do
-                                                if n == cand or startsWith(n, cand) or startsWith(cand, n) then
+                                                if n == cand or SctStrStartsWith(n, cand) or SctStrStartsWith(cand, n) then
                                                     found = a
                                                     break
                                                 end
@@ -886,11 +892,7 @@ local function SctDbgMissingAbilityIcon(abilityId, reason, abilityData)
         .. (name and (" name=" .. name) or "")
         .. (iconNum ~= nil and (" iconNum=" .. tostring(iconNum)) or "")
         .. (reason and (" (" .. tostring(reason) .. ")") or "")
-    if LogLuaMessage and SystemData and SystemData.UiLogFilters and type(towstring) == "function" then
-        LogLuaMessage("Lua", SystemData.UiLogFilters.WARNING, towstring(msg))
-    elseif type(d) == "function" then
-        d(msg)
-    end
+    SctLogLuaWarning(msg)
     -- Do not TextLogAddEntry here: some client builds do not have a TextLog named "uilog"
     -- and the engine will spam errors.
 end
@@ -908,11 +910,7 @@ local function SctDbgAbilityEventMissingAbilityId(textType, hitAmount)
         .. " textType=" .. tostring(textType)
         .. " hitAmount=" .. tostring(hitAmount)
         .. " (likely tactic/proc damage)"
-    if LogLuaMessage and SystemData and SystemData.UiLogFilters and type(towstring) == "function" then
-        LogLuaMessage("Lua", SystemData.UiLogFilters.WARNING, towstring(msg))
-    elseif type(d) == "function" then
-        d(msg)
-    end
+    SctLogLuaWarning(msg)
     -- Do not TextLogAddEntry here: some client builds do not have a TextLog named "uilog".
 end
 
@@ -928,11 +926,7 @@ local function SctDbgAbilityTextNoIcon(textType, hitAmount, abilityId)
         .. " textType=" .. tostring(textType)
         .. " abilityId=" .. tostring(abilityId)
         .. " hitAmount=" .. tostring(hitAmount)
-    if LogLuaMessage and SystemData and SystemData.UiLogFilters and type(towstring) == "function" then
-        LogLuaMessage("Lua", SystemData.UiLogFilters.WARNING, towstring(msg))
-    elseif type(d) == "function" then
-        d(msg)
-    end
+    SctLogLuaWarning(msg)
     -- Do not TextLogAddEntry here: some client builds do not have a TextLog named "uilog".
 end
 

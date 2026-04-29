@@ -1101,7 +1101,10 @@ function CustomUISettingsWindowTabSCT.OnFilterChanged()
         SctTabDbg("OnFilterChanged: skipped (m_refreshing)")
         return
     end
-    local active = SystemData.ActiveWindow.name
+    local active = (SystemData.ActiveWindow and SystemData.ActiveWindow.name) or ""
+    if active == "" then
+        return
+    end
     local winName, rowSuffix, dir, depth = ResolveFilterCheckWindow(active)
     SctTabDbg("OnFilterChanged: active=" .. tostring(active) .. " resolved=" .. tostring(winName) .. " row=" .. tostring(rowSuffix) .. " dir=" .. tostring(dir) .. " depth=" .. tostring(depth))
     if not rowSuffix or not winName then
@@ -1124,7 +1127,10 @@ function CustomUISettingsWindowTabSCT.OnSizeChanged()
         SctTabDbg("OnSizeChanged: skipped (m_refreshing)")
         return
     end
-    local active = SystemData.ActiveWindow.name
+    local active = (SystemData.ActiveWindow and SystemData.ActiveWindow.name) or ""
+    if active == "" then
+        return
+    end
     local winName, rowSuffix, dir, depth = ResolveSliderBarWindow(active)
     if not rowSuffix or not winName then
         SctTabDbg("OnSizeChanged: active=" .. tostring(active) .. " UNRESOLVED")

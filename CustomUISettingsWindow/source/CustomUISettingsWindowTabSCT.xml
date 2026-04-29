@@ -1665,7 +1665,8 @@
                         <!-- Begin Points (offsets + XP / Renown / Influence) -->
                         <Window name="$parentPoints">
                             <Size>
-                                <AbsPoint x="850" y="210" />
+                                <!-- Must be ≥ Left/Right column height (220) so rows are not clipped. -->
+                                <AbsPoint x="850" y="240" />
                             </Size>
                             <Anchors>
                                 <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentCombatText">

@@ -1688,7 +1688,7 @@
                                     </Anchors>
                                 </Label>
 
-								<!-- Left column: offset sliders only (430px). Right column: Points/Size/Color + XP rows (x≈478/596/791 in panel coords → 48/166/361 inside Right). -->
+								<!-- Left 424px: offset sliders. Right 426px @ x=424: Points/Size/Color headers + XP/Renown/Influence (panel x≈478/596/791 → locals 54/172/367). -->
 								<Window name="$parentLeft">
 									<Size>
 										<AbsPoint x="424" y="220" />

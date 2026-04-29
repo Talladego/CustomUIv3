@@ -31,50 +31,9 @@ local m_sctColorPickerGridRev = -1
 -- When non-nil, user is editing: { key, dir="Out"|"In", anchorSwatch=full window name of OutColorSwatch/InColorSwatch }.
 local m_sctColorPickerContext = nil
 
-local m_pointerLastMouseOver = nil
-local m_pointerLastActive = nil
 local m_hoverLastWindow = nil
 
 local function SctTabDbg() end
-local function SctPointerDbg() end
-
-local function PointerScopeName(name)
-    if name == nil or name == "" then
-        return false
-    end
-    return string.find(name, "SWTabSCT", 1, true) ~= nil
-        or string.find(name, "CustomUISettingsWindowTabSCT", 1, true) ~= nil
-end
-
-local function PointerParentSnippet(winName, maxDepth)
-    if not winName or winName == "" then
-        return "<empty>"
-    end
-    local parts = {}
-    local w = winName
-    for i = 1, maxDepth or 8 do
-        if not w or w == "" then
-            break
-        end
-        if not DoesWindowExist(w) then
-            parts[#parts + 1] = tostring(w) .. " <no such window>"
-            break
-        end
-        parts[#parts + 1] = tostring(w)
-        w = WindowGetParent(w)
-    end
-    return table.concat(parts, " <- ")
-end
-
-local function PointerLogRelevant(mo, act, lastMo, lastAct)
-    if PointerScopeName(mo) or PointerScopeName(act) then
-        return true
-    end
-    if PointerScopeName(lastMo) or PointerScopeName(lastAct) then
-        return true
-    end
-    return false
-end
 
 local ROW_BY_SUFFIX = {}
 for _, d in ipairs(CustomUI.SCT.GetSettingsRowDescriptors()) do
@@ -679,7 +638,6 @@ end
 local c_SCT_ROW_ORDER = {
     "CritAnimation",
     "CritSize",
-    -- LEGACY (v2 SCT, 2026-04-25): "BaseXOffset" row removed. Remove this comment in Step 5b.
     "AbilityIcon",
     "TextFont",
 }
@@ -777,8 +735,6 @@ local function SyncAbilityIconButton()
 end
 
 function CustomUISettingsWindowTabSCT.Initialize()
-    m_pointerLastMouseOver = nil
-    m_pointerLastActive = nil
     ReanchorSctRows()
     ReanchorCombatTextRows()
     ReanchorPointsRows()
@@ -1150,10 +1106,6 @@ end
 
 -- Stock TooltipCheckButton uses SettingsWindowTabbed.OnMouseOverTooltipElement; this is the CustomUI equivalent (extend for real tooltips).
 function CustomUISettingsWindowTabSCT.OnMouseOverFilterCheckButton()
-end
-
-function CustomUISettingsWindowTabSCT.OnDebugScrollChildClick()
-    SctTabDbg("OnDebugScrollChildClick: bubbled click on scroll child (active=" .. tostring(SystemData.ActiveWindow.name) .. ")")
 end
 
 function CustomUISettingsWindowTabSCT.OnFilterChanged()

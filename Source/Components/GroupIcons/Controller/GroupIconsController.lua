@@ -19,8 +19,9 @@ end
 local c_MAX_PARTIES  = 6
 local c_MAX_MEMBERS  = 6
 local c_ICON_SIZE    = 40   -- DynamicImage and Content: square icon in pixels
--- GetIconData atlas cell size in texture pixels (map tooltip / main menu pattern; do not add TexDims in XML).
-local c_ATLAS_ICON   = 64
+-- GetIconData atlas cell size in texture pixels for career icons.
+-- Stock uses TexDims 32 (see EA_Image_CareerIcon template); using the wrong value can tile/repeat.
+local c_ATLAS_ICON   = 32
 local c_OFFSET_Y     = 50   -- empty vertical gap (pixels) *below* the icon inside the outer window, toward the world-attach end
 local c_OUTER_H      = c_OFFSET_Y + c_ICON_SIZE   -- outer must contain icon + gap (see View/GroupIcons.xml; AttachWindowToWorldObject uses outer)
 

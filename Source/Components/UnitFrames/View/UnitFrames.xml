@@ -1,6 +1,8 @@
 <Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../../../Interface.xsd">
     <Windows>
 
+        <!-- CustomUIBGMember: EA_BattlegroupHUD-style row; contour + target/mouseover rings; distant → Clock icon (Lua). -->
+
         <!-- ========================================================= -->
         <!-- UnitFrames HP bar art: match EA_BattlegroupHUD slices      -->
         <!-- Foreground = current HP (green), Background = missing HP  -->
@@ -58,14 +60,10 @@
                     <TintColor r="0" g="0" b="0" />
                 </FullResizeImage>
 
-                <DynamicImage name="$parentDeathIcon" inherits="DeathImage" layer="background" alpha="0.75" texturescale="0.5">
-                    <Size>
-                        <AbsPoint x="44" y="44" />
-                    </Size>
+                <!-- Dead: PartyMarker-Skull; centered in health label area like DistantIcon (Clock). -->
+                <DynamicImage name="$parentSkullIcon" inherits="MainAssistCrown" popable="false" handleinput="false" layer="secondary" show="false">
                     <Anchors>
-                        <Anchor point="top" relativePoint="top" relativeTo="$parent">
-                            <AbsPoint x="0" y="5" />
-                        </Anchor>
+                        <Anchor point="center" relativePoint="center" relativeTo="$parentLabelHealth" />
                     </Anchors>
                 </DynamicImage>
 
@@ -90,6 +88,16 @@
                         </Anchor>
                     </Anchors>
                 </Label>
+
+                <!-- Distant: Clock slice from EA_HUD_01 (eatemplate_defaultwindowskin defaultskintextures.xml) replaces health text -->
+                <DynamicImage name="$parentDistantIcon" texture="EA_HUD_01" slice="Clock" layer="secondary" handleinput="false" show="false" textureScale="1.0">
+                    <Size>
+                        <AbsPoint x="22" y="23" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="center" relativePoint="center" relativeTo="$parentLabelHealth" />
+                    </Anchors>
+                </DynamicImage>
 
                 <StatusBar name="$parentHPBar" inherits="CustomUIUnitFramesHPBar" popable="false" layer="background" interpolate="true">
                     <Size>
@@ -126,6 +134,31 @@
                         <EventHandler event="OnMouseOver" function="CustomUI.UnitFrames.OnMouseOverCareerIcon" />
                     </EventHandlers>
                 </DynamicImage>
+
+                <!-- Permanent black contour (drawn under target / mouseover rings) -->
+                <Window name="$parentContourBorder" layer="overlay" handleinput="false" show="true">
+                    <Anchors>
+                        <Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+                            <AbsPoint x="0" y="0"/>
+                        </Anchor>
+                        <Anchor point="bottomright" relativePoint="bottomright" relativeTo="$parent">
+                            <AbsPoint x="0" y="0"/>
+                        </Anchor>
+                    </Anchors>
+                    <Windows>
+                        <DynamicImage name="$parentRing" texture="EA_HUD_01" slice="WarbandUnitFrame-Frame" layer="overlay" alpha="0.92" handleinput="false">
+                            <Size>
+                                <AbsPoint x="139" y="55"/>
+                            </Size>
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+                                    <AbsPoint x="0" y="0"/>
+                                </Anchor>
+                            </Anchors>
+                            <TintColor r="0" g="0" b="0" />
+                        </DynamicImage>
+                    </Windows>
+                </Window>
 
                 <!-- Target highlight: same approach as EA_BattlegroupHUD (ring frame) -->
                 <Window name="$parentTargetBorder" layer="overlay" handleinput="false" show="false">
@@ -234,21 +267,17 @@
                         </Anchor>
                     </Anchors>
                 </DynamicImage>
-
-                <DynamicImage name="$parentMainAssistIcon" inherits="MainAssistCrown">
-                    <Anchors>
-                        <Anchor point="top" relativePoint="bottom" relativeTo="$parent">
-                            <AbsPoint x="0" y="2" />
-                        </Anchor>
-                    </Anchors>
-                </DynamicImage>
             </Windows>
         </Window>
 
-        <Window name="CustomUIUnitFramesRoot" movable="false" layer="default">
+        <!-- OnUpdate driver: must stay visible while UnitFrames is enabled (hidden windows often get no OnUpdate). -->
+        <Window name="CustomUIUnitFramesRoot" movable="false" layer="background" parent="Root" handleinput="false" popable="false">
             <Size>
-                <AbsPoint x="10" y="10" />
+                <AbsPoint x="1" y="1" />
             </Size>
+            <Anchors>
+                <Anchor point="topleft" relativePoint="topleft" relativeTo="Root" />
+            </Anchors>
             <EventHandlers>
                 <EventHandler event="OnInitialize" function="CustomUI.UnitFrames.InitializeWindow" />
                 <EventHandler event="OnShutdown" function="CustomUI.UnitFrames.ShutdownWindow" />

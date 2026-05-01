@@ -11,7 +11,7 @@ CustomUI is a modular Return of Reckoning addon that replaces and enhances stock
 - **Component refactor plans** (scoped follow-ups):
   - **`Source/Components/SCT/plan.md`**: historical notes from the v2 SCT migration (handler swap + stock subclasses); v2 is **complete** — runtime lives in `SCTOverrides.lua` / `SCTHandlers.lua`.
   - **`Source/Components/PlayerStatusWindow/plan.md`**: PlayerPetWindow stock-hook lifecycle tightening.
-  - **`Source/Components/UnitFrames/plan.md`**: BattlegroupHUD stock-hook lifecycle tightening (**next open component work** — see Components table).
+  - **`Source/Components/UnitFrames/plan.md`**: BattlegroupHUD stock-hook lifecycle tightening (symmetry / unload edge cases).
 
 ## Installation
 
@@ -34,11 +34,30 @@ Place **CustomUI** and **CustomUISettingsWindow** under the game’s `Interface\
 | `PlayerPetWindow` | `PetHealthWindow` in `ea_careerresourceswindow` | ✅ Implemented |
 | `GroupWindow` | `ea_groupwindow` | ✅ Implemented |
 | `TargetHUD` | — (new world-attached HUDs for hostile and friendly targets) | ✅ Implemented |
-| `UnitFrames` | `ea_groupwindow` warband layout and scenario group frames | 🚧 In progress (adapter pattern not yet integrated) |
+| `UnitFrames` | BattlegroupHUD + FloatingScenarioGroup scenario roster frames | ✅ Implemented (`Model` / `Renderer` / `Adapters`: stubs for future refactor) |
 | `GroupIcons` | — (career icons on world objects for party / warband / scenario members) | ✅ Implemented |
 | `SCT` | `easystem_eventtext` combat/point-gain floating text | ✅ **Complete** (v2: handler swap + `SCTOverrides`; settings tab in CustomUISettingsWindow) |
 
-All components default to **disabled** except `PlayerStatusWindow`. **Next engineering focus:** `UnitFrames` (adapter integration — still 🚧 in the table above).
+All components default to **disabled** except `PlayerStatusWindow`.
+
+### GroupIcons (world markers)
+
+Controller-only (`Controller/GroupIconsController.lua`); `View/GroupIcons.xml` defines the `CustomUIGroupIcon` template plus **`CustomUIGroupIconsDriver`** (hosts `OnUpdate`, parent `Root`, 1×1) and **`CustomUIGroupIconsWorldProbe`** (position probe for outsider validation).
+
+- **Roster grid**: up to 6 parties × 6 members (`CustomUIGroupIcon_<party>_<member>`). Scenario mode with the scenario toggle ON fills slots from `GameData.GetScenarioPlayerGroups()` (`sgroupindex` / `sgroupslotnum`). Open-world warband uses `GetBattlegroupMemberData` with optional `PartyUtils.GetWarbandMember` hydration. Party-only uses row 1 via `PartyUtils.GetPartyMember` when available.
+- **Live `worldObjNum` rule**: an icon attaches only when the current refresh yields a non-zero entity id from party/warband/scenario row data. Cached ids refresh `LearnKnown` / sticky maps but are **not** used alone for attach (invalid ids tend to snap UI to the screen origin).
+- **Outsiders**: `PLAYER_TARGET_UPDATED` for hostile / friendly / mouseover classifications is queued and resolved next `OnUpdate` after stock TargetInfo updates. Non-roster players get realm-colored rings and per-frame `MoveWindowToWorldObject` until the probe detects a dead or unloaded entity (FIFO cap `48`).
+- **Self**: never shown.
+- **Settings**: `CustomUI.Settings.GroupIcons` (party / warband / scenario roster toggles, outsider hostile+friendly, archetype ring colors); UI lives in **CustomUISettingsWindow**.
+
+### UnitFrames (party / warband / scenario rows)
+
+Controller-only Lua (`Controller/UnitFramesController.lua`); `View/UnitFrames.xml` defines **`CustomUIBGMember`** (HP/AP slices aligned with EA_BattlegroupHUD, black contour ring, target/mouseover highlights, distant **`Clock`** icon on `EA_HUD_01`).
+
+- **Dual-mode**: scenario roster path (`GameData.GetScenarioPlayerGroups`) vs open-world warband (`GetBattlegroupMemberData` / `PartyUtils`) vs idle — when idle, custom rows hide and stock **`BattlegroupHUD`** / **`FloatingScenarioGroup*`** windows are restored (`CustomUI.UnitFramesEvents` holds the window name lists).
+- **Tick root**: **`CustomUIUnitFramesRoot`** — `OnUpdate` plus engine handlers (distance scan, hover border sync); created in `EnsureRootWindowInstances` and shown only while the component is enabled so the client keeps ticking hidden roots.
+- **Stock parity hooks**: BattlegroupHUD background-opacity menu/slider updates propagate into CustomUI row tint.
+- **Settings**: `CustomUI.UnitFrames.WindowSettings` etc.; tab UI in **CustomUISettingsWindow**.
 
 ## Settings window
 
@@ -173,12 +192,12 @@ CustomUI/
 			UnitFrames/
 				Controller/
 					UnitFramesController.lua
-					UnitFramesModel.lua           ← library (not yet integrated)
-					UnitFramesEvents.lua          ← library (not yet integrated)
-					UnitFramesRenderer.lua        ← library (not yet integrated)
+					UnitFramesEvents.lua          ← stock vs CustomUI window names (used by controller)
+					UnitFramesModel.lua           ← stub factories (optional refactor)
+					UnitFramesRenderer.lua        ← no-op render pass stub
 					Adapters/
-						WarbandAdapter.lua        ← stub for planned adapter pattern
-						ScenarioFloatingAdapter.lua
+						WarbandAdapter.lua        ← stub
+						ScenarioFloatingAdapter.lua ← stub
 				View/
 					UnitFrames.xml
 			SCT/

@@ -1,3 +1,8 @@
+----------------------------------------------------------------
+-- CustomUI.UnitFramesRenderer — placeholder render pass (no-op)
+-- Present for future split of XML-bound updates vs pure layout; UnitFramesController owns all UI mutation today.
+----------------------------------------------------------------
+
 if not CustomUI then
     CustomUI = {}
 end

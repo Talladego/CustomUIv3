@@ -1,3 +1,8 @@
+----------------------------------------------------------------
+-- CustomUI.UnitFramesEvents — stock vs CustomUI battlegroup/scenario window names
+-- Consumed by UnitFramesController (LayoutEditor UserShow/UserHide swap when enabling/disabling dual-mode frames).
+----------------------------------------------------------------
+
 if not CustomUI then
     CustomUI = {}
 end

@@ -1,3 +1,7 @@
+----------------------------------------------------------------
+-- UnitFrames ScenarioFloatingAdapter — stub (returns empty groups). Reserved for scenario snapshot shaping.
+----------------------------------------------------------------
+
 if not CustomUI then
     CustomUI = {}
 end

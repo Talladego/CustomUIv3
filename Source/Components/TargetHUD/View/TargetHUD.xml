@@ -1,7 +1,8 @@
 <Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../../../Interface.xsd">
     <Windows>
 
-        <Window name="CustomUITargetHUDTemplate" movable="false" savesettings="false">
+        <!-- layer="popup" keeps hostile/friendly Target HUD above GroupIcons world markers (background + secondary). -->
+        <Window name="CustomUITargetHUDTemplate" movable="false" savesettings="false" layer="popup">
             <Size>
                 <AbsPoint x="155" y="23" />
             </Size>

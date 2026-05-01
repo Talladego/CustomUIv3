@@ -51,7 +51,6 @@ local m_enabled                  = false
 local m_stockGroupRegistered     = false
 local m_groupData                = nil
 local m_hasWorldGroup            = false
-local m_inScenarioGroup          = false
 local m_memberBuffTrackers       = {}
 local m_memberRvrIndicators      = {}
 local m_memberStatusSnapshot     = {}
@@ -815,23 +814,11 @@ local function ShouldShowContainer()
         return false
     end
 
-    if (GameData.Player.isInScenario or GameData.Player.isInSiege) and not m_inScenarioGroup then
-        return false
-    end
-
-    local scenarioShowMainGroup = false
-    if ScenarioGroupWindow ~= nil then
-        scenarioShowMainGroup = ScenarioGroupWindow.GroupWindowSettings.showMainGroup
-    end
-
     local hideForWarband = IsWarBandActive()
         and not GameData.Player.isInScenario
         and not GameData.Player.isInSiege
 
-    local hideForScenarioSetting = (GameData.Player.isInScenario or GameData.Player.isInSiege)
-        and not scenarioShowMainGroup
-
-    return not (hideForWarband or hideForScenarioSetting)
+    return not hideForWarband
 end
 
 local function UpdateContainerVisibility()
@@ -883,9 +870,6 @@ function CustomUI.GroupWindow.Initialize()
     WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.CITY_SCENARIO_BEGIN, "CustomUI.GroupWindow.OnScenarioBegin")
     WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.SCENARIO_END, "CustomUI.GroupWindow.OnScenarioEnd")
     WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.CITY_SCENARIO_END, "CustomUI.GroupWindow.OnScenarioEnd")
-    WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.SCENARIO_GROUP_JOIN, "CustomUI.GroupWindow.OnScenarioGroupJoin")
-    WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.SCENARIO_GROUP_LEAVE, "CustomUI.GroupWindow.OnScenarioGroupLeave")
-
     for index = 1, c_MAX_GROUP_MEMBERS do
         m_hitPointAlerts[index] = false
         m_fadeOutAnimationDelay[index] = 0
@@ -909,7 +893,6 @@ function CustomUI.GroupWindow.Shutdown()
     ShutdownMemberRvrIndicators()
     m_groupData = nil
     m_hasWorldGroup = false
-    m_inScenarioGroup = false
 
     m_hitPointAlerts = {}
     m_fadeOutAnimationDelay = {}
@@ -989,32 +972,11 @@ function CustomUI.GroupWindow.OnHealthFadeUpdated()
 end
 
 function CustomUI.GroupWindow.OnScenarioBegin()
-    if GameData.Player.isInScenario or GameData.Player.isInSiege then
-        m_inScenarioGroup = false
-    end
-
     UpdateContainerVisibility()
 end
 
 function CustomUI.GroupWindow.OnScenarioEnd()
-    m_inScenarioGroup = false
     RefreshAllMemberStatuses()
-    UpdateContainerVisibility()
-end
-
-function CustomUI.GroupWindow.OnScenarioGroupJoin()
-    if GameData.Player.isInScenario or GameData.Player.isInSiege then
-        m_inScenarioGroup = true
-    end
-
-    UpdateContainerVisibility()
-end
-
-function CustomUI.GroupWindow.OnScenarioGroupLeave()
-    if GameData.Player.isInScenario or GameData.Player.isInSiege then
-        m_inScenarioGroup = false
-    end
-
     UpdateContainerVisibility()
 end
 

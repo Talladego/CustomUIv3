@@ -1,3 +1,7 @@
+----------------------------------------------------------------
+-- UnitFrames WarbandAdapter — stub (returns empty groups). Reserved for adapter-shaped data fetch.
+----------------------------------------------------------------
+
 if not CustomUI then
     CustomUI = {}
 end

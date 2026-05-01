@@ -4,6 +4,21 @@
   </Scripts>
   <Windows>
 
+    <!-- Narrow checkbox+label for compact rows (EA_LabelCheckButton is 280px wide). -->
+    <Window name="CustomUI_LabelCheckButtonNarrowUnitFrames" inherits="EA_LabelCheckButton">
+        <Size>
+            <AbsPoint x="140" y="32" />
+        </Size>
+        <Windows>
+            <Button name="$parentButton" inherits="EA_CheckButtonButton" />
+            <Label name="$parentLabel" inherits="EA_CheckButtonLabel" handleinput="false" textAutoFitMinScale="0.5">
+                <Size>
+                    <AbsPoint x="115" y="16" />
+                </Size>
+            </Label>
+        </Windows>
+    </Window>
+
     <!--*******************************************************************-->
     <!--                      Whole Window Definition                      -->
     <!--*******************************************************************-->
@@ -40,7 +55,7 @@
                         </Anchor>
                     </Anchors>
                 </VerticalScrollbar>
-                
+
                 <Window name="$parentScrollChild">
                     <Anchors>
                         <Anchor point="topleft" relativePoint="topleft" >
@@ -50,9 +65,9 @@
                             <AbsPoint x="0" y="0" />
                         </Anchor>
                     </Anchors>
-                    <Windows> <!-- Tab-specific content goes in here -->
-                                    
-                        <!-- General -->
+                    <Windows>
+
+                        <!-- General: enabled only -->
                         <Window name="$parentGeneral" >
                             <Size>
                                 <AbsPoint x="500" y="100" />
@@ -92,17 +107,106 @@
 
                             </Windows>
                         </Window>
-						<!-- end General -->
-                        
-                        
-                        
+
+                        <!-- Appearance: group visibility toggles + AP bar -->
+                        <!-- Pattern A (README §1): pin to ScrollChild; y = General(100) + gap(10) — same as CustomUISettingsWindowTabPlayer. -->
+                        <Window name="$parentAppearance" >
+                            <Size>
+                                <AbsPoint x="500" y="172" />
+                            </Size>
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft">
+                                    <AbsPoint x="0" y="110"/>
+                                </Anchor>
+                                <Anchor point="topright" relativePoint="topright">
+                                    <AbsPoint x="0" y="110"/>
+                                </Anchor>
+                            </Anchors>
+                            <Windows>
+                                <FullResizeImage name="$parentBackground" inherits="SettingsSectionBackground" />
+                                <Label name="$parentTitle" inherits="EA_Settings_SectionTitle">
+                                    <Size>
+                                        <AbsPoint x="400" y="25" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="10" y="10" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+
+                                <Window name="$parentParty" inherits="CustomUI_LabelCheckButtonNarrowUnitFrames">
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="40" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabUnitFrames.OnToggleGroupsParty" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <!-- Horizontal chain: README anchor convention — point=target, relativePoint=child. Target Party right → child Warband left places Warband to the right. -->
+                                <Window name="$parentWarband" inherits="CustomUI_LabelCheckButtonNarrowUnitFrames">
+                                    <Anchors>
+                                        <Anchor point="topright" relativePoint="topleft" relativeTo="$parentParty">
+                                            <AbsPoint x="8" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabUnitFrames.OnToggleGroupsWarband" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Window name="$parentScenario" inherits="CustomUI_LabelCheckButtonNarrowUnitFrames">
+                                    <Anchors>
+                                        <Anchor point="topright" relativePoint="topleft" relativeTo="$parentWarband">
+                                            <AbsPoint x="8" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabUnitFrames.OnToggleGroupsScenario" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <!-- Party bottom → AP row top (same point/relativePoint convention). -->
+                                <Window name="$parentShowActionPointsBar" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentParty">
+                                            <AbsPoint x="0" y="10" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabUnitFrames.OnToggleShowActionPointsBar" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Window name="$parentColorNamesByArchetype" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentShowActionPointsBar">
+                                            <AbsPoint x="0" y="10" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabUnitFrames.OnToggleColorNamesByArchetype" />
+                                    </EventHandlers>
+                                </Window>
+
+                            </Windows>
+                        </Window>
+
                     </Windows>
                 </Window> <!-- Scroll Child -->
             </Windows>
         </ScrollWindow>
-        
-        
+
+
       </Windows> <!-- End of Whole Window Children -->
     </Window>    <!-- End of Whole Window Definition  -->
-  </Windows>     <!-- End of Settings Window Tab Targetting -->
+  </Windows>     <!-- End of Settings Window Tab Interface -->
 </Interface>

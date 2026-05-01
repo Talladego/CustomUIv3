@@ -1,3 +1,8 @@
+----------------------------------------------------------------
+-- CustomUI.UnitFramesModel — slot/group factory helpers (optional scaffolding)
+-- Not used by UnitFramesController yet; safe to extend when refactoring data shaping out of the controller.
+----------------------------------------------------------------
+
 if not CustomUI then
     CustomUI = {}
 end

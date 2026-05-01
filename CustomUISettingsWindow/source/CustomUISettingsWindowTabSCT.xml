@@ -1638,12 +1638,13 @@
                             <Size>
                                 <AbsPoint x="850" y="577" />
                             </Size>
+                            <!-- Inter-section gap 10px — same as CustomUISettingsWindowTabPlayer (General→Buff Tracker). -->
                             <Anchors>
                                 <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentSCT">
-                                    <AbsPoint x="0" y="20" />
+                                    <AbsPoint x="0" y="10" />
                                 </Anchor>
                                 <Anchor point="bottomright" relativePoint="topright" relativeTo="$parentSCT">
-                                    <AbsPoint x="0" y="20" />
+                                    <AbsPoint x="0" y="10" />
                                 </Anchor>
                             </Anchors>
                             <Windows>
@@ -1670,10 +1671,10 @@
                             </Size>
                             <Anchors>
                                 <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentCombatText">
-                                    <AbsPoint x="0" y="20" />
+                                    <AbsPoint x="0" y="10" />
                                 </Anchor>
                                 <Anchor point="bottomright" relativePoint="topright" relativeTo="$parentCombatText">
-                                    <AbsPoint x="0" y="20" />
+                                    <AbsPoint x="0" y="10" />
                                 </Anchor>
                             </Anchors>
                             <Windows>

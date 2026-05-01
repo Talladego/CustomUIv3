@@ -521,6 +521,8 @@ local ROOT_WINDOW_NAMES = {
     "CustomUIUnitFramesGroup5Window",
     "CustomUIUnitFramesGroup6Window",
     "CustomUISCTWindow", -- SCT root placeholder; was not in the old .mod list
+    "CustomUIGroupIconsWorldProbe",
+    "CustomUIGroupIconsDriver",
 }
 
 local function EnsureRootWindowInstances()

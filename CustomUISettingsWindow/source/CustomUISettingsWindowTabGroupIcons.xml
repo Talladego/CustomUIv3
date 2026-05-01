@@ -72,6 +72,22 @@
         </Windows>
     </Window>
 
+    <!-- Narrow checkbox+label for compact rows (EA_LabelCheckButton is 280px wide). -->
+    <Window name="CustomUI_LabelCheckButtonNarrow" inherits="EA_LabelCheckButton">
+        <Size>
+            <AbsPoint x="140" y="32" />
+        </Size>
+        <Windows>
+            <!-- Re-declare children (EA_LabelCheckButton children are replaced by this block). -->
+            <Button name="$parentButton" inherits="EA_CheckButtonButton" />
+            <Label name="$parentLabel" inherits="EA_CheckButtonLabel" handleinput="false" textAutoFitMinScale="0.5">
+                <Size>
+                    <AbsPoint x="115" y="16" />
+                </Size>
+            </Label>
+        </Windows>
+    </Window>
+
     <!--*******************************************************************-->
     <!--                      Whole Window Definition                      -->
     <!--*******************************************************************-->
@@ -161,6 +177,96 @@
                             </Windows>
                         </Window>
 						<!-- end General -->
+
+                        <!-- Icons -->
+                        <Window name="$parentIcons" >
+                            <Size>
+                                <AbsPoint x="500" y="150" />
+                            </Size>
+                            <!-- Pattern A: pin to ScrollChild; y = General(100) + gap(10) — matches CustomUISettingsWindowTabPlayer (no sibling relativeTo). -->
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft">
+                                    <AbsPoint x="0" y="110"/>
+                                </Anchor>
+                                <Anchor point="topright" relativePoint="topright">
+                                    <AbsPoint x="0" y="110"/>
+                                </Anchor>
+                            </Anchors>
+                            <Windows>
+                                <FullResizeImage name="$parentBackground" inherits="SettingsSectionBackground" />
+                                <Label name="$parentTitle" inherits="EA_Settings_SectionTitle">
+                                    <Size>
+                                        <AbsPoint x="400" y="25" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="10" y="10" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+
+                                <Window name="$parentParty" inherits="CustomUI_LabelCheckButtonNarrow">
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="40" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabGroupIcons.OnToggleParty" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Window name="$parentWarband" inherits="CustomUI_LabelCheckButtonNarrow">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="$parentParty">
+                                            <AbsPoint x="0" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabGroupIcons.OnToggleWarband" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Window name="$parentArchetypeColors" inherits="CustomUI_LabelCheckButtonNarrow">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="$parentWarband">
+                                            <AbsPoint x="0" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabGroupIcons.OnToggleArchetypeColors" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Window name="$parentFriendly" inherits="CustomUI_LabelCheckButtonNarrow">
+                                    <Anchors>
+                                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentParty">
+                                            <AbsPoint x="0" y="10" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabGroupIcons.OnToggleFriendly" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Window name="$parentHostile" inherits="CustomUI_LabelCheckButtonNarrow">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="$parentFriendly">
+                                            <AbsPoint x="0" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabGroupIcons.OnToggleHostile" />
+                                    </EventHandlers>
+                                </Window>
+                            </Windows>
+                        </Window>
+                        <!-- end Icons -->
                                     
                        
                         

@@ -26,6 +26,9 @@ local function EnsureUnitFramesGroupsSettings()
     if s.colorMemberNamesByArchetype == nil then
         s.colorMemberNamesByArchetype = false
     end
+    if s.sortPartyMembersByRole == nil then
+        s.sortPartyMembersByRole = false
+    end
     return s
 end
 
@@ -56,6 +59,9 @@ function CustomUISettingsWindowTabUnitFrames.Initialize()
     LabelSetText( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceColorNamesByArchetypeLabel", L"Archetype name colors" )
     ButtonSetCheckButtonFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceColorNamesByArchetypeButton", false )
 
+    LabelSetText( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceSortPartyMembersByRoleLabel", L"Sort party by role" )
+    ButtonSetCheckButtonFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceSortPartyMembersByRoleButton", false )
+
 end
 
 function CustomUISettingsWindowTabUnitFrames.UpdateSettings()
@@ -67,6 +73,8 @@ function CustomUISettingsWindowTabUnitFrames.UpdateSettings()
     ButtonSetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceWarbandButton", s.groupsWarband == true )
     ButtonSetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceScenarioButton", s.groupsScenario == true )
     ButtonSetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceShowActionPointsBarButton", s.showActionPointsBar == true )
+    ButtonSetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceColorNamesByArchetypeButton", s.colorMemberNamesByArchetype == true )
+    ButtonSetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceSortPartyMembersByRoleButton", s.sortPartyMembersByRole == true )
 
 end
 
@@ -95,6 +103,13 @@ function CustomUISettingsWindowTabUnitFrames.OnToggleColorNamesByArchetype()
     EA_LabelCheckButton.Toggle()
     local s = EnsureUnitFramesGroupsSettings()
     s.colorMemberNamesByArchetype = ButtonGetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceColorNamesByArchetypeButton" ) == true
+    ApplyUnitFramesGroupsSettings()
+end
+
+function CustomUISettingsWindowTabUnitFrames.OnToggleSortPartyMembersByRole()
+    EA_LabelCheckButton.Toggle()
+    local s = EnsureUnitFramesGroupsSettings()
+    s.sortPartyMembersByRole = ButtonGetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceSortPartyMembersByRoleButton" ) == true
     ApplyUnitFramesGroupsSettings()
 end
 

@@ -5,7 +5,7 @@
 -- Load order: CustomUI.mod loads UnitFramesModel → Events → Renderer → Adapters (stubs) → this file → XML.
 --
 -- Runtime behavior:
---   • Layout: showActionPointsBar (default false); colorMemberNamesByArchetype (default false, white names; when true, tint like GroupIcons rings).
+--   • Layout: showActionPointsBar (default false); colorMemberNamesByArchetype; sortPartyMembersByRole (default false — reorder party/warband rows only; scenario unchanged).
 --   • Display modes (CustomUI.Settings.UnitFrames groupsParty / groupsWarband / groupsScenario): scenario roster,
 --     open-world warband (4×6), warband-own-party-only (player's battlegroup party via IsPlayerInWarband, no GetPartyData), plain party (Enemy slot order),
 --     or idle — hides custom frames and restores stock
@@ -73,7 +73,14 @@ local function EnsureUnitFramesGroupsSettings()
     if s.colorMemberNamesByArchetype == nil then
         s.colorMemberNamesByArchetype = false
     end
+    if s.sortPartyMembersByRole == nil then
+        s.sortPartyMembersByRole = false
+    end
     return s
+end
+
+local function ShouldSortPartyMembersByRole()
+    return EnsureUnitFramesGroupsSettings().sortPartyMembersByRole == true
 end
 
 local function ShouldColorUnitFramesMemberNamesByArchetype()
@@ -175,6 +182,10 @@ local m_scenarioDistancePollElapsed = 0
 --- When mode is warband_party1, UI uses CustomUIUnitFramesGroup1* but data comes from this battlegroup party index (PartyUtils.IsPlayerInWarband).
 local m_warbandPartyOnlyDataPartyIndex = nil
 
+--- sortPartyMembersByRole: display slot -> member for hit-test/target parity (display slot != PartyUtils slot when sorted).
+local m_partySortedDisplayMembers = nil
+local m_warbandSortedDisplayMembers = {}
+
 -- Scenario distance snapshot from map points (Enemy-style).
 -- { [nameKey] = { distance = number, isDistant = boolean } }
 local m_scenarioDistanceByKey = {}
@@ -218,6 +229,46 @@ local c_SCENARIO_CAREER_ID_TO_LINE = {
     [25] = GameData.CareerLine.CHOPPA,
     [21] = GameData.CareerLine.SLAYER or GameData.CareerLine.HAMMERER,
 }
+
+-- Party/warband display sort (sortPartyMembersByRole): bucket order tank → melee DPS → ranged DPS → heal → unknown.
+local c_UF_SORT_BUCKET_UNKNOWN = 9
+local c_UF_SORT_TANK = {
+    [GameData.CareerLine.IRON_BREAKER] = true,
+    [GameData.CareerLine.SWORDMASTER] = true,
+    [GameData.CareerLine.CHOSEN] = true,
+    [GameData.CareerLine.BLACK_ORC] = true,
+    [GameData.CareerLine.KNIGHT] = true,
+    [GameData.CareerLine.BLACKGUARD] = true,
+}
+local c_UF_SORT_MELEE_DPS = {
+    [GameData.CareerLine.WITCH_HUNTER] = true,
+    [GameData.CareerLine.WHITE_LION] = true,
+    [GameData.CareerLine.MARAUDER] = true,
+    [GameData.CareerLine.WITCH_ELF] = true,
+    [GameData.CareerLine.CHOPPA] = true,
+}
+local c_UF_SORT_RANGED_DPS = {
+    [GameData.CareerLine.BRIGHT_WIZARD] = true,
+    [GameData.CareerLine.MAGUS] = true,
+    [GameData.CareerLine.SORCERER] = true,
+    [GameData.CareerLine.ENGINEER] = true,
+    [GameData.CareerLine.SHADOW_WARRIOR] = true,
+    [GameData.CareerLine.SQUIG_HERDER] = true,
+}
+local c_UF_SORT_HEAL = {
+    [GameData.CareerLine.WARRIOR_PRIEST] = true,
+    [GameData.CareerLine.DISCIPLE] = true,
+    [GameData.CareerLine.ARCHMAGE] = true,
+    [GameData.CareerLine.SHAMAN] = true,
+    [GameData.CareerLine.RUNE_PRIEST] = true,
+    [GameData.CareerLine.ZEALOT] = true,
+}
+if GameData.CareerLine.SLAYER then
+    c_UF_SORT_MELEE_DPS[GameData.CareerLine.SLAYER] = true
+end
+if GameData.CareerLine.HAMMERER then
+    c_UF_SORT_MELEE_DPS[GameData.CareerLine.HAMMERER] = true
+end
 
 -- Forward decls (used by target-highlight helpers below).
 local IsWarbandModeActive
@@ -300,6 +351,84 @@ local function NamesMatch(memberName, targetName)
     -- Stock WStringsCompareIgnoreGrammer strips a leading grammar marker but uses
     -- '<' internally, which can crash on mixed string/wstring values on this client.
     return string.sub(memberText, 2) == string.sub(targetText, 2)
+end
+
+local function MemberHasDisplayName(member)
+    local memberName = ToWString(member and member.name)
+    return member ~= nil and memberName ~= nil and memberName ~= L""
+end
+
+local function UnitFramesSortBucketForCareerLine(line)
+    line = tonumber(line)
+    if line == nil then
+        return c_UF_SORT_BUCKET_UNKNOWN
+    end
+    if c_UF_SORT_TANK[line] then
+        return 1
+    end
+    if c_UF_SORT_MELEE_DPS[line] then
+        return 2
+    end
+    if c_UF_SORT_RANGED_DPS[line] then
+        return 3
+    end
+    if c_UF_SORT_HEAL[line] then
+        return 4
+    end
+    return c_UF_SORT_BUCKET_UNKNOWN
+end
+
+local function CareerAlphabeticalSortKey(line)
+    line = tonumber(line)
+    if line == nil or type(GetCareerLine) ~= "function" then
+        return "~"
+    end
+    local w = GetCareerLine(line, nil)
+    local s = ToNameString(w)
+    if s == nil or s == "" then
+        return "~"
+    end
+    return string.lower(s)
+end
+
+local function BattleRankDescendingSortKey(member)
+    return tonumber(member and member.battleLevel) or tonumber(member and member.battleRank) or 0
+end
+
+--- Stable ordering: role bucket → career name A→Z → renown rank (battleLevel) descending → original collection order.
+local function SortMembersForUnitFramesDisplay(members)
+    if type(members) ~= "table" or table.getn(members) < 2 then
+        return members
+    end
+    local enriched = {}
+    for i = 1, table.getn(members) do
+        local m = members[i]
+        local line = m and m.careerLine
+        table.insert(enriched, {
+            m = m,
+            bucket = UnitFramesSortBucketForCareerLine(line),
+            careerKey = CareerAlphabeticalSortKey(line),
+            br = BattleRankDescendingSortKey(m),
+            ord = i,
+        })
+    end
+    table.sort(enriched, function(a, b)
+        if a.bucket ~= b.bucket then
+            return a.bucket < b.bucket
+        end
+        if a.careerKey ~= b.careerKey then
+            return a.careerKey < b.careerKey
+        end
+        if a.br ~= b.br then
+            return a.br > b.br
+        end
+        return a.ord < b.ord
+    end)
+    local out = {}
+    for i = 1, table.getn(enriched) do
+        out[i] = enriched[i].m
+    end
+    return out
 end
 
 local function IsMemberCurrentFriendlyTarget(member)
@@ -1120,10 +1249,16 @@ TryGetWarbandMember = function(groupIndex, memberIndex)
     if m_warbandPartyOnlyDataPartyIndex ~= nil and groupIndex == 1 then
         dataParty = m_warbandPartyOnlyDataPartyIndex
     end
+    if ShouldSortPartyMembersByRole() then
+        local row = m_warbandSortedDisplayMembers[dataParty]
+        if row ~= nil then
+            return row[memberIndex]
+        end
+    end
     return PartyUtils.GetWarbandMember(dataParty, memberIndex)
 end
 
---- Party-only rows follow Enemy._GroupsUpdate: slot 1 = local player (GameData.Player); slots 2+ = ipairs(GetPartyData) / GetPartyMember(i).
+--- Plain-party source rows: slot 1 = local snapshot; mates = PartyUtils.GetPartyMember / GetPartyData. With sortPartyMembersByRole, display order is reshuffled (no slot-1 self guarantee).
 local function BuildLocalPlayerPartyMemberSnapshot()
     if GameData == nil or GameData.Player == nil then
         return nil
@@ -1189,6 +1324,9 @@ end
 TryGetPartyFrameMember = function(groupIndex, memberIndex)
     if groupIndex ~= 1 then
         return nil
+    end
+    if ShouldSortPartyMembersByRole() and m_partySortedDisplayMembers ~= nil then
+        return m_partySortedDisplayMembers[memberIndex]
     end
     local data = nil
     if type(PartyUtils) == "table" and type(PartyUtils.GetPartyData) == "function" then
@@ -1432,16 +1570,35 @@ local function UpdateWarbandGroup(groupIndex, respectStockWarbandToggle, warband
     end
 
     if not showGroup or numMembers < 1 then
+        m_warbandSortedDisplayMembers[dataParty] = nil
         SafeLayoutUserHide(groupWindow)
         return
     end
 
     SafeLayoutUserShow(groupWindow)
 
+    local sortedSlots = nil
+    if ShouldSortPartyMembersByRole() then
+        local collected = {}
+        for mi = 1, c_GROUP_MEMBERS do
+            local mm = PartyUtils.GetWarbandMember(dataParty, mi)
+            if MemberHasDisplayName(mm) then
+                table.insert(collected, mm)
+            end
+        end
+        sortedSlots = SortMembersForUnitFramesDisplay(collected)
+        m_warbandSortedDisplayMembers[dataParty] = {}
+        for i = 1, table.getn(sortedSlots) do
+            m_warbandSortedDisplayMembers[dataParty][i] = sortedSlots[i]
+        end
+    else
+        m_warbandSortedDisplayMembers[dataParty] = nil
+    end
+
     local foundLeader = false
 
     for memberIndex = 1, c_GROUP_MEMBERS do
-        local member = PartyUtils.GetWarbandMember(dataParty, memberIndex)
+        local member = sortedSlots and sortedSlots[memberIndex] or PartyUtils.GetWarbandMember(dataParty, memberIndex)
         local memberName = ToWString(member and member.name)
         if member ~= nil and memberName ~= nil and memberName ~= L"" then
             SetMemberWindowShowing(groupIndex, memberIndex, true)
@@ -1477,11 +1634,28 @@ local function UpdatePartyOnlyGroup()
         data = GetGroupData()
     end
 
+    local sortedSlots = nil
+    m_partySortedDisplayMembers = nil
+    if ShouldSortPartyMembersByRole() then
+        local collected = {}
+        for mi = 1, c_GROUP_MEMBERS do
+            local mm = GetPartySlotMemberForUnitFrames(mi, data)
+            if MemberHasDisplayName(mm) then
+                table.insert(collected, mm)
+            end
+        end
+        sortedSlots = SortMembersForUnitFramesDisplay(collected)
+        m_partySortedDisplayMembers = {}
+        for i = 1, table.getn(sortedSlots) do
+            m_partySortedDisplayMembers[i] = sortedSlots[i]
+        end
+    end
+
     local hasAny = false
     local foundLeader = false
 
     for memberIndex = 1, c_GROUP_MEMBERS do
-        local member = GetPartySlotMemberForUnitFrames(memberIndex, data)
+        local member = sortedSlots and sortedSlots[memberIndex] or GetPartySlotMemberForUnitFrames(memberIndex, data)
         local memberName = ToWString(member and member.name)
         if member ~= nil and memberName ~= nil and memberName ~= L"" then
             hasAny = true

@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Read(//c/Games/Return of Reckoning/Interface/**)",
-      "Bash(xargs grep -l \"class.*BuffFrame\\\\|function.*BuffFrame.*Create\\\\|BuffFrame.*=.*\\\\{\\\\|g_buffFrames\")"
-    ]
-  }
-}

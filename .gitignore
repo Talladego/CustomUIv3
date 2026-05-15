@@ -7,6 +7,8 @@ desktop.ini
 # Editor
 .vscode/
 *.code-workspace
+.claude/
+.cursor/
 
 # Logs and temp
 *.log
@@ -27,3 +29,6 @@ ehthumbs.db
 # Ignore user-specific settings
 *.user
 
+# Documentation
+**/*.md
+!**/README.md

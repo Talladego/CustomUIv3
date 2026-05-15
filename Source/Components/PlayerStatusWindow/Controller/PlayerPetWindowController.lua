@@ -28,6 +28,8 @@ local m_enabled = false
 
 local g_petHealthRegistered = false
 local m_stockUpdatePetProxy = nil
+--- Our Lua replacement for `PetWindow.UpdatePet` (C functions cannot hold custom fields — do not index `UpdatePet[...]`).
+local g_ourUpdatePetWrapper = nil
 
 local function HideStockPetHealthWindow()
     if DoesWindowExist("PetHealthWindow") then
@@ -38,22 +40,38 @@ end
 local function InstallPetProxyHook()
     if m_stockUpdatePetProxy ~= nil then return end
     if type(PetWindow) ~= "table" or type(PetWindow.UpdatePet) ~= "function" then return end
+    if PetWindow.UpdatePet == g_ourUpdatePetWrapper then
+        return
+    end
     m_stockUpdatePetProxy = PetWindow.UpdatePet
     -- Hook UpdatePet (the method, not the event proxy) because PetWindow:Create calls
     -- it directly — bypassing UpdatePetProxy entirely — so the event hook never fires
     -- for the initial pet show on reload. The m_enabled gate ensures we don't interfere
     -- with the career resources window when our component is disabled.
-    function PetWindow:UpdatePet()
-        m_stockUpdatePetProxy(self)
-        if m_enabled then HideStockPetHealthWindow() end
+    g_ourUpdatePetWrapper = function( self )
+        -- Never blind pcall: keep all stock returns intact when successful.
+        local ok, r1, r2, r3, r4, r5 = pcall( m_stockUpdatePetProxy, self )
+        if not ok then
+            if CustomUI.DebugLogging == true then
+                LogLuaMessage( "Lua", SystemData.UiLogFilters.WARNING,
+                    L"[CustomUI] PetWindow.UpdatePet stock error: " .. tostring( r1 ) )
+            end
+            return
+        end
+        if m_enabled then
+            HideStockPetHealthWindow()
+        end
+        return r1, r2, r3, r4, r5
     end
+    PetWindow.UpdatePet = g_ourUpdatePetWrapper
 end
 
 local function RestorePetProxyHook()
     if m_stockUpdatePetProxy == nil then return end
-    if type(PetWindow) == "table" then
+    if type( PetWindow ) == "table" and PetWindow.UpdatePet == g_ourUpdatePetWrapper then
         PetWindow.UpdatePet = m_stockUpdatePetProxy
     end
+    g_ourUpdatePetWrapper = nil
     m_stockUpdatePetProxy = nil
 end
 
@@ -72,13 +90,18 @@ end
 ----------------------------------------------------------------
 
 local function HasPet()
-    return GameData.Player.Pet.name ~= L""
+    return GameData
+       and GameData.Player
+       and GameData.Player.Pet
+       and GameData.Player.Pet.name ~= L""
 end
 
 local function UpdateFrame()
-    petFrame:SetPlayersPetName( GameData.Player.Pet.name )
-    petFrame:UpdateLevel( GameData.Player.Pet.level )
-    petFrame:UpdateHealth( GameData.Player.Pet.healthPercent )
+    local p = GameData and GameData.Player and GameData.Player.Pet
+    if not petFrame or not p then return end
+    petFrame:SetPlayersPetName(p.name)
+    petFrame:UpdateLevel(p.level)
+    petFrame:UpdateHealth(p.healthPercent)
 end
 
 ----------------------------------------------------------------
@@ -101,12 +124,17 @@ function CustomUI.PlayerPetWindow.Initialize()
     WindowRegisterEventHandler( c_WINDOW_NAME, SystemData.Events.PLAYER_PET_UPDATED,        "CustomUI.PlayerPetWindow.OnPetUpdated" )
     WindowRegisterEventHandler( c_WINDOW_NAME, SystemData.Events.PLAYER_PET_HEALTH_UPDATED, "CustomUI.PlayerPetWindow.OnPetHealthUpdated" )
 
-    InstallPetProxyHook()
+    -- Hook is installed in Enable() / restored in Disable() so stock call path is
+    -- not intercepted when this component is disabled.
     CustomUI.PlayerPetWindow.OnPetUpdated()
 end
 
 function CustomUI.PlayerPetWindow.Shutdown()
     RestorePetProxyHook()
+
+    local e = SystemData.Events
+    WindowUnregisterEventHandler( c_WINDOW_NAME, e.PLAYER_PET_UPDATED        )
+    WindowUnregisterEventHandler( c_WINDOW_NAME, e.PLAYER_PET_HEALTH_UPDATED )
 
     if petFrame then
         petFrame:Destroy()
@@ -145,8 +173,9 @@ function CustomUI.PlayerPetWindow.OnPetUpdated()
 end
 
 function CustomUI.PlayerPetWindow.OnPetHealthUpdated()
-    if petFrame and HasPet() then
-        petFrame:UpdateHealth( GameData.Player.Pet.healthPercent )
+    local p = GameData and GameData.Player and GameData.Player.Pet
+    if petFrame and p and p.name ~= L"" then
+        petFrame:UpdateHealth(p.healthPercent)
     end
 end
 
@@ -162,6 +191,7 @@ local PlayerPetWindowComponent = {
 
 function PlayerPetWindowComponent:Enable()
     m_enabled = true
+    InstallPetProxyHook()
     LayoutEditor.UserShow( self.WindowName )
     EnsurePetHealthWindowRegistered()
     HideStockPetHealthWindow()
@@ -171,7 +201,11 @@ end
 
 function PlayerPetWindowComponent:Disable()
     m_enabled = false
+    RestorePetProxyHook()
     LayoutEditor.UserHide( self.WindowName )
+    if DoesWindowExist( self.WindowName ) then
+        WindowSetShowing( self.WindowName, false )
+    end
     if LayoutEditor.windowsList["PetHealthWindow"] then
         LayoutEditor.UserShow( "PetHealthWindow" )
         LayoutEditor.UnregisterWindow( "PetHealthWindow" )

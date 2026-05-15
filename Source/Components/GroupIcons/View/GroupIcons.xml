@@ -7,7 +7,7 @@
             scales outside the icon (slice art is inset vs same-sized square).
             Lua applies WindowSetDimensions / anchors from constants.
         -->
-        <!-- Root layer background so world markers stay below HUD using popup/overlay (e.g. TargetHUD). -->
+        <!-- Root layer background so world markers stay below default-tier HUD (e.g. TargetHUD). -->
         <Window name="CustomUIGroupIcon" handleinput="false" layer="background">
             <Size>
                 <AbsPoint x="48" y="98" />
@@ -39,13 +39,15 @@
                                 <Anchor point="center" relativePoint="center" />
                             </Anchors>
                         </DynamicImage>
-                        <!-- WarbandLeaderCrown: Lua positions topleft from Content (crown bottom = ring top); UV in controller. -->
+                        <!-- WarbandLeaderCrown: README §Notes — point on Ring (target), relativePoint on crown (bottom). Y bootstrap scaled vs UF ring; X=0 (centered at roster scale). -->
                         <DynamicImage name="$parentWarbandCrown" handleinput="false" layer="secondary" popable="false" textureScale="1.0" filtering="true">
                             <Size>
                                 <AbsPoint x="25" y="16" />
                             </Size>
                             <Anchors>
-                                <Anchor point="topleft" relativePoint="topleft" />
+                                <Anchor point="top" relativePoint="bottom" relativeTo="$parentRing">
+                                    <AbsPoint x="0" y="6" />
+                                </Anchor>
                             </Anchors>
                         </DynamicImage>
                     </Windows>
@@ -53,7 +55,7 @@
             </Windows>
         </Window>
 
-        <!-- Probe: invisible anchor used by Controller to validate outsider worldObj positions (never attach roster icons here). -->
+        <!-- Probe: 0×0 window used with MoveWindowToWorldObject + screen position (AutoMark-style) to drop dead outsider wids; not for roster attach. -->
         <Window name="CustomUIGroupIconsWorldProbe" handleinput="false" layer="background" parent="Root" movable="false">
             <Size>
                 <AbsPoint x="0" y="0" />

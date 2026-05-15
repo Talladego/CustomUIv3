@@ -112,7 +112,7 @@
                         <!-- Pattern A (README §1): pin to ScrollChild; y = General(100) + gap(10) — same as CustomUISettingsWindowTabPlayer. -->
                         <Window name="$parentAppearance" >
                             <Size>
-                                <AbsPoint x="500" y="214" />
+                                <AbsPoint x="500" y="256" />
                             </Size>
                             <Anchors>
                                 <Anchor point="topleft" relativePoint="topleft">
@@ -185,7 +185,7 @@
                                     </EventHandlers>
                                 </Window>
 
-                                <Window name="$parentColorNamesByArchetype" inherits="EA_LabelCheckButton">
+                                <Window name="$parentTargetHudHpBarStyle" inherits="EA_LabelCheckButton">
                                     <Anchors>
                                         <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentShowActionPointsBar">
                                             <AbsPoint x="0" y="10" />
@@ -193,13 +193,25 @@
                                     </Anchors>
                                     <EventHandlers>
                                         <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
-                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabUnitFrames.OnToggleColorNamesByArchetype" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabUnitFrames.OnToggleTargetHudHpBarStyle" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Window name="$parentCareerRingArchetypeColors" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentTargetHudHpBarStyle">
+                                            <AbsPoint x="0" y="10" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabUnitFrames.OnToggleCareerRingArchetypeColors" />
                                     </EventHandlers>
                                 </Window>
 
                                 <Window name="$parentSortPartyMembersByRole" inherits="EA_LabelCheckButton">
                                     <Anchors>
-                                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentColorNamesByArchetype">
+                                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentCareerRingArchetypeColors">
                                             <AbsPoint x="0" y="10" />
                                         </Anchor>
                                     </Anchors>

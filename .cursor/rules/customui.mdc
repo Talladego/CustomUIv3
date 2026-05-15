@@ -36,7 +36,7 @@ Modular addon that replaces/enhances stock UI behind `/cui` and per-component se
 
 **High**
 
-- `PetWindow.UpdatePetProxy` wrapper: forward `...`, preserve returns, isolate stock call with `pcall`, log failures, re-apply hide after.
+- Pet window stock hooks: isolate stock with `pcall` — **always** capture `ok` plus every return value (`local ok, r1, ... = pcall(...)`); forward stock returns on success; blind `pcall` that discards results is not allowed; log failures; forward `...` if stock arity requires it; re-apply hide after a successful stock path when applicable.
 
 **Medium**
 

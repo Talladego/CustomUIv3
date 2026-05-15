@@ -1,16 +1,78 @@
 # CustomUI Code Quality Backlog
 
-Last updated: 2026-04-29 (README: SCT v2 marked **complete**; next focus `UnitFrames`)
+**Last updated:** 2026-05-05 — BuffTracker + stock takeover optimization complete. Open items: Medium **#11** (GroupWindow test harness), UnitFrames hook lifecycle move, SCT doc cleanup.
 
-Notes: consolidated and refreshed after a focused code review of `Source/`, `CustomUISettingsWindow/`, and `CustomUI.mod`. This file tracks known bugs, design smells, and technical debt; items move into **Resolved** when fixed and are retained there for audit history.
+**See also:** [plan.md](plan.md) for execution steps, [review.md](review.md) for detailed audit findings.
 
-**SCT:** v2 is complete (handler swap + `SCTOverrides.lua`). Entries below that still cite removed **`SCTEventText.lua`** describe older builds — re-verify against `SCTOverrides.lua` / `SCTHandlers.lua` before filing fixes.
+## Still open (summary)
 
-## Audit summary (2026-04-18, verified 2026-04-23)
+## Consolidated from auxiliary Markdown
 
-- The codebase is modular and well-documented: namespaced components (`CustomUI.*`), a clear Controller/View split, and reusable subsystems (`CustomUI.BuffTracker`, `CustomUI.TargetFrame`).
-- Primary risks: hooks on `PetWindow.UpdatePet` without error isolation, almost no `WindowUnregisterEventHandler` pairing, unguarded `GameData` in some view paths, and residual SCT audit items (verify against v2 — `SCTOverrides.lua`, not legacy `SCTEventText.lua`).
-- `UnitFrames` correctly unregisters its window event handlers; most other components do not (see below).
+**Policy:** Actionable follow-ups that previously appeared only in [plan.md](plan.md), [review.md](review.md), [Source/Components/UnitFrames/plan.md](Source/Components/UnitFrames/plan.md), [Source/Components/PlayerStatusWindow/plan.md](Source/Components/PlayerStatusWindow/plan.md), [Source/Components/SCT/plan.md](Source/Components/SCT/plan.md), or [Source/Components/SCT/review.md](Source/Components/SCT/review.md) are summarized **here**. Those files retain **design narrative / regression checklists**; this section is the single **issue index** for cross-doc items.
+
+| Source | What moved here |
+|--------|------------------|
+| [plan.md](plan.md) §Performance / Phase 3 | P2 smoke test; steps 11–15 status |
+| [UnitFrames/plan.md](Source/Components/UnitFrames/plan.md) | BattlegroupHUD hook lifecycle |
+| [PlayerStatusWindow/plan.md](Source/Components/PlayerStatusWindow/plan.md) | Pet hook — **resolved** in code (issues High **#1**–**#2**); plan kept for checklist |
+| [Source/Components/SCT/review.md](Source/Components/SCT/review.md) | Doc drift (pcall claims, file sizes) |
+| [review.md](review.md) (2026-05-02) | Residual items aligned with §Validation gaps / optional anchor audit |
+
+### Performance & smoke ([plan.md](plan.md) §Performance)
+
+- **P2 (pending in-game):** After BuffTracker P1, smoke-test all trackers (PlayerStatus, TargetWindow, TargetHUD, GroupWindow ×5, alignment, compression, blacklist/whitelist).
+- **P3:** GroupIcons — outsiders **attach** (`AttachWindowToWorldObject`); probe-only staleness on interval; no per-frame `Move` on icon windows ([GroupIconsController.lua](Source/Components/GroupIcons/Controller/GroupIconsController.lua)).
+
+### Phase 3 verification table ([plan.md](plan.md))
+
+| Step | Topic | Status |
+|------|--------|--------|
+| 11 | SCT heal / `"Heal"` key | **Done** — issues High **#4**; optional scenario pass |
+| 12 | Root `OnUpdate` / disabled | **Done** — Medium **#13** |
+| 13 | GroupIcons FIFO vs active target | **Done** — Low **#18** |
+| 14 | UnitFrames stub modules | **Done** — Low **#17** |
+| 15 | GroupWindow test harness / manifest | **Open** — Medium **#11** |
+
+### UnitFrames — BattlegroupHUD opacity hooks ([UnitFrames/plan.md](Source/Components/UnitFrames/plan.md))
+
+- **Open:** Move hook install from `Initialize` into **`Enable`** and restore in **`Disable`** so stock `BattlegroupHUD` is untouched while UnitFrames is disabled (idempotent guards per plan).
+
+### SCT — documentation / structure ([Source/Components/SCT/review.md](Source/Components/SCT/review.md))
+
+- **Open (doc cleanup):** Reconcile `implementation.md` pcall claims with code; file-size vs plan targets; optional § load-order note in SCT `plan.md`.
+- **In-game verify:** Same rows as [issues.md](issues.md) §**SCT component** (EventTracker expiry, combat tables at load, nil color fallback).
+
+### Review audit residual ([review.md](review.md))
+
+- Matches §**Validation gaps** below (regression harness, hook reload smoke, reset fault-injection).
+- **Optional:** Per-tab settings XML anchor audit ([README.md](README.md) §Notes).
+
+### CustomUISettingsWindow
+
+- Developer layout pitfalls only — [CustomUISettingsWindow/README.md](CustomUISettingsWindow/README.md); no separate numbered backlog.
+
+## Audit summary (2026-05-02, via review.md)
+
+- Architecture remains sound: namespaced `CustomUI.*`, Controller/View split, manifest-only `.mod`, `EnsureRootWindowInstances`, shared BuffTracker/TargetFrame.
+- **Lifecycle:** Player pet hook now uses `pcall` + `Enable`/`Disable`; PlayerStatus, TargetWindow, TargetHUD, GroupWindow attach/detach `WindowRegisterEventHandler` only while enabled (GroupIcons / UnitFrames already patterned).
+- **Guards:** Common PlayerStatus view / pet paths now guard `GameData` / `GameData.Player`.
+- Settings: `RefreshSctControls` now wraps the `SetupRow` loop in `pcall` and always clears `m_refreshing` (same file); smaller sync helpers (e.g. throttle sliders) still toggle `m_refreshing` without `pcall` — low risk.
+- Static review only (review.md); items marked “verify against v2” need file-level confirmation in-game where noted.
+
+## Performance & memory (2026-05-04)
+
+Static review of hot paths (`OnUpdate`, BuffTracker, GroupIcons outsiders, SCT trackers). BuffTracker with sort: **not** per-frame full layout — timer labels every frame, full `OnBuffsChanged` on ~10 Hz throttle and on duration-category transitions, with reused scratch tables for filter maps (see **Medium #20** resolved). GroupIcons outsider rings **attach** to the world object; only the **probe** is moved on an interval to drop stale tracks (**Medium #21** / [plan.md](plan.md) P3). SCT `EventTrackers` is hard-capped with LRU eviction (**Medium #24**, 2026-05-04). BuffTracker throttle work still scales with **many simultaneous trackers** on player + targets + HUD + group rows.
+
+| Area | Issue | Primary files |
+|------|--------|----------------|
+| BuffTracker | ~~Sort-on path fired full layout every frame~~ — **fixed:** throttle (~10 Hz) + immediate relayout when short/long/permanent category changes vs last layout; `postFilter` / `inResult` reused; `CompressBuffData` still allocates per resort. | [BuffTracker.lua](Source/Shared/BuffTracker/BuffTracker.lua) (`Update`, `OnBuffsChanged`) |
+| Amplification | Same pattern on PlayerStatus, TargetWindow, TargetHUD (`ApplyPlayerStatusRules` + sort override), GroupWindow (**five** member trackers). | Controllers using `BuffTracker` |
+| GroupIcons | Outsider rings: **`AttachWindowToWorldObject`** (engine-follow). Staleness: **`ValidateTrackedOutsidersProbeOnly`** — probe-only `MoveWindowToWorldObject` on **`c_OUTSIDER_PROBE_INTERVAL`**; no per-frame `Move` on icon windows. | [GroupIconsController.lua](Source/Components/GroupIcons/Controller/GroupIconsController.lua) |
+| UnitFrames | ~~`SyncMouseOverBorderFromGlobalHover` every frame~~ — **fixed:** skipped when no custom group window is visible **and** there is no active hover member to clear; mode `"none"` clears hover tracking (Medium **#22**, 2026-05-04). | [UnitFramesController.lua](Source/Components/UnitFrames/Controller/UnitFramesController.lua) |
+| Target UI | ~~Residual `OnUpdate` buff ticks while disabled~~ — **fixed:** `CustomUI.TargetWindow.OnUpdate` / `TargetWindow.Update` bail on `not m_enabled`; TargetHUD already guarded; handlers unregister on **Disable**; **#13** `SafeUserHide` + `WindowSetShowing` (Medium **#23**, 2026-05-04). | [TargetWindowController.lua](Source/Components/TargetWindow/Controller/TargetWindowController.lua), [TargetHUDController.lua](Source/Components/TargetHUD/Controller/TargetHUDController.lua) |
+| SCT | ~~`EventTrackers` unbounded growth~~ — **fixed:** `c_EVENT_TRACKERS_MAX` + touch-order LRU; evict quiescent trackers first, then oldest-touch (**Medium #24**, 2026-05-04). Idle timeout (`c_TRACKER_IDLE_EVICT_TIME`) unchanged. Per-tracker throttle; icon LRU ([SCTAbilityIconCache.lua](Source/Components/SCT/Controller/SCTAbilityIconCache.lua)). | [SCTHandlers.lua](Source/Components/SCT/Controller/SCTHandlers.lua), [SCTOverrides.lua](Source/Components/SCT/Controller/SCTOverrides.lua) |
+
+Medium performance backlog **#24** resolved (**#6**–**#8**, **#13**, **#20**–**#23**). Residual design: [plan.md](plan.md) §Performance & memory for optional tuning only.
 
 ## Component pattern verification (2026-04-18) — **resolved 2026-04-23**
 
@@ -18,138 +80,86 @@ Notes: consolidated and refreshed after a focused code review of `Source/`, `Cus
 - **Manifest-only `.mod`:** `<CreateWindow>` was removed from `CustomUI.mod`. Top-level window instances are created at the first step of `CustomUI.Initialize` via `EnsureRootWindowInstances()` in [Source/CustomUI.lua](Source/CustomUI.lua) (`CreateWindow(name, false)` for each root name, matching the old mod list, plus `CustomUISCTWindow`). This runs in the same `OnInitialize` order as the former pre-creates (after all `<File>` loads, before `InitializeComponents`) so **disabled** components that never run `Initialize()` still have instances for layout/saved settings. See [README.md](README.md) (Window creation pattern).
 - Rationale: `InitializeComponents()` only calls `EnableComponent` → `Initialize` for **enabled** components; roots must exist regardless.
 
-## High severity
-
-1. **Fragile hook: `PetWindow.UpdatePet` (not `UpdatePetProxy`)**  
-   - Evidence: [Source/Components/PlayerStatusWindow/Controller/PlayerPetWindowController.lua](Source/Components/PlayerStatusWindow/Controller/PlayerPetWindowController.lua) replaces `PetWindow.UpdatePet` with a wrapper that calls the saved stock function, then may hide the stock pet window. The comments note that `UpdatePetProxy` is often bypassed, which is why `UpdatePet` is hooked. The wrapper does not use `pcall` or forward extra arguments (stock signature appears to be `self` only).  
-   - Risk: if the original throws, the hook can break UI code paths.  
-   - Suggested fix: wrap the stock call in `pcall`, log failures, and re-apply the stock hide behavior after; keep `self` forwarding consistent with the engine.
-
-2. **Missing `WindowUnregisterEventHandler` in most controllers**  
-   - Evidence: `WindowRegisterEventHandler` is used in [PlayerStatusWindowController.lua](Source/Components/PlayerStatusWindow/Controller/PlayerStatusWindowController.lua), [PlayerPetWindowController.lua](Source/Components/PlayerStatusWindow/Controller/PlayerPetWindowController.lua), [TargetWindowController.lua](Source/Components/TargetWindow/Controller/TargetWindowController.lua), [TargetHUDController.lua](Source/Components/TargetHUD/Controller/TargetHUDController.lua), [GroupWindowController.lua](Source/Components/GroupWindow/Controller/GroupWindowController.lua). None of the matching `Shutdown`/adapter paths call `WindowUnregisterEventHandler`. [UnitFramesController.lua](Source/Components/UnitFrames/Controller/UnitFramesController.lua) *does* unregister its handlers (good reference).  
-   - Risk: stale callbacks or duplicate registrations if the engine re-inits; unnecessary work.  
-   - Suggested fix: for each `WindowRegisterEventHandler`, add `WindowUnregisterEventHandler` in `Shutdown`/`Disable`, or register only in `Enable` and unregister in `Disable`.
-
-3. **Direct `GameData` / `GameData.Player` indexing without guards**  
-   - Evidence: e.g. [PlayerStatusWindow.lua](Source/Components/PlayerStatusWindow/View/PlayerStatusWindow.lua) `UpdateHealthTextLabel` uses `GameData.Player.hitPoints` without checks; controller hot paths do the same. [PlayerPetWindowController.lua](Source/Components/PlayerStatusWindow/Controller/PlayerPetWindowController.lua) `HasPet()` uses `GameData.Player.Pet.name` unguarded.  
-   - Risk: errors during early load or in a minimal harness.  
-   - Suggested fix: add guards or a `SafeGet` helper where these run outside a known-safe window.
-
-4. **SCT heal detection / `"Heal"` key is wrong**  
-   - Evidence: [SCTEventText.lua](Source/Components/SCT/Controller/SCTEventText.lua) — in `EA_System_EventEntry:SetupText`, `key` is set from combat type, then `if isHitOrCrit and hitAmount > 0 then key = "Heal" end` (see ~line 754). `isIncoming` is computed *after* that (see ~line 758). Positive hit/crit amounts for outgoing damage can be mislabeled as heal for scaling/color/filter. `_AddCombatEventText` has a similar positive-amount + `showHeal` filter path (~1421+).  
-   - Suggested fix: derive heals using incoming direction (and/or engine heal-specific event data), not `hitAmount > 0` alone.
-
-5. ~~**Buff grouping vs compression key mismatch**~~ — **Resolved / not a bug (2026-04-17)**  
-   - `CompressBuffData` uses `effectIndex` intentionally: deduplicates same-cast entries from different casters.  
-   - `_ApplyBuffGroups` uses `abilityId` intentionally: collapses logically equivalent ability variants.  
-   - README documents the distinction. **Do not** "fix" compression to use `abilityId` for the same role as `effectIndex` without a design pass — that would be a different feature.
-
 ## Medium severity
 
-6. **Hot-path `GetSettings()` in SCT**  
-   - Evidence: `GetSettings()` is invoked from `SetupText`, `_AddCombatEventText`, and XP/Renown/Influence helpers; migration runs on each `GetSettings()` call. `_AddXpText` / `_AddRenownText` / `_AddInfluenceText` each call `GetSettings()` twice for one filter check (~1474–1475, ~1488–1489, ~1502–1503 in [SCTEventText.lua](Source/Components/SCT/Controller/SCTEventText.lua)).  
-   - Suggested fix: cache settings after init; refresh on settings changes; use one local per helper.
+6. ~~**Hot-path `GetSettings()` in SCT (verify v2)**~~ — **Resolved (2026-05-04)**  
+   - [SCTSettings.lua](Source/Components/SCT/Controller/SCTSettings.lua): full `Settings()` normalize/migrate runs only while dirty; `notifyChange()` clears the flag, runs `ApplyMode()`, then `Settings()` once to refresh cache. Hot paths (`GetSettings`, `CombatType*Enabled`, getters) return the live table with **O(1)** reuse when clean. **`CustomUI.SCT.InvalidateSettingsNormalization()`** if something mutates `CustomUI.Settings.SCT` outside setters.
 
-7. **UnitFrames visibility polling**  
-   - Evidence: [UnitFramesController.lua](Source/Components/UnitFrames/Controller/UnitFramesController.lua) — `m_visibilityPollElapsed` / `c_VISIBILITY_POLL_INTERVAL` (~792+).  
-   - Suggested fix: prefer transitions and explicit game signals over periodic polling where feasible.
+7. ~~**UnitFrames visibility polling**~~ — **Resolved (2026-05-04)**  
+   - Removed `m_visibilityPollElapsed` / `c_VISIBILITY_POLL_INTERVAL`: `ApplyModeVisibility()` now ends with `RefreshTargetBorders()` + `RefreshMouseOverBorders()` after every layout pass; `Update()` only runs scenario distance polling + `SyncMouseOverBorderFromGlobalHover`. Registered `SCENARIO_GROUP_UPDATED`, `SCENARIO_PLAYERS_LIST_UPDATED`, `LOADING_END`, `PLAYER_ZONE_CHANGED`, `ENTER_WORLD` → `OnVisibilityStateChanged` for flag/roster lag vs group events; `OnWarbandMemberUpdated` refreshes borders after partial warband redraw.
 
-8. **Unused fields on `CustomUI.PlayerStatusWindow.Settings`**  
-    - Evidence: [PlayerStatusWindowController.lua](Source/Components/PlayerStatusWindow/Controller/PlayerStatusWindowController.lua) — `alwaysShowHitPoints` and `alwaysShowAPPoints` (defaults ~32–34) are not read elsewhere.  
-    - Suggested fix: remove or wire up in the view.
+8. ~~**Unused fields on `CustomUI.PlayerStatusWindow.Settings`**~~ — **Resolved (2026-05-04)**  
+    - `CustomUI.PlayerStatusWindow.GetSettings()` clears legacy **`alwaysShowHitPoints`** / **`alwaysShowAPPoints`** from persisted `CustomUI.Settings.PlayerStatusWindow` if present (never wired; UI had no controls) ([PlayerStatusWindowController.lua](Source/Components/PlayerStatusWindow/Controller/PlayerStatusWindowController.lua)).
 
-9. **Duplicate `BUFF_FILTER_DEFAULTS` tables**  
-    - Evidence: identical defaults in [PlayerStatusWindowController.lua](Source/Components/PlayerStatusWindow/Controller/PlayerStatusWindowController.lua) and [TargetWindowController.lua](Source/Components/TargetWindow/Controller/TargetWindowController.lua) (~561+ and ~508+). The old `BuffFilterSection.lua` legacy settings helper was removed and did not own default filter values.  
-    - Suggested fix: move shared buff-filter defaults into a current shared settings helper, used by both controllers and settings merge logic.
+9. ~~**Duplicate buff-filter defaults / key lists**~~ — **Resolved (2026-05-04)**  
+    - [BuffFilterDefaults.lua](Source/Shared/BuffTracker/BuffFilterDefaults.lua) defines **`CustomUI.BuffTracker.FilterDefaults`** and **`FilterSettingKeys`** (ordered merge keys). PlayerStatus, TargetWindow, TargetHUD, and GroupWindow **`GetSettings`** iterate **`FilterSettingKeys`** — no per-controller **`BUFF_FILTER_KEYS`** / **`BUFF_FILTER_DEFAULTS`** aliases.
 
-10. **`m_refreshing` in SCT settings tab (wrong file in older notes)**  
-    - Evidence: [CustomUISettingsWindow/source/CustomUISettingsWindowTabSCT.lua](CustomUISettingsWindow/source/CustomUISettingsWindowTabSCT.lua) — `RefreshSctControls` sets `m_refreshing = true`, runs `SetupRow` for every row in a plain loop (~407–410), then clears the flag. Other sync functions wrap work in `pcall` (e.g. `SyncSctTextFontCombo`). If `SetupRow` throws, `m_refreshing` can stay `true` and block handlers that guard on it (~720+).  
-    - Suggested fix: wrap the `SetupRow` loop in `pcall` or `pcall` per row, and clear `m_refreshing` in an error path.
+10. ~~**`m_refreshing` in SCT settings tab — `RefreshSctControls` throws**~~ — **Resolved (2026-05-04)**  
+    - `RefreshSctControls` uses `pcall` around the full `SetupRow` loop and **always** clears `m_refreshing`, logging on failure ([CustomUISettingsWindowTabSCT.lua](CustomUISettingsWindow/source/CustomUISettingsWindowTabSCT.lua)).  
+    - Optional residual: narrow helpers like `SyncMessageThrottleSliders` still set `m_refreshing` without `pcall` — acceptable unless those calls start throwing.
 
-11. **Group window test harness always shipped**  
-    - Evidence: [GroupWindowTestHarness.lua](Source/Components/GroupWindow/Controller/GroupWindowTestHarness.lua) is in the mod; [CustomUI.lua](Source/CustomUI.lua) dispatches `gwharness` via slash. Default is off; `RefreshGroupState` only replaces data when [harness is enabled](Source/Components/GroupWindow/Controller/GroupWindowController.lua).  
-    - Risk: extra surface in release builds.  
-    - Suggested fix: dev-only mod flag, or exclude from release manifest.
+11. **Group window test harness — keep until GroupWindow is complete**  
+   - [GroupWindowTestHarness.lua](Source/Components/GroupWindow/Controller/GroupWindowTestHarness.lua) stays in-tree for now (`gwharness` slash via [CustomUI.lua](Source/CustomUI.lua)); default **off**; real group data paths unchanged when disabled.  
+   - **When GroupWindow is feature-complete:** remove harness file(s) from [CustomUI.mod](CustomUI.mod) / slash dispatch and delete or archive the harness module.
+
+12. ~~**`BeginLoading` / SCT — stale trackers across UI reload**~~ — **Resolved (2026-05-04)**  
+   - `CustomUI.SCT.OnLoadingBegin` calls `DestroyAllTrackers()` and resets the incoming fan lane counter ([SCTHandlers.lua](Source/Components/SCT/Controller/SCTHandlers.lua)).
+
+13. ~~**Root `OnUpdate` handlers while component disabled**~~ — **Resolved (2026-05-04)**  
+   - UnitFrames, GroupIcons driver, SCT window already hid tick roots on disable. **Gap closed:** `PlayerStatusWindow`, `GroupWindow`, `PlayerPetWindow` now call `WindowSetShowing(..., false)` after `LayoutEditor.UserHide` on `Disable`; `TargetWindow` `SafeUserHide` always applies `WindowSetShowing(..., false)` when the window exists (layout-editor hide alone is not relied on for stopping ticks); `TargetHUD.OnUpdate` returns immediately when `m_enabled` is false ([PlayerStatusWindowController.lua](Source/Components/PlayerStatusWindow/Controller/PlayerStatusWindowController.lua), [GroupWindowController.lua](Source/Components/GroupWindow/Controller/GroupWindowController.lua), [PlayerPetWindowController.lua](Source/Components/PlayerStatusWindow/Controller/PlayerPetWindowController.lua), [TargetWindowController.lua](Source/Components/TargetWindow/Controller/TargetWindowController.lua), [TargetHUDController.lua](Source/Components/TargetHUD/Controller/TargetHUDController.lua)).
+
+20. ~~**BuffTracker: full `OnBuffsChanged` every frame when sort mode is on**~~ — **Resolved (2026-05-04)**  
+    - [BuffTracker.lua](Source/Shared/BuffTracker/BuffTracker.lua): `Update` ticks durations and refreshes timer labels every frame; full layout on **throttled** interval (~10 Hz) for intra-bucket duration reordering, **plus** immediate layout when a timed buff’s duration category (short / long / permanent vs `m_durationThreshold`) changes vs the snapshot taken at the last `OnBuffsChanged` (`_layoutDurCat`). Config/data paths still call `OnBuffsChanged` directly. `postFilter` and `inResult` are cleared and reused to reduce allocations per resort.
+
+21. ~~**GroupIcons: outsider world follow cost per frame**~~ — **Resolved / revised (2026-05-04, 2026-05-05)**  
+    - **History:** ~20 Hz throttle → choppy; full-rate probe + **`Move` on icons** → smoother but wasteful.  
+    - **Current:** Outsider **`GroupIcon`** uses **`AttachWindowToWorldObject`** like roster. **`ValidateTrackedOutsidersProbeOnly`** runs on **`c_OUTSIDER_PROBE_INTERVAL`** (`MoveWindowToWorldObject` **probe only**) to untrack dead/unloaded wids ([GroupIconsController.lua](Source/Components/GroupIcons/Controller/GroupIconsController.lua)).
+
+22. ~~**UnitFrames: hover border sync every frame**~~ — **Resolved (2026-05-04)**  
+    - `UnitFrames.Update` calls `SyncMouseOverBorderFromGlobalHover` only when **some custom group window** is engine-visible (`WindowGetShowing`) **or** `m_mouseOverMemberWindow ~= nil` (clear stale border after roster hides). Display mode `"none"` resets hover tracking so idle skips cannot strand state ([UnitFramesController.lua](Source/Components/UnitFrames/Controller/UnitFramesController.lua)).
+
+23. ~~**TargetWindow / TargetHUD: residual tick/work while disabled**~~ — **Resolved (2026-05-04)**  
+    - Handlers **unregister on Disable**; hide paths per Medium **#13** (`SafeUserHide` + `WindowSetShowing`); **`CustomUI.TargetWindow.OnUpdate` and `CustomUI.TargetWindow.Update`** now return immediately when `not m_enabled` so BuffTracker `Update` cannot run from XML ticks while the component is off (both target windows inherit the same `OnUpdate`). **`CustomUI.TargetHUD.OnUpdate`** already guarded `m_enabled` ([TargetWindowController.lua](Source/Components/TargetWindow/Controller/TargetWindowController.lua), [TargetHUDController.lua](Source/Components/TargetHUD/Controller/TargetHUDController.lua)).
+
+24. ~~**SCT: `EventTrackers` map growth**~~ — **Resolved (2026-05-04)**  
+
+25. ~~**Stock UI handlers still running while stock windows are hidden (takeover unhooking).**~~  
+   **Resolved (2026-05-05).**
+   - When CustomUI replaces stock Player/Target/Group windows it hides stock via `LayoutEditor.UserHide`, but stock `WindowRegisterEventHandler` / `RegisterEventHandler` callbacks can still run while hidden, duplicating buff/target/group work.
+   - **Fix:** CustomUI replacement components now unhook stock handlers on `Enable` and restore them on `Disable`:
+     - `TargetWindow`: unhooks stock handlers registered on `TargetWindow` (`ea_targetwindow`) and re-registers on disable.
+     - `PlayerStatusWindow`: unhooks stock `PlayerWindow` handler registrations and re-registers on disable.
+     - `GroupWindow`: unhooks stock global `GroupWindow.*` event handlers (registered via `RegisterEventHandler`) and restores on disable.
+   - See [plan.md](plan.md) §**Phase 2b — Stock component takeover** for the lifecycle contract.
+
+26. ~~**Toggling stock ↔ CustomUI can strand stale buff state (Player/Target/Group).**~~  
+   **Resolved (2026-05-05).**
+   - Stress case: flipping ownership mid-combat can leave the non-owning side’s BuffTracker stale (0s timers, missing bars) because it missed effects updates while unhooked.
+   - **Fix:** On takeover/handback, each replacement forces a resync:
+     - `PlayerStatusWindow`: clear/hide stock buffs on CUI enable; refresh CUI buffs on enable; clear CUI on disable; refresh stock buffs + HP/AP on disable.
+     - `TargetWindow`: refresh CUI buff trackers on enable; clear them on disable; call stock `TargetWindow.UpdateTarget(...)` after rehook/show.
+     - `GroupWindow`: refresh CUI member trackers on enable; clear them on disable; call stock `GroupWindow.OnGroupUpdated()` after rehook/show.
+    - `getOrCreateTracker` calls `enforceMaxEventTrackers` after each new tracker; **`c_EVENT_TRACKERS_MAX`** (72) with **`_sctTouchSeq`** updated on create + `markTrackerActive`. Eviction prefers **quiescent** trackers (empty displayed/pending/throttle queue), then oldest-touch among all; never drops the storage key being created ([SCTHandlers.lua](Source/Components/SCT/Controller/SCTHandlers.lua)).
 
 ## Low severity
 
-12. **BuffTracker / `pairs()` where order might matter**  
-    - Some merge paths use `pairs` over buff maps; final display is often sorted, but stable iteration is preferable where determinism helps debugging.
+14. ~~**BuffTracker / `pairs()` where order might matter**~~ — **Resolved (2026-05-05)**  
+    - [`BuffTracker.lua`](Source/Shared/BuffTracker/BuffTracker.lua): **`_sortedMapKeys`** + sorted iteration over **`m_buffData`**, **`rawBuffData`**, **`postFilter`/`postCompress` paths**, whitelist warn pass, **`CopyBuffData`**, **`Refresh`/`UpdateBuffs`** merges, and scratch **`inResult`** clear.
 
-13. **Near-duplicate Blacklist/Whitelist**  
-    - [Blacklist.lua](Source/Shared/BuffTracker/Blacklist.lua) and [Whitelist.lua](Source/Shared/BuffTracker/Whitelist.lua) are largely parallel; could be one parameterized module.
+15. ~~**Near-duplicate Blacklist/Whitelist**~~ — **Resolved (2026-05-05)**  
+    - Single mod file [**`BuffLists.lua`**](Source/Shared/BuffTracker/BuffLists.lua) defines **`DefaultBlacklist`**, **`DefaultWhitelist`**, **`DefaultWhitelistAbility`**; removed **`Blacklist.lua`** / **`Whitelist.lua`** ([`CustomUI.mod`](CustomUI.mod)).
 
-14. **SCT diagnostic logging when `d` is absent**  
-    - Evidence: [SCTEventText.lua](Source/Components/SCT/Controller/SCTEventText.lua) — `SCTLog` uses `CustomUI.GetClientDebugLog()` (`rawget(_G, "d")`). If the client does not expose `d`, `[SCT]` strings are silent (opt-in dev logging).
+16. ~~**SCT diagnostic logging when `d` is absent**~~ — **Resolved (2026-05-05)**  
+    - [`CustomUI.lua`](Source/CustomUI.lua): **`CustomUI.GetClientDebugLog()`** (`rawget(_G, "d")`) and **`CustomUI.SCTLog(msg)`** — when **`CustomUI.DebugLogging`** and no client **`d`**, falls back to **`LogLuaMessage(..., SystemData.UiLogFilters.DEBUG, ...)`** so **`uilog.log`** still receives traces (README updated).
 
-## SCT component ([Source/Components/SCT/](Source/Components/SCT/))
+17. ~~**UnitFrames `Model` / `Renderer` / `Adapters` stubs**~~ — **Resolved (2026-05-04)**  
+    - Removed unused modules from [CustomUI.mod](CustomUI.mod); deleted `UnitFramesModel.lua`, `UnitFramesRenderer.lua`, `Adapters/WarbandAdapter.lua`, `Adapters/ScenarioFloatingAdapter.lua`. [UnitFramesController.lua](Source/Components/UnitFrames/Controller/UnitFramesController.lua) + [README.md](README.md) reference only **`UnitFramesEvents`** alongside the controller.
 
-Last updated: 2026-04-23.
+18. ~~**GroupIcons FIFO outsider cap (48)**~~ — **Resolved (2026-05-04)**  
+    - When the pool is full, eviction walks FIFO oldest-first and **skips** world entity ids for non-empty **enemy player** / **ally player** slots in `TargetInfo` (`HOSTILE_TARGET`, `FRIENDLY_TARGET`) so your active target’s ring is not the first evicted when many strangers stream past ([GroupIconsController.lua](Source/Components/GroupIcons/Controller/GroupIconsController.lua)). Fallback evicts oldest if no candidate (should not occur with ≤2 protected ids).
 
-### High severity
-
-- **Global overwrite of `EA_System_EventText` dispatchers** ([SCTEventText.lua](Source/Components/SCT/Controller/SCTEventText.lua) end of file): `AddCombatEventText`, `AddXpText`, etc. are replaced. `_stock` stores prior function pointers. Other addons that rely on the exact table layout or hook the same entry points can conflict. Document in README if unavoidable.
-
-- **Heal / `"Heal"` key** — same as main **High #4** (SetupText ~754–760; ensure key uses incoming heal semantics, not `hitAmount > 0` alone).
-
-### Medium severity
-
-- **`EA_System_EventTracker:Update` expiry** (~1092–1101 in [SCTEventText.lua](Source/Components/SCT/Controller/SCTEventText.lua)): expiry uses `DEFAULT_FRIENDLY_EVENT_ANIMATION_PARAMETERS.maximumDisplayTime` for displayed event lifetime, not a per-tracker or per-`animData` value. If friendly/hostile point-gain parameters diverge, behavior may be wrong.
-
-- **Crit / loading**: `BeginLoading` sets `loading` so `EA_System_EventText.Update` returns early (~1379–1383); crit trackers are not updated during load, nor cleared at load start. `CustomUI.SCT.Disable` / `DestroyAllTrackers` tear down trackers. If SCT stays enabled across a load, old crit state may resume after load. Consider clearing crit trackers in `BeginLoading` (same as disable teardown) if stale floating text is observed.
-
-- **`CombatEventText` built at file load** (~26–37): indexes `GameData.CombatEvent` and `StringTables`. If the table is not ready, entries can be `nil` until re-init. Defer to `Initialize()` or guard.
-
-- **Nil-safety for `DefaultColor.GetCombatEventColor` in `SetupText`**: if `color` is nil, `LabelSetTextColor` may error. Add a white fallback.
-
-- **Hot-path `GetSettings()`** — same as **Medium #6** above.
-
-### Low severity
-
-- **Filter / delegate duplication in `_AddCombatEventText`**: some branches read `filters` directly; others use helper functions that re-read settings — hard to read; could unify.
-
-- **Crit anchor sequence** (`CritTrackerSeq` / crit lane): monotonic counters on long sessions — low risk; reset on component disable / `DestroyAllTrackers` if needed.
-
-- **Anchor/window churn** for per-target anchors — possible future pooling.
-
-## Validation gaps (action items)
-
-- No regression harness covering enable/disable/reset sequences across all components.
-- No smoke test for hook install/uninstall (`PetWindow.UpdatePet`, etc.) across reloads.
-- No clear fault-injection path to verify `ResetAllToDefaults` surfaces component-level failures to the user.
-
-## Best practice recommendations
-
-- Use `pcall` in stock hooks and forward the correct `self` / arguments the engine uses.
-- For every `WindowRegisterEventHandler`, add explicit unregistration or move registration to `Enable` with symmetric `Disable`.
-- Top-level root windows: `EnsureRootWindowInstances` at addon `Initialize` in [Source/CustomUI.lua](Source/CustomUI.lua); per-component `Initialize` still does `RegisterWindow` / sub-`CreateWindowFromTemplate` as today; keep `.mod` as `<File>` manifest only.
-- Prefer `CustomUI.*`; use `CustomUI.GetClientDebugLog()` for optional client `d` (see README). Engine-required globals (e.g. XML `Lua` / event targets) are unavoidable—document in file headers.
-- Extract shared default tables (buff filters) to shared modules.
-- Remove dead code, empty stubs, and dev-only files from release builds where possible.
-- Cache settings on hot paths (SCT) and refresh on change.
-
-**Quick wins (low risk):**
-
-- Safe `pcall` around the stock `PetWindow.UpdatePet` call; keep hide-after success behavior.
-- `GameData` guards in `UpdateHealthTextLabel` and a few other view helpers.
-- Remove unused `alwaysShowHitPoints` / `alwaysShowAPPoints` from `CustomUI.PlayerStatusWindow.Settings`.
-- Wrap `RefreshSctControls`’s `SetupRow` loop so `m_refreshing` always clears.
-
-**Needs in-game verification:**
-
-- SCT: fix heal key using real combat event semantics, then verify filters/colors in scenarios.
-
-**Medium-term:**
-
-- Systematic `WindowUnregisterEventHandler` for all components (use UnitFrames as a template).
-- Extract shared `BUFF_FILTER_DEFAULTS` to shared Lua (not only UI in `BuffFilterSection`).
-- Optional CI: UTF-8 (no BOM), load order in `CustomUI.mod`, simple global scan.
-
-## Suggested next steps (from backlog)
-
-- (A) Pet hook + `GameData` guards.  
-- (B) SCT: heal key + `GetSettings` cache + `m_refreshing` hardening.  
-- (C) Event unregister sweep across components.
+19. ~~**Comments / headers referencing removed monolithic SCT**~~ — **Resolved (2026-05-04)**  
+    - [issues.md](issues.md), [plan.md](plan.md), [review.md](review.md) point audits at [`SCTOverrides.lua`](Source/Components/SCT/Controller/SCTOverrides.lua) / [`SCTHandlers.lua`](Source/Components/SCT/Controller/SCTHandlers.lua) only. SCT controller Lua had no stale filename references.
 
 ## Resolved (since last sweep)
 
@@ -174,3 +184,22 @@ Last updated: 2026-04-23.
 - **SCT: settings saved to stock `EA_ScrollingCombatText_Settings`** — fixed 2026-04-19. Uses `CustomUI.Settings.SCT` only.  
 - **SCT: settings reset on tab open** — fixed 2026-04-19 (`m_refreshing` / combo init).  
 - **SCT: checkboxes, sliders, scale, disable path** — fixed in earlier sessions (see previous changelog in git history if needed).
+- **SCT: `OnLoadingBegin` tears down all trackers** — 2026-05-04. Avoids stale floating text across loads; resets `_incomingFanLaneIndex`.
+- **SCT settings: `RefreshSctControls` `pcall` + guaranteed `m_refreshing` clear** — 2026-05-04 ([CustomUISettingsWindowTabSCT.lua](CustomUISettingsWindow/source/CustomUISettingsWindowTabSCT.lua)).
+- **SCT: signed hit/crit amounts (heal vs damage) documented + invalid amounts ignored** — 2026-05-04 ([SCTHandlers.lua](Source/Components/SCT/Controller/SCTHandlers.lua), [SCTOverrides.lua](Source/Components/SCT/Controller/SCTOverrides.lua)); aligns **`Heal`** row with positive amounts only.
+- **BuffTracker: sort-on resort churn** — 2026-05-04 ([BuffTracker.lua](Source/Shared/BuffTracker/BuffTracker.lua)). Throttled full layout + duration-category dirty relayout + reused `postFilter`/`inResult` scratch tables (Medium **#20**).
+- **UnitFrames: periodic visibility poll removed** — 2026-05-04 ([UnitFramesController.lua](Source/Components/UnitFrames/Controller/UnitFramesController.lua)). Event-driven `ApplyModeVisibility` + border refresh; extra hooks for scenario list/group + zone/load/world (Medium **#7**).
+- **SCT: `GetSettings` / `Settings()` normalization cache** — 2026-05-04 ([SCTSettings.lua](Source/Components/SCT/Controller/SCTSettings.lua)). Dirty on `notifyChange`; optional `InvalidateSettingsNormalization` for rare external edits (Medium **#6**).
+- **Root `OnUpdate` / disabled components** — 2026-05-04. Explicit `WindowSetShowing(..., false)` on disable for PlayerStatus, GroupWindow, PlayerPet; `TargetWindow.SafeUserHide` always hides the window when it exists; `TargetHUD.OnUpdate` guards `m_enabled` (Medium **#13**).
+- **UnitFrames: idle skip for global hover sync** — 2026-05-04. `SyncMouseOverBorderFromGlobalHover` gated on visible group containers or pending hover clear; mode `"none"` clears hover cache (Medium **#22**).
+- **TargetWindow/TargetHUD: no BuffTracker `Update` while disabled** — 2026-05-04. `TargetWindow.OnUpdate`/`TargetWindow.Update` early-return when `not m_enabled`; complements handler unregister + **#13** hide paths (Medium **#23**).
+- **PlayerStatusWindow: legacy unused settings keys removed from persisted table** — 2026-05-04. `GetSettings` nils `alwaysShowHitPoints` / `alwaysShowAPPoints` (Medium **#8**).
+- **GroupIcons: outsider follow** — 2026-05-04 / **2026-05-05**. **Attach** for motion; probe-only interval for staleness (**Medium #21**).
+- **SCT: `EventTrackers` hard cap + LRU eviction** — 2026-05-04. `c_EVENT_TRACKERS_MAX`, `_sctTouchSeq`, quiescent-first eviction (Medium **#24**).
+- **Buff filter schema: `FilterSettingKeys` + shared defaults** — 2026-05-04. Controllers use `CustomUI.BuffTracker.FilterSettingKeys` / `FilterDefaults` only (Medium **#9**).
+- **UnitFrames: removed unused Model / Renderer / WarbandAdapter / ScenarioFloatingAdapter** — 2026-05-04 (Low **#17**).
+- **GroupIcons: outsider FIFO eviction skips active player targets** — 2026-05-04. `BuildActiveTargetEntityIdGuard` + `PickOutsiderFifoEvictionVictim` (Low **#18**).
+- **Docs: SCT audit pointers** — 2026-05-04. Root `issues` / `plan` / `review` cite v2 SCT only (Low **#19**).
+- **BuffTracker: deterministic map iteration** — 2026-05-05. `_sortedMapKeys` on merge/filter passes (Low **#14**).
+- **Buff lists module** — 2026-05-05. [`BuffLists.lua`](Source/Shared/BuffTracker/BuffLists.lua) replaces separate blacklist/whitelist files (Low **#15**).
+- **`CustomUI.GetClientDebugLog` / `CustomUI.SCTLog`** — 2026-05-05. README + `uilog.log` fallback when client `d` absent (Low **#16**).

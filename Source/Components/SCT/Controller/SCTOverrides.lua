@@ -27,6 +27,10 @@ CustomUI.SCT.INFLUENCE_GAIN = 3
 local COMBAT_EVENT   = CustomUI.SCT.COMBAT_EVENT
 local POINT_GAIN     = CustomUI.SCT.POINT_GAIN
 
+-- Incoming fan: horizontal lane spread + diagonal drift (pixels; applied on top of incoming X/Y sliders).
+local c_INCOMING_FAN_ARM  = 72
+local c_INCOMING_FAN_DIAG = 52
+
 -- Live tracker tables (keyed by targetObjectNumber).
 CustomUI.SCT.EventTrackers = CustomUI.SCT.EventTrackers or {}
 
@@ -35,12 +39,18 @@ CustomUI.SCT.EventTrackers = CustomUI.SCT.EventTrackers or {}
 ----------------------------------------------------------------
 
 local function SctLogLuaDebug(msg)
+    if CustomUI.DebugLogging ~= true then
+        return
+    end
     if LogLuaMessage and SystemData and SystemData.UiLogFilters and type(towstring) == "function" then
         LogLuaMessage("Lua", SystemData.UiLogFilters.DEBUG, towstring(msg))
     end
 end
 
 local function SctLogLuaWarning(msg)
+    if CustomUI.DebugLogging ~= true then
+        return
+    end
     if LogLuaMessage and SystemData and SystemData.UiLogFilters and type(towstring) == "function" then
         LogLuaMessage("Lua", SystemData.UiLogFilters.WARNING, towstring(msg))
     end
@@ -93,6 +103,33 @@ local function SctAnchorName(targetObjectNumber)
     return "CustomUI_SCT_EventTextAnchor" .. tostring(targetObjectNumber or "unknown")
 end
 CustomUI.SCT.SctAnchorName = SctAnchorName
+
+-- Incoming combat uses three trackers on the player (same worldObjNum / incoming offsets): fan arms left (_Heal), center-up (_Dmg), right (_Mit).
+-- Events round-robin across lanes in SCTHandlers; anchor suffix only selects fan geometry, not event category.
+-- Keys must not collide with numeric outgoing keys (those are enemy/other worldObjNums).
+function CustomUI.SCT.IncomingHealTrackerKey(worldObjNum)
+    return "inHeal_" .. tostring(worldObjNum or "")
+end
+
+function CustomUI.SCT.IncomingDamageTrackerKey(worldObjNum)
+    return "inDmg_" .. tostring(worldObjNum or "")
+end
+
+function CustomUI.SCT.IncomingMitigationTrackerKey(worldObjNum)
+    return "inMit_" .. tostring(worldObjNum or "")
+end
+
+function CustomUI.SCT.IncomingHealAnchorName(worldObjNum)
+    return "CustomUI_SCT_EventTextAnchor_IN" .. tostring(worldObjNum or "unknown") .. "_Heal"
+end
+
+function CustomUI.SCT.IncomingDamageAnchorName(worldObjNum)
+    return "CustomUI_SCT_EventTextAnchor_IN" .. tostring(worldObjNum or "unknown") .. "_Dmg"
+end
+
+function CustomUI.SCT.IncomingMitigationAnchorName(worldObjNum)
+    return "CustomUI_SCT_EventTextAnchor_IN" .. tostring(worldObjNum or "unknown") .. "_Mit"
+end
 
 local function SctHolderName(entryWindowName)
     return tostring(entryWindowName) .. "Holder"
@@ -1082,6 +1119,7 @@ function CustomUI.SCT.EventEntry:UpdateAbilityIconPosition()
 end
 
 function CustomUI.SCT.EventEntry:SetupText(hitTargetObjectNumber, hitAmount, textType, abilityId)
+    -- Hit/crit amounts from the engine are signed: positive = heal, negative = damage (see OnCombatEvent).
     -- 1. Stock renders text, color, and alpha.
     StockEventEntry.SetupText(self, hitTargetObjectNumber, hitAmount, textType)
 
@@ -1131,9 +1169,9 @@ function CustomUI.SCT.EventEntry:SetupText(hitTargetObjectNumber, hitAmount, tex
         LabelSetTextAlign(wName, "center")
     end
 
-    -- 2. Direction and key (isIncoming computed above).
+    -- 2. Direction and key (isIncoming computed above). "Heal" row = positive signed amount on hit/crit.
     local key = CustomUI.SCT.KeyForCombatType(textType)
-    if isHitOrCrit and hitAmount > 0 then key = "Heal" end
+    if isHitOrCrit and type(hitAmount) == "number" and hitAmount == hitAmount and hitAmount > 0 then key = "Heal" end
 
     local isCrit = (textType == GameData.CombatEvent.CRITICAL)
                 or (textType == GameData.CombatEvent.ABILITY_CRITICAL)
@@ -1259,7 +1297,12 @@ function CustomUI.SCT.EventEntry:Update(elapsedTime, simulationSpeed)
     local lifeElapsed = SctUpdateEntryPosition(self, elapsedTime, simulationSpeed)
 
     if self.m_IsCrit then
-        local sh, pu, cf = CustomUI.SCT.GetCritFlags()
+        local sh = CustomUI.SCT._frameCritShake
+        local pu = CustomUI.SCT._frameCritPulse
+        local cf = CustomUI.SCT._frameCritFlash
+        if sh == nil and pu == nil and cf == nil then
+            sh, pu, cf = CustomUI.SCT.GetCritFlags()
+        end
         if sh or pu or cf then
             local Effects = SctGetEffects()
             if Effects then
@@ -1369,7 +1412,11 @@ CustomUI.SCT.EventTracker.__index = CustomUI.SCT.EventTracker
 function CustomUI.SCT.EventTracker:Create(anchorWindowName, targetObjectNumber)
     -- Delegate to stock Create; stock sets up all fields and calls AttachWindowToWorldObject.
     local tracker = StockEventTracker.Create(self, anchorWindowName, targetObjectNumber)
-    -- Ensure our metatable is applied (stock Create sets metatable to `self`).
+    -- Per-tracker throttle (messages/sec applies independently per worldObjNum; player is one tracker).
+    if tracker then
+        tracker._sctThrottleQueue = {}
+        tracker._sctThrottleCredit = 1
+    end
     return tracker
 end
 
@@ -1384,6 +1431,30 @@ function CustomUI.SCT.EventTracker:InitializeAnimationData(displayType)
 
     local xOffset = CustomUI.SCT.GetXOffset and CustomUI.SCT.GetXOffset(category) or 0
     local yOffset = CustomUI.SCT.GetYOffset and CustomUI.SCT.GetYOffset(category) or 0
+
+    local function applyIncomingFanCombatOffsets()
+        if category ~= "incoming" or displayType ~= COMBAT_EVENT then
+            return
+        end
+        local anchorName = self.m_Anchor
+        if type(anchorName) ~= "string" then
+            return
+        end
+        local suf = string.match(anchorName, "_([^_]+)$")
+        local arm, diag = c_INCOMING_FAN_ARM, c_INCOMING_FAN_DIAG
+        local sx = animData.start.x or 0
+        if suf == "Heal" then
+            animData.start.x = sx - arm
+            animData.target.x = sx - arm - diag
+            animData.current.x = animData.start.x
+        elseif suf == "Mit" then
+            animData.start.x = sx + arm
+            animData.target.x = sx + arm + diag
+            animData.current.x = animData.start.x
+        elseif suf == "Dmg" then
+            -- Center arm: vertical float only (start.x == target.x already).
+        end
+    end
 
     if category == "points" then
         -- Stock DEFAULT_POINT_GAIN_* uses a hard-coded pixel anchor (e.g. x=-200,y=-90).
@@ -1407,6 +1478,7 @@ function CustomUI.SCT.EventTracker:InitializeAnimationData(displayType)
         animData.start.y = (animData.start.y or 0) + yOffset
         animData.target.y = (animData.target.y or 0) + yOffset
         animData.current.y = (animData.current.y or 0) + yOffset
+        applyIncomingFanCombatOffsets()
     end
     return animData
 end
@@ -1441,6 +1513,9 @@ function CustomUI.SCT.EventTracker:Update(elapsedTime)
                 local animData     = self:InitializeAnimationData(eventType)
                 local pendingCount = self.m_PendingEvents:End() - self.m_PendingEvents:Begin() + 1
                 animData.target.y  = animData.target.y - (pendingCount * 36)
+                if CustomUI.SCT.GetCombatSplitLanes() then
+                    animData.target.x = animData.target.x + (math.pow(-1, pendingCount) * pendingCount * 18)
+                end
 
                 local frame = CustomUI.SCT.EventEntry:Create(newName, self.m_Anchor, animData)
                 if frame then
@@ -1494,6 +1569,9 @@ function CustomUI.SCT.EventTracker:Update(elapsedTime)
 end
 
 function CustomUI.SCT.EventTracker:Destroy()
+    -- Drop throttled backlog for this world-object (no AddEvent after teardown).
+    self._sctThrottleQueue = {}
+    self._sctThrottleCredit = 1
     -- Drain pending (no windows yet).
     while self.m_PendingEvents:Front() ~= nil do
         self.m_PendingEvents:PopFront()
@@ -1511,6 +1589,9 @@ function CustomUI.SCT.EventTracker:Destroy()
 end
 
 function CustomUI.SCT.DestroyAllTrackers()
+    if type(CustomUI.SCT.ClearThrottleQueue) == "function" then
+        CustomUI.SCT.ClearThrottleQueue()
+    end
     for id, tracker in pairs(CustomUI.SCT.EventTrackers or {}) do
         tracker:Destroy()
         CustomUI.SCT.EventTrackers[id] = nil

@@ -178,3 +178,16 @@ function CustomUI.TargetFrame:Create( windowName, unitId,
 
     return newFrame
 end
+
+-- TargetWindow level display should always show true career rank.
+function CustomUI.TargetFrame:UpdateLevel(level, battleLevel, conColor)
+    local windowName = self:GetName()
+    local levelColor = self.m_IsFriendly and DefaultColor.WHITE or DefaultColor.BLACK
+
+    LabelSetText(windowName .. "LevelText", L"" .. level)
+    LabelSetTextColor(windowName .. "LevelText", levelColor.r, levelColor.g, levelColor.b)
+    WindowSetTintColor(windowName .. "LevelBackgroundTint", conColor.r, conColor.g, conColor.b)
+    WindowSetShowing(windowName .. "LevelBackgroundTint", not self.m_IsFriendly)
+    WindowSetShowing(windowName .. "LevelText", self.m_IsAStaticObject == false)
+    WindowSetShowing(windowName .. "LevelBackground", self.m_IsAStaticObject == false)
+end

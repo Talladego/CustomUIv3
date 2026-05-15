@@ -2,16 +2,16 @@
 -- CustomUI.UnitFrames — Controller
 --
 -- View: UnitFrames.xml (CustomUIBGMember row template, HP/AP art, borders). No View/*.lua.
--- Load order: CustomUI.mod loads UnitFramesModel → Events → Renderer → Adapters (stubs) → this file → XML.
+-- Load order: CustomUI.mod loads UnitFramesEvents → this file → XML.
 --
 -- Runtime behavior:
---   • Layout: showActionPointsBar (default false); colorMemberNamesByArchetype; sortPartyMembersByRole (default false — reorder party/warband rows only; scenario unchanged).
+--   • Layout: showActionPointsBar (default false); useTargetHudHpBarTexture (EA_StatusBar_DefaultTintable strip like TargetHUD — tint archetype); colorCareerIconRingByArchetype (career rings — archetype vs grey); sortPartyMembersByRole (default false — reorder party/warband/scenario rows; scenario keeps rosterSlot for hits/HP merge).
 --   • Display modes (CustomUI.Settings.UnitFrames groupsParty / groupsWarband / groupsScenario): scenario roster,
 --     open-world warband (4×6), warband-own-party-only (player's battlegroup party via IsPlayerInWarband, no GetPartyData), plain party (Enemy slot order),
 --     or idle — hides custom frames and restores stock
 --     BattlegroupHUD / FloatingScenarioGroup windows when mode is "none".
 --   • Window lists: CustomUI.UnitFramesEvents (stock vs CustomUI group names for LayoutEditor UserShow/UserHide).
---   • CustomUIUnitFramesRoot: hosts OnUpdate (visibility poll, scenario map distance scan, target/mouseover borders)
+--   • CustomUIUnitFramesRoot: hosts OnUpdate (scenario map distance scan; global hover → mouseover border; no periodic visibility poll)
 --     and engine events; WindowSetShowing(true) while component enabled so ticks run (see EnsureRootWindowInstances).
 --   • Hooks BattlegroupHUD background opacity menu/slide to keep CustomUI member tint in sync with stock control.
 --   • Target ring (friendly selffriendlytarget), mouseover ring via SystemData.MouseOverWindow + parent walk + WStringToString.
@@ -19,7 +19,6 @@
 --     not Enemy/Code/UnitFrames/*.lua (those frames mostly pull ScenarioSummaryWindow for unrelated UI paths).
 --     RoR-only extras: IsScenarioModeActive also respects isInScenarioGroup + live GetScenarioPlayerGroups rows when flags lag;
 --     ScenarioCareerLineFromScenarioPlayer adds Icons careerNames fallback after Enemy.ScenarioCareerIdToLine-equivalent map.
---   • Model / Renderer / Adapters: loaded stubs — factories no-op today; logic stays in this controller until wired.
 ----------------------------------------------------------------
 
 if not CustomUI then
@@ -37,15 +36,84 @@ local c_ROOT_WINDOW_NAME = "CustomUIUnitFramesRoot"
 local c_MAX_GROUP_WINDOWS = 6
 local c_WARBAND_GROUPS = 4
 local c_GROUP_MEMBERS = 6
-local c_VISIBILITY_POLL_INTERVAL = 0.25
+-- Career icon + ring: same UV and proportions as GroupIcons (ring display 48 / icon 38×38 slice → 48px window, icon draw 34).
+-- Uniform scale for row layout — must keep ring_win/tex_dim ~= 48/38 like GroupIcons (never shrink slice below ~48× scale or the band looks thin).
+local c_UF_CAREER_RING_TEXTURE = "EA_HUD_01"
+local c_UF_CAREER_RING_TEX_X = 295
+local c_UF_CAREER_RING_TEX_Y = 475
+local c_UF_CAREER_RING_TEX_DIM = 38
+local c_UF_CAREER_GROUPICON_SCALE = 42 / 48
+local c_UF_CAREER_RING_OUTER = math.floor(48 * c_UF_CAREER_GROUPICON_SCALE + 0.5) -- GroupIcons scales crown tuck by (48 / this); keep in sync with GroupIconsController.c_UF_RING_OUTER_REF
+local c_UF_CAREER_ICON_ATLAS = 32
+local c_UF_CAREER_ICON_DRAW = math.floor(34 * c_UF_CAREER_GROUPICON_SCALE + 0.5)
+-- Warband leader crown: same EA_HUD_01 UV as GroupIconsController WarbandCrown; sizes scale with UnitFrames icon vs GroupIcons roster icon (c_ICON_DRAW 34).
+local c_GI_ROSTER_ICON_DRAW_REF = 34
+local c_UF_LEADER_CROWN_TEXTURE = "EA_HUD_01"
+local c_UF_LEADER_CROWN_TEX_X = 162
+local c_UF_LEADER_CROWN_TEX_Y = 138
+local c_UF_LEADER_CROWN_TEX_W = 25
+local c_UF_LEADER_CROWN_TEX_H = 16
+-- Match GroupIconsController c_CROWN_ANCHOR_OPTICAL_OFFSET_X (same atlas crown glyph bias).
+local c_UF_LEADER_CROWN_ANCHOR_OPTICAL_OFFSET_X = -2
+local c_UF_LEADER_CROWN_ANCHOR_TOUCH_OFFSET_Y = 5 -- sync GroupIconsController c_CROWN_ANCHOR_TOUCH_OFFSET_Y
 local c_SCENARIO_DISTANCE_POLL_INTERVAL = 1.0
 local c_DISTANT_DISTANCE = 250
 local c_OPACITY_MIN = 0
 local c_OPACITY_MAX = 1
 local c_OPACITY_FULL_SNAP_THRESHOLD = 0.995
 local c_DEFAULT_BACKGROUND_ALPHA = 0.25
-local c_HEALTH_PCT_LABEL_RGB = { r = 255, g = 255, b = 255 }
-local c_MEMBER_NAME_DEFAULT_RGB = { r = 255, g = 255, b = 255 }
+-- Target HUD–style HP: CastBar background tint (missing HP); foreground uses archetype RGB.
+local c_UF_TARGETHUD_HP_MISSING_R, c_UF_TARGETHUD_HP_MISSING_G, c_UF_TARGETHUD_HP_MISSING_B = 200, 55, 55
+
+-- Career ring archetype palette (UnitFrames-only setting; matches GroupIcons roster colors when enabled).
+local c_UF_RING_GREY_R, c_UF_RING_GREY_G, c_UF_RING_GREY_B = 160, 160, 160
+local c_UF_RING_ARCHETYPE_TANK = 1
+local c_UF_RING_ARCHETYPE_DPS = 2
+local c_UF_RING_ARCHETYPE_HEAL = 3
+local c_UF_RING_ARCHETYPE_RGB = {
+    [c_UF_RING_ARCHETYPE_TANK] = { 140, 178, 255 }, -- keep in sync with GroupIcons c_ARCHETYPE_RGB
+    [c_UF_RING_ARCHETYPE_DPS] = { 255, 176, 82 },
+    [c_UF_RING_ARCHETYPE_HEAL] = { 175, 255, 90 },
+}
+-- RoRGroupScoreboard / ScenarioSummary archetype index mapping (ArchTypeIcons = {165,106,157,160}).
+-- Collapse 4-way stock archetypes into UnitFrames 3-way palette by mapping both DPS variants to DPS.
+local c_UF_SCOREBOARD_ARCHETYPE_TO_RING = {
+    [1] = c_UF_RING_ARCHETYPE_TANK,
+    [2] = c_UF_RING_ARCHETYPE_DPS,
+    [3] = c_UF_RING_ARCHETYPE_DPS,
+    [4] = c_UF_RING_ARCHETYPE_HEAL,
+}
+local c_UF_RING_CAREER_ARCHETYPE = {
+    [GameData.CareerLine.IRON_BREAKER] = c_UF_RING_ARCHETYPE_TANK,
+    [GameData.CareerLine.SWORDMASTER] = c_UF_RING_ARCHETYPE_TANK,
+    [GameData.CareerLine.CHOSEN] = c_UF_RING_ARCHETYPE_TANK,
+    [GameData.CareerLine.BLACK_ORC] = c_UF_RING_ARCHETYPE_TANK,
+    [GameData.CareerLine.KNIGHT] = c_UF_RING_ARCHETYPE_TANK,
+    [GameData.CareerLine.BLACKGUARD] = c_UF_RING_ARCHETYPE_TANK,
+    [GameData.CareerLine.WITCH_HUNTER] = c_UF_RING_ARCHETYPE_DPS,
+    [GameData.CareerLine.WHITE_LION] = c_UF_RING_ARCHETYPE_DPS,
+    [GameData.CareerLine.MARAUDER] = c_UF_RING_ARCHETYPE_DPS,
+    [GameData.CareerLine.WITCH_ELF] = c_UF_RING_ARCHETYPE_DPS,
+    [GameData.CareerLine.BRIGHT_WIZARD] = c_UF_RING_ARCHETYPE_DPS,
+    [GameData.CareerLine.MAGUS] = c_UF_RING_ARCHETYPE_DPS,
+    [GameData.CareerLine.SORCERER] = c_UF_RING_ARCHETYPE_DPS,
+    [GameData.CareerLine.ENGINEER] = c_UF_RING_ARCHETYPE_DPS,
+    [GameData.CareerLine.SHADOW_WARRIOR] = c_UF_RING_ARCHETYPE_DPS,
+    [GameData.CareerLine.SQUIG_HERDER] = c_UF_RING_ARCHETYPE_DPS,
+    [GameData.CareerLine.CHOPPA] = c_UF_RING_ARCHETYPE_DPS,
+    [GameData.CareerLine.WARRIOR_PRIEST] = c_UF_RING_ARCHETYPE_HEAL,
+    [GameData.CareerLine.DISCIPLE] = c_UF_RING_ARCHETYPE_HEAL,
+    [GameData.CareerLine.ARCHMAGE] = c_UF_RING_ARCHETYPE_HEAL,
+    [GameData.CareerLine.SHAMAN] = c_UF_RING_ARCHETYPE_HEAL,
+    [GameData.CareerLine.RUNE_PRIEST] = c_UF_RING_ARCHETYPE_HEAL,
+    [GameData.CareerLine.ZEALOT] = c_UF_RING_ARCHETYPE_HEAL,
+}
+if GameData.CareerLine.SLAYER then
+    c_UF_RING_CAREER_ARCHETYPE[GameData.CareerLine.SLAYER] = c_UF_RING_ARCHETYPE_DPS
+end
+if GameData.CareerLine.HAMMERER then
+    c_UF_RING_CAREER_ARCHETYPE[GameData.CareerLine.HAMMERER] = c_UF_RING_ARCHETYPE_DPS
+end
 
 local IsScenarioModeActive
 
@@ -70,21 +138,157 @@ local function EnsureUnitFramesGroupsSettings()
     if s.showActionPointsBar == nil then
         s.showActionPointsBar = false
     end
-    if s.colorMemberNamesByArchetype == nil then
-        s.colorMemberNamesByArchetype = false
+    if s.colorCareerIconRingByArchetype == nil then
+        s.colorCareerIconRingByArchetype = (s.colorMemberNamesByArchetype == true)
     end
+    s.colorMemberNamesByArchetype = nil
     if s.sortPartyMembersByRole == nil then
         s.sortPartyMembersByRole = false
     end
+    if s.useTargetHudHpBarTexture == nil then
+        s.useTargetHudHpBarTexture = false
+    end
     return s
+end
+
+local function ShouldUseTargetHudHpBarTexture()
+    return EnsureUnitFramesGroupsSettings().useTargetHudHpBarTexture == true
+end
+
+--- Archetype RGB for HP bar when Target HUD tintable style is on (same palette as career ring / GroupIcons).
+local function UnitFramesHpBarArchetypeRgbForCareerLine(careerLine)
+    local arch = careerLine and c_UF_RING_CAREER_ARCHETYPE[careerLine]
+    local rgb = arch and c_UF_RING_ARCHETYPE_RGB[arch]
+    if rgb then
+        return rgb[1], rgb[2], rgb[3]
+    end
+    return c_UF_RING_GREY_R, c_UF_RING_GREY_G, c_UF_RING_GREY_B
 end
 
 local function ShouldSortPartyMembersByRole()
     return EnsureUnitFramesGroupsSettings().sortPartyMembersByRole == true
 end
 
-local function ShouldColorUnitFramesMemberNamesByArchetype()
-    return EnsureUnitFramesGroupsSettings().colorMemberNamesByArchetype == true
+local function ShouldColorUnitFramesCareerRingByArchetype()
+    return EnsureUnitFramesGroupsSettings().colorCareerIconRingByArchetype == true
+end
+
+local function UnitFramesCareerRingRgbForCareerLine(careerLine)
+    if not ShouldColorUnitFramesCareerRingByArchetype() then
+        return c_UF_RING_GREY_R, c_UF_RING_GREY_G, c_UF_RING_GREY_B
+    end
+    local arch = careerLine and c_UF_RING_CAREER_ARCHETYPE[careerLine]
+    local rgb = arch and c_UF_RING_ARCHETYPE_RGB[arch]
+    if rgb then
+        return rgb[1], rgb[2], rgb[3]
+    end
+    return c_UF_RING_GREY_R, c_UF_RING_GREY_G, c_UF_RING_GREY_B
+end
+
+local function NormalizeArchtypeLookupName(name)
+    local s = name
+    if s == nil then
+        return nil
+    end
+    if type(s) == "wstring" and type(WStringToString) == "function" then
+        s = WStringToString(s)
+    end
+    if type(s) ~= "string" then
+        s = tostring(s)
+    end
+    if s == nil or s == "" then
+        return nil
+    end
+
+    -- Scenario names can carry a trailing " ^" marker; trim only that explicit suffix.
+    if #s >= 2 and string.sub(s, -2) == " ^" then
+        s = string.sub(s, 1, -3)
+    end
+
+    -- Strip realm/name grammar segment suffix from first '^' onward.
+    local caret = string.find(s, "^", 1, true)
+    if caret then
+        s = string.sub(s, 1, caret - 1)
+    end
+
+    s = s:gsub("^%s+", ""):gsub("%s+$", "")
+    if s == "" then
+        return nil
+    end
+    return string.lower(s)
+end
+
+local function UnitFramesCareerRingRgbForPlayer(playerName, careerLine)
+    if not playerName then
+        return UnitFramesCareerRingRgbForCareerLine(careerLine)
+    end
+    
+    local playerNameStr = NormalizeArchtypeLookupName(playerName)
+    if not playerNameStr or playerNameStr == "" then
+        return UnitFramesCareerRingRgbForCareerLine(careerLine)
+    end
+    
+    -- First, check if player has alt-spec archtype from GRP_STATS packet (warband/party mode)
+    if RoRGroupScoreboard and RoRGroupScoreboard.playersDataRaw then
+        for charId, pdata in pairs(RoRGroupScoreboard.playersDataRaw) do
+            if pdata and pdata.name then
+                local scoreboardNameStr = NormalizeArchtypeLookupName(pdata.name)
+                if scoreboardNameStr and scoreboardNameStr ~= "" then
+                    if playerNameStr == scoreboardNameStr or string.sub(playerNameStr, 2) == string.sub(scoreboardNameStr, 2) then
+                        if pdata.archtype and pdata.archtype > 0 then
+                            local effectiveArch = c_UF_SCOREBOARD_ARCHETYPE_TO_RING[tonumber(pdata.archtype)]
+                            if effectiveArch == nil then
+                                effectiveArch = careerLine and c_UF_RING_CAREER_ARCHETYPE[careerLine]
+                                if effectiveArch == c_UF_RING_ARCHETYPE_HEAL then
+                                    effectiveArch = c_UF_RING_ARCHETYPE_DPS
+                                end
+                            end
+                            local rgb = effectiveArch and c_UF_RING_ARCHETYPE_RGB[effectiveArch]
+                            if rgb then
+                                return rgb[1], rgb[2], rgb[3]
+                            end
+                        end
+                        return UnitFramesCareerRingRgbForCareerLine(careerLine)
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Second, check scenario roster via GameData.GetScenarioPlayers() (scenario mode)
+    if type(GameData.GetScenarioPlayers) == "function" then
+        local scenarioPlayers = GameData.GetScenarioPlayers()
+        if scenarioPlayers and type(scenarioPlayers) == "table" then
+            for _, player in ipairs(scenarioPlayers) do
+                if player and player.name then
+                    local scenarioNameStr = NormalizeArchtypeLookupName(player.name)
+                    if scenarioNameStr and scenarioNameStr ~= "" then
+                        if playerNameStr == scenarioNameStr or string.sub(playerNameStr, 2) == string.sub(scenarioNameStr, 2) then
+                            -- In scenarios, archtype is encoded in the last character of experiencebonus field
+                            local archtypeIndex = tonumber(string.sub(player.experiencebonus, -1))
+                            if archtypeIndex and archtypeIndex > 0 then
+                                local effectiveArch = c_UF_SCOREBOARD_ARCHETYPE_TO_RING[archtypeIndex]
+                                if effectiveArch == nil then
+                                    effectiveArch = careerLine and c_UF_RING_CAREER_ARCHETYPE[careerLine]
+                                    if effectiveArch == c_UF_RING_ARCHETYPE_HEAL then
+                                        effectiveArch = c_UF_RING_ARCHETYPE_DPS
+                                    end
+                                end
+                                local rgb = effectiveArch and c_UF_RING_ARCHETYPE_RGB[effectiveArch]
+                                if rgb then
+                                    return rgb[1], rgb[2], rgb[3]
+                                end
+                            end
+                            return UnitFramesCareerRingRgbForCareerLine(careerLine)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Fall back to career-based color or grey
+    return UnitFramesCareerRingRgbForCareerLine(careerLine)
 end
 
 local function ShouldShowUnitFramesActionPointsBar()
@@ -169,11 +373,11 @@ end
 
 local m_enabled = false
 local m_windowsInitialized = false
-local m_visibilityPollElapsed = 0
 local SafeLayoutUserShow
 local SafeLayoutUserHide
 local m_stockOnMenuClickSetBackgroundOpacity = nil
 local m_stockOnOpacitySlide = nil
+local m_stockRoRGroupScoreboardPacket = nil
 local m_eventsRegistered = false
 local m_debugLastMode = nil
 local m_debugLastInitSig = nil
@@ -185,12 +389,17 @@ local m_warbandPartyOnlyDataPartyIndex = nil
 --- sortPartyMembersByRole: display slot -> member for hit-test/target parity (display slot != PartyUtils slot when sorted).
 local m_partySortedDisplayMembers = nil
 local m_warbandSortedDisplayMembers = {}
+--- Scenario sort: [groupIndex][displaySlot] = { player, rosterSlot } (rosterSlot = server sgroupslotnum for hits / merged HP).
+local m_scenarioDisplayPlan = {}
 
 -- Scenario distance snapshot from map points (Enemy-style).
 -- { [nameKey] = { distance = number, isDistant = boolean } }
 local m_scenarioDistanceByKey = {}
 
 local function DebugLog(msg)
+    if CustomUI.DebugLogging ~= true then
+        return
+    end
     if type(d) == "function" then
         -- Must not depend on local ToWString (defined later in file).
         d(towstring("[CustomUI.UnitFrames] " .. tostring(msg)))
@@ -284,6 +493,7 @@ local c_FRIENDLY_TARGET = "selffriendlytarget"
 local m_currentTargetId = 0
 local m_currentTargetName = nil
 local m_mouseOverMemberWindow = nil
+local m_lastHoverWindowName   = nil  -- cached raw MouseOverWindow name; skip chain walk when unchanged
 
 local function ToWString(v)
     if v == nil then
@@ -512,13 +722,22 @@ local function SnapScenarioHpPercentNearZero(hpPct)
     return x
 end
 
---- snapNearZero: roster/hits-only (stock uses integer hit%); omit for local player cur/max float.
-local function RoundScenarioHpForDisplay(hpPct, snapNearZero)
+--- Integer HP % for labels + bar fill in party, warband, and scenario (uniform rounding).
+--- snapNearZero: teammates / roster rows — mirrors scenario hits noise handling; false for local player row (cur/max-derived %).
+local function RoundHpPercentForDisplay(hpPct, snapNearZero)
     local x = ClampPercent(tonumber(hpPct) or 0)
     if snapNearZero then
         x = SnapScenarioHpPercentNearZero(x)
     end
     return math.floor(x + 0.5)
+end
+
+local function RoundApPercentForDisplay(apPct)
+    return math.floor(ClampPercent(tonumber(apPct) or 0) + 0.5)
+end
+
+local function RoundScenarioHpForDisplay(hpPct, snapNearZero)
+    return RoundHpPercentForDisplay(hpPct, snapNearZero)
 end
 
 --- Minimal warband-shaped row for targeting / borders (scenario roster lacks PartyUtils fields).
@@ -539,6 +758,37 @@ local function ScenarioPlayerAsTargetMember(player, groupIndex, memberIndex)
     }
 end
 
+--- Resolve roster player + server slot for a scenario UI row (displaySlot = Member suffix). rosterSlot keys m_scenarioHitHp / merged HP.
+--- groups: optional result of BuildScenarioGroupMap() when sort is off (avoids rebuilding every slot).
+local function TryGetScenarioDisplayRow(groupIndex, displaySlot, groups)
+    if groupIndex == nil or displaySlot == nil then
+        return nil, nil
+    end
+    if ShouldSortPartyMembersByRole() then
+        local plan = m_scenarioDisplayPlan[groupIndex]
+        if plan ~= nil then
+            local e = plan[displaySlot]
+            if e ~= nil then
+                return e.player, e.rosterSlot
+            end
+            return nil, nil
+        end
+    end
+    local gmap = groups
+    if gmap == nil and type(BuildScenarioGroupMap) == "function" then
+        gmap = BuildScenarioGroupMap()
+    end
+    if gmap == nil then
+        return nil, nil
+    end
+    local raw = gmap[groupIndex] and gmap[groupIndex][displaySlot]
+    local player = ResolveScenarioPlayer(raw)
+    if MemberHasDisplayName(player) then
+        return player, displaySlot
+    end
+    return nil, nil
+end
+
 local function RefreshTargetBorders()
     if not m_enabled then
         return
@@ -547,12 +797,12 @@ local function RefreshTargetBorders()
     if mode == "scenario" then
         local groups = BuildScenarioGroupMap()
         for groupIndex = 1, c_MAX_GROUP_WINDOWS do
-            for memberIndex = 1, c_GROUP_MEMBERS do
-                local memberWindow = MemberWindowName(groupIndex, memberIndex)
+            for displaySlot = 1, c_GROUP_MEMBERS do
+                local memberWindow = MemberWindowName(groupIndex, displaySlot)
                 local border = memberWindow .. "TargetBorder"
                 if DoesWindowExist(border) then
-                    local player = groups[groupIndex] and groups[groupIndex][memberIndex]
-                    local pseudo = ScenarioPlayerAsTargetMember(player, groupIndex, memberIndex)
+                    local player, rosterSlot = TryGetScenarioDisplayRow(groupIndex, displaySlot, groups)
+                    local pseudo = ScenarioPlayerAsTargetMember(player, groupIndex, rosterSlot or displaySlot)
                     WindowSetShowing(border, IsMemberCurrentFriendlyTarget(pseudo))
                 end
             end
@@ -965,7 +1215,63 @@ local function IsScenarioGroupVisibleByStockToggle(groupIndex)
     return true
 end
 
+--- README §Notes anchor order: ring.top (target) ↔ crown.bottom (anchored child).
+local function LayoutUnitFramesLeaderCrownOnCareerRing(groupLeaderIconWin, memberWindow)
+    if groupLeaderIconWin == nil or memberWindow == nil then
+        return
+    end
+    local ringWin = memberWindow .. "CareerIconRing"
+    if not DoesWindowExist(groupLeaderIconWin) or not DoesWindowExist(ringWin) then
+        return
+    end
+    local scale = c_UF_CAREER_ICON_DRAW / c_GI_ROSTER_ICON_DRAW_REF
+    local crownW = math.floor(c_UF_LEADER_CROWN_TEX_W * scale + 0.5)
+    local crownH = math.floor(c_UF_LEADER_CROWN_TEX_H * scale + 0.5)
+    local touchY = math.max(1, math.floor(c_UF_LEADER_CROWN_ANCHOR_TOUCH_OFFSET_Y * crownH / c_UF_LEADER_CROWN_TEX_H + 0.5))
+
+    WindowClearAnchors(groupLeaderIconWin)
+    WindowSetDimensions(groupLeaderIconWin, crownW, crownH)
+    WindowAddAnchor(groupLeaderIconWin, "top", ringWin, "bottom", c_UF_LEADER_CROWN_ANCHOR_OPTICAL_OFFSET_X, touchY)
+    DynamicImageSetTexture(groupLeaderIconWin, c_UF_LEADER_CROWN_TEXTURE, c_UF_LEADER_CROWN_TEX_X, c_UF_LEADER_CROWN_TEX_Y)
+    DynamicImageSetTextureDimensions(groupLeaderIconWin, crownW, crownH)
+end
+
+local function ApplyUnitFramesCareerIconRingTint(memberWindow, careerLine, playerName)
+    local ringWin = memberWindow .. "CareerIconRing"
+    if not DoesWindowExist(ringWin) then
+        return
+    end
+    if careerLine == nil then
+        WindowSetShowing(ringWin, false)
+        return
+    end
+    DynamicImageSetTexture(ringWin, c_UF_CAREER_RING_TEXTURE, c_UF_CAREER_RING_TEX_X, c_UF_CAREER_RING_TEX_Y)
+    DynamicImageSetTextureDimensions(ringWin, c_UF_CAREER_RING_TEX_DIM, c_UF_CAREER_RING_TEX_DIM)
+    WindowSetDimensions(ringWin, c_UF_CAREER_RING_OUTER, c_UF_CAREER_RING_OUTER)
+    local r, g, b
+    if playerName then
+        r, g, b = UnitFramesCareerRingRgbForPlayer(playerName, careerLine)
+    else
+        r, g, b = UnitFramesCareerRingRgbForCareerLine(careerLine)
+    end
+    WindowSetTintColor(ringWin, r, g, b)
+    WindowSetShowing(ringWin, true)
+end
+
+local function ApplyUnitFramesCareerIconTexture(memberWindow, iconTexture, iconX, iconY, careerLineForRing, playerName)
+    local iconWin = memberWindow .. "CareerIcon"
+    if not DoesWindowExist(iconWin) or iconTexture == nil then
+        ApplyUnitFramesCareerIconRingTint(memberWindow, careerLineForRing, playerName)
+        return
+    end
+    DynamicImageSetTexture(iconWin, iconTexture, iconX, iconY)
+    DynamicImageSetTextureDimensions(iconWin, c_UF_CAREER_ICON_ATLAS, c_UF_CAREER_ICON_ATLAS)
+    WindowSetDimensions(iconWin, c_UF_CAREER_ICON_DRAW, c_UF_CAREER_ICON_DRAW)
+    ApplyUnitFramesCareerIconRingTint(memberWindow, careerLineForRing, playerName)
+end
+
 local function SetCareerIcon(memberWindow, member)
+    ApplyUnitFramesCareerIconRingTint(memberWindow, nil)
     if member == nil or member.careerLine == nil then
         return
     end
@@ -976,12 +1282,24 @@ local function SetCareerIcon(memberWindow, member)
     end
 
     local iconTexture, iconX, iconY = GetIconData(iconId)
-    if iconTexture ~= nil then
-        DynamicImageSetTexture(memberWindow .. "CareerIcon", iconTexture, iconX, iconY)
+    ApplyUnitFramesCareerIconTexture(memberWindow, iconTexture, iconX, iconY, member.careerLine, member.name)
+end
+
+local function SetMemberHpBarValues(memberWindow, maxVal, curVal)
+    if maxVal == nil or curVal == nil then
+        return
+    end
+    for _, suffix in ipairs({ "HPBar", "HPBarTargetHud" }) do
+        local w = memberWindow .. suffix
+        if DoesWindowExist(w) then
+            StatusBarSetMaximumValue(w, maxVal)
+            StatusBarSetCurrentValue(w, curVal)
+        end
     end
 end
 
 local function SetScenarioCareerIcon(memberWindow, player)
+    ApplyUnitFramesCareerIconRingTint(memberWindow, nil)
     if player == nil then
         return
     end
@@ -994,28 +1312,29 @@ local function SetScenarioCareerIcon(memberWindow, player)
     if iconId == nil and player.careerId ~= nil then
         iconId = Icons.GetCareerIconIDFromCareerNamesID(player.careerId)
     end
+    local ringLine = careerLine or tonumber(player.careerLine)
     if iconId == nil then
+        ApplyUnitFramesCareerIconRingTint(memberWindow, ringLine, player.name)
         return
     end
 
     local iconTexture, iconX, iconY = GetIconData(iconId)
-    if iconTexture ~= nil then
-        DynamicImageSetTexture(memberWindow .. "CareerIcon", iconTexture, iconX, iconY)
-    end
+    ApplyUnitFramesCareerIconTexture(memberWindow, iconTexture, iconX, iconY, ringLine, player.name)
 end
 
 local function SetMemberBars(memberWindow, member)
-    local hp = tonumber(member.healthPercent) or 0
-    local ap = tonumber(member.actionPointPercent) or 0
+    local isSelfRow = GameData and GameData.Player and member and member.name
+        and NamesMatch(member.name, GameData.Player.name)
+    local hp = RoundHpPercentForDisplay(member.healthPercent, not isSelfRow)
+    local ap = RoundApPercentForDisplay(member.actionPointPercent)
 
     if hp < 0 then hp = 0 end
     if hp > 100 then hp = 100 end
     if ap < 0 then ap = 0 end
     if ap > 100 then ap = 100 end
 
-    StatusBarSetMaximumValue(memberWindow .. "HPBar", 100)
+    SetMemberHpBarValues(memberWindow, 100, hp)
     StatusBarSetMaximumValue(memberWindow .. "APBar", 100)
-    StatusBarSetCurrentValue(memberWindow .. "HPBar", hp)
     StatusBarSetCurrentValue(memberWindow .. "APBar", ap)
     ApplyUnitFramesApBarWindowShowing(memberWindow)
 end
@@ -1031,8 +1350,7 @@ local function SetScenarioMemberBars(memberWindow, player, groupIndex, memberInd
         local apMax = tonumber(p.actionPoints and p.actionPoints.maximum) or 1
         if hpMax < 1 then hpMax = 1 end
         if apMax < 1 then apMax = 1 end
-        StatusBarSetMaximumValue(memberWindow .. "HPBar", hpMax)
-        StatusBarSetCurrentValue(memberWindow .. "HPBar", hpCur)
+        SetMemberHpBarValues(memberWindow, hpMax, hpCur)
         StatusBarSetMaximumValue(memberWindow .. "APBar", apMax)
         StatusBarSetCurrentValue(memberWindow .. "APBar", apCur)
         ApplyUnitFramesApBarWindowShowing(memberWindow)
@@ -1043,17 +1361,17 @@ local function SetScenarioMemberBars(memberWindow, player, groupIndex, memberInd
     if groupIndex ~= nil and memberIndex ~= nil then
         hp = GetMergedScenarioHealthPercent(groupIndex, memberIndex, player)
     end
-    hp = SnapScenarioHpPercentNearZero(hp)
-    local ap = tonumber(player.ap) or 0
+    -- Self uses absolute HP bar above; this path is roster/teammates only — same snap+integer rounding as scenario labels.
+    hp = RoundHpPercentForDisplay(hp, true)
+    local ap = RoundApPercentForDisplay(player.ap)
 
     if hp < 0 then hp = 0 end
     if hp > 100 then hp = 100 end
     if ap < 0 then ap = 0 end
     if ap > 100 then ap = 100 end
 
-    StatusBarSetMaximumValue(memberWindow .. "HPBar", 100)
+    SetMemberHpBarValues(memberWindow, 100, hp)
     StatusBarSetMaximumValue(memberWindow .. "APBar", 100)
-    StatusBarSetCurrentValue(memberWindow .. "HPBar", hp)
     -- Match ScenarioGroupWindow.UpdateSingleMemberHitPoints: AP reads 0 while dead.
     if hp <= 0 then
         StatusBarSetCurrentValue(memberWindow .. "APBar", 0)
@@ -1061,10 +1379,6 @@ local function SetScenarioMemberBars(memberWindow, player, groupIndex, memberInd
         StatusBarSetCurrentValue(memberWindow .. "APBar", ap)
     end
     ApplyUnitFramesApBarWindowShowing(memberWindow)
-end
-
-local function RoundApPercentForDisplay(apPct)
-    return math.floor(ClampPercent(tonumber(apPct) or 0) + 0.5)
 end
 
 --- Match ScenarioGroupWindow.UpdateSingleMemberHitPoints: alive iff hp==100 or (0 < hp < 100). Uses integer percent only.
@@ -1115,6 +1429,8 @@ local function TryBuildSelfScenarioRow()
         careerLine = p.career and p.career.line,
         careerId = nil,
         isMainAssist = false,
+        -- Career rank for LabelCareerRank (live player)
+        level = tonumber(p.level) or tonumber(p.rank) or 0,
     }
 end
 
@@ -1193,17 +1509,37 @@ end
 
 --- showBars is legacy (reserved). hideHpBarForDistant: hide only the HP StatusBar (green fill + red missing-HP track).
 --- Row backdrop stays the same EA_FullResizeImage tint as stock BGMember; do not hide it (stock keeps it when distant).
---- healthLabelRgb: when non-nil, LabelHealth uses this (numeric "%" display stays white); offline/dead/distant keep nil.
-local function ApplyStatusSettings(memberWindow, color, alpha, showBars, hideHpBarForDistant, healthLabelRgb)
-    local hr, hg, hb = color.r, color.g, color.b
-    if healthLabelRgb ~= nil then
-        hr = healthLabelRgb.r
-        hg = healthLabelRgb.g
-        hb = healthLabelRgb.b
-    end
-    LabelSetTextColor(memberWindow .. "LabelHealth", hr, hg, hb)
+--- LabelHealth: always white (same font as LabelCareerRank in XML); alpha still reflects offline/dead/distant dimming.
+--- careerLineForHpTint: used when useTargetHudHpBarTexture — foreground archetype tint; background red (missing HP).
+local function ApplyStatusSettings(memberWindow, alpha, showBars, dimFrames, careerLineForHpTint)
+    LabelSetTextColor(memberWindow .. "LabelHealth", 255, 255, 255)
     WindowSetFontAlpha(memberWindow .. "LabelHealth", alpha)
-    WindowSetShowing(memberWindow .. "HPBar", hideHpBarForDistant ~= true)
+    local useTh = ShouldUseTargetHudHpBarTexture()
+    local hpClassic = memberWindow .. "HPBar"
+    local hpTh = memberWindow .. "HPBarTargetHud"
+    local dimOverlay = memberWindow .. "DimOverlay"
+
+    if DoesWindowExist(dimOverlay) then
+        local showDim = dimFrames == true
+        WindowSetShowing(dimOverlay, showDim)
+        if showDim then
+            WindowSetAlpha(dimOverlay, 0.5)
+        end
+    end
+
+    if DoesWindowExist(hpClassic) then
+        WindowSetShowing(hpClassic, showBars and not useTh)
+        WindowSetAlpha(hpClassic, 1.0)
+    end
+    if DoesWindowExist(hpTh) then
+        WindowSetShowing(hpTh, showBars and useTh)
+        WindowSetAlpha(hpTh, 1.0)
+        if useTh and showBars then
+            local fr, fg, fb = UnitFramesHpBarArchetypeRgbForCareerLine(careerLineForHpTint)
+            StatusBarSetForegroundTint(hpTh, fr, fg, fb)
+            StatusBarSetBackgroundTint(hpTh, c_UF_TARGETHUD_HP_MISSING_R, c_UF_TARGETHUD_HP_MISSING_G, c_UF_TARGETHUD_HP_MISSING_B)
+        end
+    end
     WindowSetShowing(memberWindow .. "Background", true)
     local bgWin = memberWindow .. "Background"
     if DoesWindowExist(bgWin) then
@@ -1213,31 +1549,42 @@ local function ApplyStatusSettings(memberWindow, color, alpha, showBars, hideHpB
         end
         WindowSetAlpha(bgWin, ClampAlpha(a))
     end
+    local apBar = memberWindow .. "APBar"
+    if DoesWindowExist(apBar) then
+        WindowSetAlpha(apBar, 1.0)
+    end
     ApplyUnitFramesApBarWindowShowing(memberWindow)
 end
 
---- Default white names; optional archetype tint via CustomUI.Settings.UnitFrames.colorMemberNamesByArchetype + GroupIcons RGB helper. RvR stays yellow.
-local function ApplyMemberLabelNameColor(memberWindow, careerLine, isRvrFlagged)
+--- BattlegroupHUD.SingleMemberUpdate name colors: RvR → yellow; else NAME_COLOR_PLAYER (final assignment wins over dead/offline tint).
+local function ApplyMemberLabelNameColor(memberWindow, isRvrFlagged)
     if isRvrFlagged then
         LabelSetTextColor(memberWindow .. "LabelName", DefaultColor.YELLOW.r, DefaultColor.YELLOW.g, DefaultColor.YELLOW.b)
-        return
+    else
+        LabelSetTextColor(memberWindow .. "LabelName", DefaultColor.NAME_COLOR_PLAYER.r, DefaultColor.NAME_COLOR_PLAYER.g, DefaultColor.NAME_COLOR_PLAYER.b)
     end
-    if not ShouldColorUnitFramesMemberNamesByArchetype() then
-        LabelSetTextColor(memberWindow .. "LabelName", c_MEMBER_NAME_DEFAULT_RGB.r, c_MEMBER_NAME_DEFAULT_RGB.g, c_MEMBER_NAME_DEFAULT_RGB.b)
-        return
-    end
-    local r, g, b = DefaultColor.NAME_COLOR_PLAYER.r, DefaultColor.NAME_COLOR_PLAYER.g, DefaultColor.NAME_COLOR_PLAYER.b
-    if type(CustomUI.GroupIcons) == "table" and type(CustomUI.GroupIcons.GetArchetypeTintRgbForCareerLine) == "function" then
-        r, g, b = CustomUI.GroupIcons.GetArchetypeTintRgbForCareerLine(careerLine)
-    end
-    LabelSetTextColor(memberWindow .. "LabelName", r, g, b)
 end
 
 local function ApplyDistantHealthIndicator(memberWindow, showClock)
     local icon = memberWindow .. "DistantIcon"
+    local skull = memberWindow .. "SkullIcon"
+    local skullShowing = DoesWindowExist(skull) and WindowGetShowing(skull)
     if DoesWindowExist(icon) then
-        WindowSetShowing(icon, showClock == true)
+        WindowSetShowing(icon, showClock == true and not skullShowing)
     end
+end
+
+-- Stock PartyUtils.GetWarbandMember can error when party.players[slot] is nil but the warband
+-- dirty flag is set (zone/load/scenario churn). Treat as empty slot instead of failing the handler.
+local function SafePartyUtilsGetWarbandMember(dataParty, memberIndex)
+    if type(PartyUtils) ~= "table" or type(PartyUtils.GetWarbandMember) ~= "function" then
+        return nil
+    end
+    local ok, mem = pcall(PartyUtils.GetWarbandMember, dataParty, memberIndex)
+    if ok then
+        return mem
+    end
+    return nil
 end
 
 TryGetWarbandMember = function(groupIndex, memberIndex)
@@ -1255,7 +1602,7 @@ TryGetWarbandMember = function(groupIndex, memberIndex)
             return row[memberIndex]
         end
     end
-    return PartyUtils.GetWarbandMember(dataParty, memberIndex)
+    return SafePartyUtilsGetWarbandMember(dataParty, memberIndex)
 end
 
 --- Plain-party source rows: slot 1 = local snapshot; mates = PartyUtils.GetPartyMember / GetPartyData. With sortPartyMembersByRole, display order is reshuffled (no slot-1 self guarantee).
@@ -1364,6 +1711,9 @@ local function ResolveMemberWindowFromHoverWindowChain(startWindowName)
         if type(WindowGetParent) ~= "function" then
             break
         end
+        if not DoesWindowExist(cur) then
+            break
+        end
         local parent = WindowGetParent(cur)
         if parent == nil or parent == "" then
             break
@@ -1378,6 +1728,18 @@ local function ResolveMemberWindowFromHoverWindowChain(startWindowName)
     return nil
 end
 
+--- True when at least one custom dual-mode group container is engine-visible (hit-testable subtree).
+--- Used to skip global hover polling in Update when no surface can be hovered and no stale border to clear.
+local function AnyCustomGroupWindowShowing()
+    for groupIndex = 1, c_MAX_GROUP_WINDOWS do
+        local gw = GroupWindowName(groupIndex)
+        if DoesWindowExist(gw) and WindowGetShowing(gw) then
+            return true
+        end
+    end
+    return false
+end
+
 local function SyncMouseOverBorderFromGlobalHover()
     if not m_enabled or not m_windowsInitialized then
         return
@@ -1389,6 +1751,11 @@ local function SyncMouseOverBorderFromGlobalHover()
     elseif type(mo) == "string" or type(mo) == "userdata" then
         startName = mo
     end
+    -- Skip the parent-chain walk when the hovered window hasn't changed.
+    if startName == m_lastHoverWindowName then
+        return
+    end
+    m_lastHoverWindowName = startName
     local hoverMember = ResolveMemberWindowFromHoverWindowChain(startName)
     if hoverMember ~= m_mouseOverMemberWindow then
         m_mouseOverMemberWindow = hoverMember
@@ -1401,35 +1768,108 @@ local function SetMemberSkullIconShowing(memberWindow, show)
     if DoesWindowExist(skull) then
         WindowSetShowing(skull, show == true)
     end
+    if show == true then
+        local distant = tostring(memberWindow or "") .. "DistantIcon"
+        if DoesWindowExist(distant) then
+            WindowSetShowing(distant, false)
+        end
+    end
+end
+
+--- Career rank per row (party / warband / scenario). Local player prefers live GameData.Player.level.
+local function CareerRankForMemberRow(member)
+    if not MemberHasDisplayName(member) then
+        return nil
+    end
+    if GameData and GameData.Player and GameData.Player.name
+        and NamesMatch(member.name, GameData.Player.name) then
+        local live = tonumber(GameData.Player.level)
+        if live ~= nil then
+            return live
+        end
+    end
+    local r = tonumber(member.level) or tonumber(member.rank)
+    if r ~= nil then
+        return r
+    end
+    return nil
+end
+
+local function ApplyMemberCareerRankLabel(memberWindow, member)
+    local labelWin = tostring(memberWindow or "") .. "LabelCareerRank"
+    if not DoesWindowExist(labelWin) then
+        return
+    end
+    local rank = CareerRankForMemberRow(member)
+    if rank ~= nil then
+        LabelSetText(labelWin, towstring(rank))
+        WindowSetShowing(labelWin, true)
+    else
+        LabelSetText(labelWin, L"")
+        WindowSetShowing(labelWin, false)
+    end
+end
+
+local function RefreshCareerRankLabelsOnVisibleMemberRows()
+    if not m_windowsInitialized or GameData == nil or GameData.Player == nil then
+        return
+    end
+    local mode = GetActiveUnitFramesDisplayMode()
+    for gi = 1, c_MAX_GROUP_WINDOWS do
+        for mi = 1, c_GROUP_MEMBERS do
+            local mw = MemberWindowName(gi, mi)
+            if DoesWindowExist(mw) and WindowGetShowing(mw) then
+                local member = nil
+                if mode == "scenario" then
+                    local groups = BuildScenarioGroupMap()
+                    local player = select(1, TryGetScenarioDisplayRow(gi, mi, groups))
+                    if MemberHasDisplayName(player) then
+                        member = { name = player.name }
+                    end
+                elseif mode == "party" then
+                    member = TryGetPartyFrameMember(gi, mi)
+                else
+                    member = TryGetWarbandMember(gi, mi)
+                end
+                ApplyMemberCareerRankLabel(mw, member)
+            end
+        end
+    end
 end
 
 local function SetMemberTextAndState(memberWindow, member)
     local memberName = ToWString(member and member.name) or L""
     LabelSetText(memberWindow .. "LabelName", memberName)
 
-    local healthText = towstring(tonumber(member.healthPercent) or 0) .. L"%"
-    local hp = tonumber(member.healthPercent) or 0
+    local isSelfRow = GameData and GameData.Player and member and member.name
+        and NamesMatch(member.name, GameData.Player.name)
+    local hpRounded = RoundHpPercentForDisplay(member.healthPercent, not isSelfRow)
+    local apRounded = RoundApPercentForDisplay(member.actionPointPercent)
+
+    local healthText = towstring(hpRounded) .. L"%"
+    local hpRaw = tonumber(member.healthPercent) or 0
 
     -- Dead before distant so skull + corpse styling win when both apply.
-    local isDead = hp <= 0 and member.online == true
+    local isDead = hpRaw <= 0 and member.online == true
 
+    local careerLine = member and member.careerLine
     if member.online ~= true then
         healthText = GetString(StringTables.Default.LABEL_PARTY_MEMBER_OFFLINE)
-        ApplyStatusSettings(memberWindow, DefaultColor.HEALTH_TEXT_DEAD, 0.5, true)
+        ApplyStatusSettings(memberWindow, 0.5, true, true, careerLine)
         SetMemberSkullIconShowing(memberWindow, false)
     elseif isDead then
         healthText = L""
-        ApplyStatusSettings(memberWindow, DefaultColor.HEALTH_TEXT_DEAD, 1.0, true)
+        ApplyStatusSettings(memberWindow, 1.0, true, false, careerLine)
         SetMemberSkullIconShowing(memberWindow, true)
     elseif member.isDistant then
         healthText = L""
-        ApplyStatusSettings(memberWindow, DefaultColor.HEALTH_TEXT_DEAD, 0.5, true, true)
+        ApplyStatusSettings(memberWindow, 0.5, true, true, careerLine)
         SetMemberSkullIconShowing(memberWindow, false)
-    elseif hp >= 100 and (tonumber(member.actionPointPercent) or 0) >= 100 then
-        ApplyStatusSettings(memberWindow, DefaultColor.HEALTH_TEXT_FULL, 1.0, true, nil, c_HEALTH_PCT_LABEL_RGB)
+    elseif hpRounded >= 100 and apRounded >= 100 then
+        ApplyStatusSettings(memberWindow, 1.0, true, false, careerLine)
         SetMemberSkullIconShowing(memberWindow, false)
-    elseif hp > 0 then
-        ApplyStatusSettings(memberWindow, DefaultColor.HEALTH_TEXT_NOT_FULL, 1.0, true, nil, c_HEALTH_PCT_LABEL_RGB)
+    elseif hpRaw > 0 then
+        ApplyStatusSettings(memberWindow, 1.0, true, false, careerLine)
         SetMemberSkullIconShowing(memberWindow, false)
     end
 
@@ -1440,6 +1880,8 @@ local function SetMemberTextAndState(memberWindow, member)
     if DoesWindowExist(memberWindow .. "TargetBorder") then
         WindowSetShowing(memberWindow .. "TargetBorder", IsMemberCurrentFriendlyTarget(member))
     end
+
+    ApplyMemberCareerRankLabel(memberWindow, member)
 end
 
 local function SetScenarioMemberTextAndState(memberWindow, player, groupIndex, memberIndex)
@@ -1474,6 +1916,11 @@ local function SetScenarioMemberTextAndState(memberWindow, player, groupIndex, m
 
     WindowSetGameActionData(memberWindow, GameData.PlayerActions.SET_TARGET, 0, playerName)
 
+    local careerLine = ScenarioCareerLineFromScenarioPlayer(player)
+    if careerLine == nil and player ~= nil then
+        careerLine = tonumber(player.careerLine)
+    end
+
     local explicitHitsDead = (groupIndex ~= nil and memberIndex ~= nil) and ScenarioHitsExplicitZero(groupIndex, memberIndex)
     local isDead = explicitHitsDead
         or selfHpCurZero
@@ -1494,29 +1941,27 @@ local function SetScenarioMemberTextAndState(memberWindow, player, groupIndex, m
 
     if isDead then
         LabelSetText(memberWindow .. "LabelHealth", L"")
-        ApplyStatusSettings(memberWindow, DefaultColor.HEALTH_TEXT_DEAD, 1.0, false)
+        ApplyStatusSettings(memberWindow, 1.0, true, false, careerLine)
         SetMemberSkullIconShowing(memberWindow, true)
     elseif isDistant then
         LabelSetText(memberWindow .. "LabelHealth", L"")
-        ApplyStatusSettings(memberWindow, DefaultColor.HEALTH_TEXT_DEAD, 0.5, true, true)
+        ApplyStatusSettings(memberWindow, 0.5, true, true, careerLine)
         SetMemberSkullIconShowing(memberWindow, false)
     else
         LabelSetText(memberWindow .. "LabelHealth", towstring(hpDisplay) .. L"%")
         SetMemberSkullIconShowing(memberWindow, false)
         if hpDisplay >= 100 and apDisplay >= 100 then
-            ApplyStatusSettings(memberWindow, DefaultColor.HEALTH_TEXT_FULL, 0.5, false, nil, c_HEALTH_PCT_LABEL_RGB)
+            ApplyStatusSettings(memberWindow, 0.5, true, false, careerLine)
         else
-            ApplyStatusSettings(memberWindow, DefaultColor.HEALTH_TEXT_NOT_FULL, 1.0, true, nil, c_HEALTH_PCT_LABEL_RGB)
+            ApplyStatusSettings(memberWindow, 1.0, true, false, careerLine)
         end
     end
 
-    local careerLine = ScenarioCareerLineFromScenarioPlayer(player)
-    if careerLine == nil and player ~= nil then
-        careerLine = tonumber(player.careerLine)
-    end
-    ApplyMemberLabelNameColor(memberWindow, careerLine, false)
+    ApplyMemberLabelNameColor(memberWindow, player and player.isRVRFlagged == true)
 
     ApplyDistantHealthIndicator(memberWindow, isDistant == true and not isDead)
+
+    ApplyMemberCareerRankLabel(memberWindow, player)
 end
 
 local function UpdateWarbandMember(groupIndex, memberIndex, member)
@@ -1532,11 +1977,10 @@ local function UpdateWarbandMember(groupIndex, memberIndex, member)
     local groupLeaderIcon = GroupWindowName(groupIndex) .. "GroupLeaderIcon"
 
     if member.isGroupLeader then
-        WindowClearAnchors(groupLeaderIcon)
-        WindowAddAnchor(groupLeaderIcon, "top", memberWindow .. "LabelName", "bottom", 0, 2)
+        LayoutUnitFramesLeaderCrownOnCareerRing(groupLeaderIcon, memberWindow)
     end
 
-    ApplyMemberLabelNameColor(memberWindow, member and member.careerLine, member and member.isRVRFlagged == true)
+    ApplyMemberLabelNameColor(memberWindow, member and member.isRVRFlagged == true)
 end
 
 --- @param respectStockWarbandToggle boolean|nil Default true — false forces visible when non-empty (CustomUI battlegroup "party only" mode).
@@ -1581,7 +2025,7 @@ local function UpdateWarbandGroup(groupIndex, respectStockWarbandToggle, warband
     if ShouldSortPartyMembersByRole() then
         local collected = {}
         for mi = 1, c_GROUP_MEMBERS do
-            local mm = PartyUtils.GetWarbandMember(dataParty, mi)
+            local mm = SafePartyUtilsGetWarbandMember(dataParty, mi)
             if MemberHasDisplayName(mm) then
                 table.insert(collected, mm)
             end
@@ -1598,7 +2042,7 @@ local function UpdateWarbandGroup(groupIndex, respectStockWarbandToggle, warband
     local foundLeader = false
 
     for memberIndex = 1, c_GROUP_MEMBERS do
-        local member = sortedSlots and sortedSlots[memberIndex] or PartyUtils.GetWarbandMember(dataParty, memberIndex)
+        local member = sortedSlots and sortedSlots[memberIndex] or SafePartyUtilsGetWarbandMember(dataParty, memberIndex)
         local memberName = ToWString(member and member.name)
         if member ~= nil and memberName ~= nil and memberName ~= L"" then
             SetMemberWindowShowing(groupIndex, memberIndex, true)
@@ -1787,19 +2231,58 @@ local function UpdateScenarioGroup(groupIndex, groups)
     local groupSlots = groups[groupIndex] or {}
     local hasMembers = false
 
-    for memberIndex = 1, c_GROUP_MEMBERS do
-        local player = ResolveScenarioPlayer(groupSlots[memberIndex])
-        local memberWindow = MemberWindowName(groupIndex, memberIndex)
+    local sortedProxies = nil
+    if ShouldSortPartyMembersByRole() then
+        local collected = {}
+        for rosterSlot = 1, c_GROUP_MEMBERS do
+            local player = ResolveScenarioPlayer(groupSlots[rosterSlot])
+            if MemberHasDisplayName(player) then
+                table.insert(collected, {
+                    rosterSlot = rosterSlot,
+                    player = player,
+                    careerLine = ScenarioCareerLineFromScenarioPlayer(player),
+                    battleLevel = player.battleLevel,
+                    battleRank = player.battleRank,
+                })
+            end
+        end
+        sortedProxies = SortMembersForUnitFramesDisplay(collected)
+        m_scenarioDisplayPlan[groupIndex] = {}
+        local n = table.getn(sortedProxies)
+        for i = 1, n do
+            local p = sortedProxies[i]
+            m_scenarioDisplayPlan[groupIndex][i] = { player = p.player, rosterSlot = p.rosterSlot }
+        end
+        for i = n + 1, c_GROUP_MEMBERS do
+            m_scenarioDisplayPlan[groupIndex][i] = nil
+        end
+    else
+        m_scenarioDisplayPlan[groupIndex] = nil
+    end
+
+    for displaySlot = 1, c_GROUP_MEMBERS do
+        local rosterSlot = displaySlot
+        local player = ResolveScenarioPlayer(groupSlots[displaySlot])
+        if sortedProxies ~= nil then
+            local proxy = sortedProxies[displaySlot]
+            if proxy ~= nil then
+                player = proxy.player
+                rosterSlot = proxy.rosterSlot
+            else
+                player = nil
+            end
+        end
+        local memberWindow = MemberWindowName(groupIndex, displaySlot)
 
         local playerName = ToWString(player and player.name)
         if player ~= nil and playerName ~= nil and playerName ~= L"" then
             hasMembers = true
-            SetMemberWindowShowing(groupIndex, memberIndex, true)
-            SetScenarioMemberTextAndState(memberWindow, player, groupIndex, memberIndex)
+            SetMemberWindowShowing(groupIndex, displaySlot, true)
+            SetScenarioMemberTextAndState(memberWindow, player, groupIndex, rosterSlot)
             SetScenarioCareerIcon(memberWindow, player)
-            SetScenarioMemberBars(memberWindow, player, groupIndex, memberIndex)
+            SetScenarioMemberBars(memberWindow, player, groupIndex, rosterSlot)
         else
-            SetMemberWindowShowing(groupIndex, memberIndex, false)
+            SetMemberWindowShowing(groupIndex, displaySlot, false)
         end
     end
 
@@ -1864,30 +2347,25 @@ local function ApplyModeVisibility()
     -- the player can end up with *no* group frames at all.
     if currentMode == "none" then
         HideAllCustomWindows()
-        return
+        m_mouseOverMemberWindow = nil
+        m_lastHoverWindowName = nil
+    else
+        HideAllStockWindows()
+        HideAllCustomWindows()
+
+        if currentMode == "scenario" then
+            ShowScenarioDualModeWindows()
+        elseif currentMode == "warband" then
+            ShowWarbandDualModeWindows()
+        elseif currentMode == "warband_party1" then
+            ShowWarbandParty1DualModeWindows()
+        elseif currentMode == "party" then
+            ShowPartyDualModeWindows()
+        end
     end
 
-    HideAllStockWindows()
-    HideAllCustomWindows()
-
-    if currentMode == "scenario" then
-        ShowScenarioDualModeWindows()
-        return
-    end
-
-    if currentMode == "warband" then
-        ShowWarbandDualModeWindows()
-        return
-    end
-
-    if currentMode == "warband_party1" then
-        ShowWarbandParty1DualModeWindows()
-        return
-    end
-
-    if currentMode == "party" then
-        ShowPartyDualModeWindows()
-    end
+    RefreshTargetBorders()
+    RefreshMouseOverBorders()
 end
 
 local function HideCustomShowStock()
@@ -1913,8 +2391,9 @@ function UnitFrames.OnScenarioPlayerHitsUpdated(groupIndex, groupSlotNum, hits)
     m_scenarioHitHp[gi][mi] = tonumber(hits)
     if m_enabled and m_windowsInitialized and GetActiveUnitFramesDisplayMode() == "scenario" then
         ApplyModeVisibility()
+    else
+        RefreshTargetBorders()
     end
-    RefreshTargetBorders()
 end
 
 function UnitFrames.OnScenarioLifecycleRefresh()
@@ -1930,7 +2409,6 @@ end
 function UnitFrames.OnScenarioRosterOrSlotsUpdated()
     ClearScenarioHitHpOverrides()
     ApplyModeVisibility()
-    RefreshTargetBorders()
 end
 
 function UnitFrames.OnWarbandMemberUpdated()
@@ -1941,11 +2419,11 @@ function UnitFrames.OnWarbandMemberUpdated()
     local mode = GetActiveUnitFramesDisplayMode()
     if mode == "warband" then
         ShowWarbandDualModeWindows()
-        return
-    end
-    if mode == "warband_party1" then
+    elseif mode == "warband_party1" then
         ShowWarbandParty1DualModeWindows()
     end
+    RefreshTargetBorders()
+    RefreshMouseOverBorders()
 end
 
 function UnitFrames.OnGroupsSettingsChanged()
@@ -1953,7 +2431,6 @@ function UnitFrames.OnGroupsSettingsChanged()
         return
     end
     ApplyModeVisibility()
-    RefreshTargetBorders()
 end
 
 --- Settings snapshot for CustomUISettingsWindow / tooling (same table as CustomUI.Settings.UnitFrames once ensured).
@@ -1968,18 +2445,24 @@ function UnitFrames.OnPlayerSelfResourcesUpdated()
     end
     local groups = BuildScenarioGroupMap()
     for gi = 1, c_MAX_GROUP_WINDOWS do
-        for mi = 1, c_GROUP_MEMBERS do
-            local raw = groups[gi] and groups[gi][mi]
-            local player = ResolveScenarioPlayer(raw)
+        for displaySlot = 1, c_GROUP_MEMBERS do
+            local player, rosterSlot = TryGetScenarioDisplayRow(gi, displaySlot, groups)
             if player ~= nil and GameData.Player and GameData.Player.name and NamesMatch(player.name, GameData.Player.name) then
-                local memberWindow = MemberWindowName(gi, mi)
+                local memberWindow = MemberWindowName(gi, displaySlot)
                 if DoesWindowExist(memberWindow) then
-                    SetScenarioMemberBars(memberWindow, player, gi, mi)
-                    SetScenarioMemberTextAndState(memberWindow, player, gi, mi)
+                    SetScenarioMemberBars(memberWindow, player, gi, rosterSlot)
+                    SetScenarioMemberTextAndState(memberWindow, player, gi, rosterSlot)
                 end
             end
         end
     end
+end
+
+function UnitFrames.OnPlayerCareerRankUpdated()
+    if not m_enabled then
+        return
+    end
+    RefreshCareerRankLabelsOnVisibleMemberRows()
 end
 
 function UnitFrames.OnMouseOverCareerIcon()
@@ -1998,7 +2481,8 @@ function UnitFrames.OnMouseOverCareerIcon()
     end
     if member == nil and mode == "scenario" then
         local groups = BuildScenarioGroupMap()
-        local player = groups[groupIndex] and groups[groupIndex][memberIndex]
+        local player = select(1, TryGetScenarioDisplayRow(groupIndex, memberIndex, groups))
+        player = player ~= nil and ResolveScenarioPlayer(player) or nil
         if player ~= nil then
             local line = ScenarioCareerLineFromScenarioPlayer(player)
             member = {
@@ -2057,6 +2541,13 @@ function UnitFrames.OnMemberRightClick()
     local member = TryGetWarbandMember(groupIndex, memberIndex)
     if member == nil and GetActiveUnitFramesDisplayMode() == "party" then
         member = TryGetPartyFrameMember(groupIndex, memberIndex)
+    end
+    if member == nil and GetActiveUnitFramesDisplayMode() == "scenario" then
+        local groups = BuildScenarioGroupMap()
+        local player = select(1, TryGetScenarioDisplayRow(groupIndex, memberIndex, groups))
+        if MemberHasDisplayName(player) then
+            member = { name = player.name, online = true }
+        end
     end
     local memberName = ToWString(member and member.name)
     if member == nil or memberName == nil or memberName == L"" then
@@ -2124,16 +2615,61 @@ function UnitFrames.Update(elapsedTime)
         m_scenarioDistanceByKey = {}
     end
 
-    m_visibilityPollElapsed = m_visibilityPollElapsed + (elapsedTime or 0)
-    if m_visibilityPollElapsed >= c_VISIBILITY_POLL_INTERVAL then
-        m_visibilityPollElapsed = 0
-        ApplyModeVisibility()
-        RefreshTargetBorders()
-        RefreshMouseOverBorders()
+    -- Hover hits children (bars/icons); member-root OnMouseOver rarely fires. Use global hover + parent walk.
+    -- Idle skip: no group visible and no active hover border — avoids MouseOverWindow reads + parent walks every frame.
+    if m_mouseOverMemberWindow ~= nil or AnyCustomGroupWindowShowing() then
+        SyncMouseOverBorderFromGlobalHover()
+    end
+end
+
+local function RefreshUnitFramesCareerRingsForArchtype()
+    -- Refresh all visible unit frame career rings when GRP_STATS packet updates archtype data.
+    -- This ensures alt-spec colors are applied immediately when packet arrives, even if late.
+    if not m_windowsInitialized or not m_enabled then
+        return
     end
 
-    -- Hover hits children (bars/icons); member-root OnMouseOver rarely fires. Use global hover + parent walk.
-    SyncMouseOverBorderFromGlobalHover()
+    local displayMode = GetActiveUnitFramesDisplayMode()
+    if displayMode == "warband" or displayMode == "warband_party1" or displayMode == "party" then
+        -- Refresh warband/party member rings
+        local warbandSize = GetWarbandSize()
+        for groupIndex = 1, 2 do  -- 2 groups max
+            for memberIndex = 1, warbandSize / 2 do  -- Members per group
+                local memberWindow = MemberWindowName(groupIndex, memberIndex)
+                if DoesWindowExist(memberWindow) then
+                    -- Get current member data from warband
+                    if type(GetWarbandData) == "function" then
+                        local warbandData = GetWarbandData()
+                        if warbandData and warbandData.members then
+                            local slot = (groupIndex - 1) * (warbandSize / 2) + memberIndex
+                            local member = warbandData.members[slot]
+                            if member and member.name and member.careerLine then
+                                -- Re-render career ring with updated archtype color
+                                SetCareerIcon(memberWindow, member)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    elseif displayMode == "scenario" then
+        -- Refresh scenario group member rings
+        for groupIndex = 1, 6 do
+            for displaySlot = 1, 6 do
+                local memberWindow = MemberWindowName(groupIndex, displaySlot)
+                if DoesWindowExist(memberWindow) then
+                    local plan = m_scenarioDisplayPlan[groupIndex]
+                    if plan and plan[displaySlot] then
+                        local player = plan[displaySlot].player
+                        if player and player.name then
+                            -- Re-render scenario career ring with updated archtype color
+                            SetScenarioCareerIcon(memberWindow, player)
+                        end
+                    end
+                end
+            end
+        end
+    end
 end
 
 function UnitFrames.Initialize()
@@ -2183,6 +2719,11 @@ function UnitFrames.Initialize()
         WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_PLAYER_HITS_UPDATED, "CustomUI.UnitFrames.OnScenarioPlayerHitsUpdated")
         WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_GROUP_JOIN, "CustomUI.UnitFrames.OnScenarioRosterOrSlotsUpdated")
         WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_GROUP_LEAVE, "CustomUI.UnitFrames.OnScenarioRosterOrSlotsUpdated")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_GROUP_UPDATED, "CustomUI.UnitFrames.OnVisibilityStateChanged")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_PLAYERS_LIST_UPDATED, "CustomUI.UnitFrames.OnVisibilityStateChanged")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.LOADING_END, "CustomUI.UnitFrames.OnVisibilityStateChanged")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.PLAYER_ZONE_CHANGED, "CustomUI.UnitFrames.OnVisibilityStateChanged")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.ENTER_WORLD, "CustomUI.UnitFrames.OnVisibilityStateChanged")
         WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_BEGIN, "CustomUI.UnitFrames.OnScenarioLifecycleRefresh")
         WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.CITY_SCENARIO_BEGIN, "CustomUI.UnitFrames.OnScenarioLifecycleRefresh")
         WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_END, "CustomUI.UnitFrames.OnScenarioLifecycleRefresh")
@@ -2192,13 +2733,24 @@ function UnitFrames.Initialize()
         WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.PLAYER_MAX_HIT_POINTS_UPDATED, "CustomUI.UnitFrames.OnPlayerSelfResourcesUpdated")
         WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.PLAYER_CUR_ACTION_POINTS_UPDATED, "CustomUI.UnitFrames.OnPlayerSelfResourcesUpdated")
         WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.PLAYER_MAX_ACTION_POINTS_UPDATED, "CustomUI.UnitFrames.OnPlayerSelfResourcesUpdated")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.PLAYER_CAREER_RANK_UPDATED, "CustomUI.UnitFrames.OnPlayerCareerRankUpdated")
         m_eventsRegistered = true
+
+        -- Hook RoRGroupScoreboard GRP_STATS packet to refresh archtype-based ring colors when data arrives late
+        if type(RoRGroupScoreboard) == "table" and type(RoRGroupScoreboard.Packet) == "function" and m_stockRoRGroupScoreboardPacket == nil then
+            m_stockRoRGroupScoreboardPacket = RoRGroupScoreboard.Packet
+            RoRGroupScoreboard.Packet = function(text)
+                -- Call original handler to update playersDataRaw
+                m_stockRoRGroupScoreboardPacket(text)
+                -- Refresh CustomUI unit frame rings with newly arrived archtype data
+                RefreshUnitFramesCareerRingsForArchtype()
+            end
+        end
     end
 end
 
 function UnitFrames.Enable()
     m_enabled = true
-    m_visibilityPollElapsed = 0
     -- Root hosts OnUpdate; CreateWindow(..., false) leaves it hidden — hidden windows may not tick.
     SetUnitFramesTickWindowShowing(true)
     UnitFrames.InitializeWindow()
@@ -2228,8 +2780,8 @@ function UnitFrames.Disable()
     ClearScenarioHitHpOverrides()
     m_enabled = false
     m_mouseOverMemberWindow = nil
+    m_lastHoverWindowName   = nil
     RefreshMouseOverBorders()
-    m_visibilityPollElapsed = 0
     SetUnitFramesTickWindowShowing(false)
     HideCustomShowStock()
 
@@ -2248,6 +2800,11 @@ function UnitFrames.Shutdown()
         WindowUnregisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_PLAYER_HITS_UPDATED)
         WindowUnregisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_GROUP_JOIN)
         WindowUnregisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_GROUP_LEAVE)
+        WindowUnregisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_GROUP_UPDATED)
+        WindowUnregisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_PLAYERS_LIST_UPDATED)
+        WindowUnregisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.LOADING_END)
+        WindowUnregisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.PLAYER_ZONE_CHANGED)
+        WindowUnregisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.ENTER_WORLD)
         WindowUnregisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_BEGIN)
         WindowUnregisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.CITY_SCENARIO_BEGIN)
         WindowUnregisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_END)
@@ -2257,6 +2814,7 @@ function UnitFrames.Shutdown()
         WindowUnregisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.PLAYER_MAX_HIT_POINTS_UPDATED)
         WindowUnregisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.PLAYER_CUR_ACTION_POINTS_UPDATED)
         WindowUnregisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.PLAYER_MAX_ACTION_POINTS_UPDATED)
+        WindowUnregisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.PLAYER_CAREER_RANK_UPDATED)
     end
     m_eventsRegistered = false
 

@@ -2,6 +2,12 @@ if not CustomUI then
     CustomUI = {}
 end
 
+-- Developer diagnostics: client `d()`, LogLuaMessage DEBUG, and optional WARNING mirrors.
+-- Set `CustomUI.DebugLogging = true` in-game (or via a tiny loader) to re-enable.
+if CustomUI.DebugLogging == nil then
+    CustomUI.DebugLogging = false
+end
+
 CustomUI.Name = "CustomUI"
 CustomUI.Version = "1.0"
 CustomUI.SlashCommands = CustomUI.SlashCommands or { "customui", "cui" }
@@ -18,6 +24,19 @@ CustomUI.State = CustomUI.State or
     loadCount = 0,
     slashRegistered = false,
 }
+
+CustomUI.FollowLeader = CustomUI.FollowLeader or
+{
+    macroName = "CustomUI Follow Leader",
+    macroIcon = 49,
+    leaderName = L"",
+    trackedSlots = {},
+    fullSlotsWarned = false,
+    handlersRegistered = false,
+}
+
+local m_stockActionButtonOnLButtonUp = nil
+local g_followActionButtonOnLButtonUpWrapper = nil
 
 -- Controller / View (per component under Source/Components/<Name>/):
 --   Controller: owns state, RegisterComponent, lifecycle (Initialize, Enable, Disable, Shutdown),
@@ -176,6 +195,32 @@ function CustomUI.PrintMessage(message)
     TextLogAddEntry("Chat", 0, output)
 end
 
+--- Optional client debug hook (`d`). Do not assign global `d` from addons; read-only via this accessor (README).
+function CustomUI.GetClientDebugLog()
+    return rawget(_G, "d")
+end
+
+--- SCT / diagnostic trace when `CustomUI.DebugLogging` is true: uses client `d()` if present, otherwise DEBUG `LogLuaMessage` (Low #16 — visible without `d`).
+function CustomUI.SCTLog(message)
+    if CustomUI.DebugLogging ~= true then
+        return
+    end
+    if type(message) == "string" then
+        message = towstring(message)
+    end
+    if type(message) ~= "wstring" then
+        return
+    end
+    local dfn = CustomUI.GetClientDebugLog()
+    if type(dfn) == "function" then
+        dfn(message)
+        return
+    end
+    if LogLuaMessage and SystemData and SystemData.UiLogFilters then
+        LogLuaMessage("Lua", SystemData.UiLogFilters.DEBUG, L"[CustomUI.SCT] " .. message)
+    end
+end
+
 function CustomUI.PrintStatusMessage()
     local message = L"v" .. towstring(CustomUI.Version) .. L" loaded, " .. CustomUI.GetComponentStatusText()
     CustomUI.PrintMessage(message)
@@ -199,7 +244,271 @@ function CustomUI.PrintComponentStatuses()
 end
 
 function CustomUI.PrintHelp()
-    CustomUI.PrintMessage(L"Commands: /customui, /customui status, /customui components, /customui enable <name>, /customui disable <name>, /customui toggle <name>, /customui clear icon cache, /customui help")
+    CustomUI.PrintMessage(L"Commands: /customui, /customui status, /customui components, /customui enable <name>, /customui disable <name>, /customui toggle <name>, /customui clear icon cache, /customui followmacro, /customui help")
+end
+
+local function NormalizePlayerName(nameValue)
+    if nameValue == nil then
+        return L""
+    end
+
+    local n = tostring(nameValue)
+    local pos = string.find(n, "^", 1, true)
+    if pos then
+        n = string.sub(n, 1, pos - 1)
+    end
+    n = n:gsub("^%s+", ""):gsub("%s+$", "")
+    return towstring(n)
+end
+
+local function BuildFollowLeaderMacroText(leaderName)
+    return L"/follow"
+end
+
+local function GetMacroId(macroName)
+    local macros = GetMacrosData and GetMacrosData() or {}
+    local expected = towstring(macroName)
+    for i = 1, #macros do
+        if macros[i].name == expected then
+            return i
+        end
+    end
+    return nil
+end
+
+local function GetMacroSlots(macroId)
+    local slots = {}
+    if not macroId or not ActionBars or not ActionBars.m_Bars then
+        return slots
+    end
+    for i = 1, #ActionBars.m_Bars do
+        local bar = ActionBars.m_Bars[i]
+        for j = 1, #(bar.m_Buttons or {}) do
+            local b = bar.m_Buttons[j]
+            if b and b.m_ActionType == GameData.PlayerActions.DO_MACRO and b.m_ActionId == macroId then
+                slots[#slots + 1] = b.m_HotBarSlot
+            end
+        end
+    end
+    return slots
+end
+
+local function IsFollowLeaderMacroSlot(slot)
+    if type(slot) ~= "number" then
+        return false
+    end
+
+    local slots = CustomUI.FollowLeader.trackedSlots or {}
+    for i = 1, #slots do
+        if slots[i] == slot then
+            return true
+        end
+    end
+
+    local macroId = GetMacroId(CustomUI.FollowLeader.macroName)
+    if not macroId then
+        return false
+    end
+
+    slots = GetMacroSlots(macroId)
+    if #slots > 0 then
+        CustomUI.FollowLeader.trackedSlots = slots
+    end
+
+    for i = 1, #slots do
+        if slots[i] == slot then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function InstallFollowLeaderActionHook()
+    if m_stockActionButtonOnLButtonUp ~= nil then
+        return
+    end
+    if type(ActionButton) ~= "table" or type(ActionButton.OnLButtonUp) ~= "function" then
+        return
+    end
+
+    m_stockActionButtonOnLButtonUp = ActionButton.OnLButtonUp
+    g_followActionButtonOnLButtonUpWrapper = function(self, flags, x, y)
+        local shouldFollowOnClick = self and type(self.GetSlot) == "function" and not Cursor.IconOnCursor()
+            and IsFollowLeaderMacroSlot(self:GetSlot())
+
+        local ok, r1, r2, r3, r4, r5 = pcall(m_stockActionButtonOnLButtonUp, self, flags, x, y)
+
+        if shouldFollowOnClick then
+            SendChatText(L"/follow ", L"")
+        end
+
+        if not ok then
+            if CustomUI.DebugLogging == true then
+                LogLuaMessage("Lua", SystemData.UiLogFilters.WARNING,
+                    L"[CustomUI] ActionButton.OnLButtonUp stock error: " .. towstring(r1))
+            end
+            return
+        end
+
+        return r1, r2, r3, r4, r5
+    end
+
+    ActionButton.OnLButtonUp = g_followActionButtonOnLButtonUpWrapper
+end
+
+local function RestoreFollowLeaderActionHook()
+    if m_stockActionButtonOnLButtonUp == nil then
+        return
+    end
+
+    if type(ActionButton) == "table" and ActionButton.OnLButtonUp == g_followActionButtonOnLButtonUpWrapper then
+        ActionButton.OnLButtonUp = m_stockActionButtonOnLButtonUp
+    end
+
+    g_followActionButtonOnLButtonUpWrapper = nil
+    m_stockActionButtonOnLButtonUp = nil
+end
+
+local function ApplyFollowLeaderActionToMacroSlots(macroName, leaderName)
+    local macroId = GetMacroId(macroName)
+    if not macroId then
+        CustomUI.FollowLeader.trackedSlots = {}
+        return
+    end
+    local slots = GetMacroSlots(macroId)
+    if #slots > 0 then
+        CustomUI.FollowLeader.trackedSlots = slots
+    else
+        slots = CustomUI.FollowLeader.trackedSlots or {}
+    end
+    for i = 1, #slots do
+        local hbar, buttonId = ActionBars:BarAndButtonIdFromSlot(slots[i])
+        local button = hbar and hbar.m_Buttons and hbar.m_Buttons[buttonId]
+        if button and button.m_Name then
+            local actionWindow = button.m_Name .. "Action"
+            if leaderName ~= nil and leaderName ~= L"" then
+                WindowSetGameActionData(actionWindow, GameData.PlayerActions.SET_TARGET, 0, leaderName)
+            else
+                WindowSetGameActionData(actionWindow, GameData.PlayerActions.DO_MACRO, macroId, L"")
+            end
+        end
+    end
+end
+
+local function GetCurrentFriendlyTargetName()
+    if type(TargetInfo) ~= "table" or type(TargetInfo.UpdateFromClient) ~= "function" or type(TargetInfo.UnitName) ~= "function" then
+        return L""
+    end
+    TargetInfo:UpdateFromClient()
+    return NormalizePlayerName(TargetInfo:UnitName("selffriendlytarget"))
+end
+
+local function ResolveCurrentLeaderName()
+    local playerName = NormalizePlayerName(GameData and GameData.Player and GameData.Player.name)
+
+    if IsWarBandActive and IsWarBandActive() and not (GameData and GameData.Player and GameData.Player.isInScenario) then
+        local info = PartyUtils and PartyUtils.GetWarbandLeader and PartyUtils.GetWarbandLeader()
+        local wbLeaderName = NormalizePlayerName(info and info.name)
+        if wbLeaderName ~= L"" and wbLeaderName ~= playerName then
+            return wbLeaderName
+        end
+        return L""
+    end
+
+    local partyData = PartyUtils and PartyUtils.GetPartyData and PartyUtils.GetPartyData() or {}
+    for _, memberData in ipairs(partyData) do
+        if memberData and memberData.isGroupLeader and memberData.name then
+            local partyLeaderName = NormalizePlayerName(memberData.name)
+            if partyLeaderName ~= L"" and partyLeaderName ~= playerName then
+                return partyLeaderName
+            end
+        end
+    end
+
+    return L""
+end
+
+local function UpdateMacroDefinition(macroName, macroText, macroIcon)
+    if type(GetMacrosData) ~= "function" or type(SetMacroData) ~= "function" then
+        return false
+    end
+
+    local macros = GetMacrosData() or {}
+    local targetName = towstring(macroName)
+    local macroSlot = nil
+
+    for i = 1, #macros do
+        local row = macros[i]
+        if row.name == targetName then
+            macroSlot = i
+            break
+        elseif row.iconNum == 0 and macroSlot == nil then
+            macroSlot = i
+        end
+    end
+
+    if macroSlot ~= nil then
+        SetMacroData(targetName, macroText, macroIcon, macroSlot)
+        CustomUI.FollowLeader.fullSlotsWarned = false
+        return true
+    end
+
+    if not CustomUI.FollowLeader.fullSlotsWarned then
+        CustomUI.PrintMessage(L"Could not create Follow Leader macro because all macro slots are full.")
+        CustomUI.FollowLeader.fullSlotsWarned = true
+    end
+    return false
+end
+
+function CustomUI.RefreshFollowLeaderMacro()
+    local leaderName = ResolveCurrentLeaderName()
+    CustomUI.FollowLeader.leaderName = leaderName
+    local text = BuildFollowLeaderMacroText(leaderName)
+    UpdateMacroDefinition(CustomUI.FollowLeader.macroName, text, CustomUI.FollowLeader.macroIcon)
+    ApplyFollowLeaderActionToMacroSlots(CustomUI.FollowLeader.macroName, leaderName)
+end
+
+function CustomUI.OnFollowLeaderStateChanged()
+    CustomUI.RefreshFollowLeaderMacro()
+end
+
+function CustomUI.RegisterFollowLeaderHandlers()
+    if CustomUI.FollowLeader.handlersRegistered then
+        return
+    end
+
+    RegisterEventHandler(SystemData.Events.GROUP_SET_LEADER,                   "CustomUI.OnFollowLeaderStateChanged")
+    RegisterEventHandler(SystemData.Events.GROUP_PLAYER_ADDED,                 "CustomUI.OnFollowLeaderStateChanged")
+    RegisterEventHandler(SystemData.Events.PLAYER_GROUP_LEADER_STATUS_UPDATED, "CustomUI.OnFollowLeaderStateChanged")
+    RegisterEventHandler(SystemData.Events.GROUP_ACCEPT_INVITATION,            "CustomUI.OnFollowLeaderStateChanged")
+    RegisterEventHandler(SystemData.Events.BATTLEGROUP_ACCEPT_INVITATION,      "CustomUI.OnFollowLeaderStateChanged")
+    RegisterEventHandler(SystemData.Events.GROUP_SETTINGS_UPDATED,             "CustomUI.OnFollowLeaderStateChanged")
+    RegisterEventHandler(SystemData.Events.GROUP_LEAVE,                        "CustomUI.OnFollowLeaderStateChanged")
+    RegisterEventHandler(SystemData.Events.BATTLEGROUP_UPDATED,                "CustomUI.OnFollowLeaderStateChanged")
+
+    InstallFollowLeaderActionHook()
+
+    CustomUI.FollowLeader.handlersRegistered = true
+end
+
+function CustomUI.UnregisterFollowLeaderHandlers()
+    if not CustomUI.FollowLeader.handlersRegistered then
+        return
+    end
+
+    UnregisterEventHandler(SystemData.Events.GROUP_SET_LEADER,                   "CustomUI.OnFollowLeaderStateChanged")
+    UnregisterEventHandler(SystemData.Events.GROUP_PLAYER_ADDED,                 "CustomUI.OnFollowLeaderStateChanged")
+    UnregisterEventHandler(SystemData.Events.PLAYER_GROUP_LEADER_STATUS_UPDATED, "CustomUI.OnFollowLeaderStateChanged")
+    UnregisterEventHandler(SystemData.Events.GROUP_ACCEPT_INVITATION,            "CustomUI.OnFollowLeaderStateChanged")
+    UnregisterEventHandler(SystemData.Events.BATTLEGROUP_ACCEPT_INVITATION,      "CustomUI.OnFollowLeaderStateChanged")
+    UnregisterEventHandler(SystemData.Events.GROUP_SETTINGS_UPDATED,             "CustomUI.OnFollowLeaderStateChanged")
+    UnregisterEventHandler(SystemData.Events.GROUP_LEAVE,                        "CustomUI.OnFollowLeaderStateChanged")
+    UnregisterEventHandler(SystemData.Events.BATTLEGROUP_UPDATED,                "CustomUI.OnFollowLeaderStateChanged")
+
+    RestoreFollowLeaderActionHook()
+
+    CustomUI.FollowLeader.handlersRegistered = false
 end
 
 function CustomUI.RegisterSlashCommands()
@@ -272,6 +581,16 @@ function CustomUI.HandleSlashCommand(input)
 
     if command == "help" then
         CustomUI.PrintHelp()
+        return
+    end
+
+    if command == "followmacro" then
+        CustomUI.RefreshFollowLeaderMacro()
+        if CustomUI.FollowLeader.leaderName ~= L"" then
+            CustomUI.PrintMessage(L"Follow Leader macro updated for: " .. CustomUI.FollowLeader.leaderName)
+        else
+            CustomUI.PrintMessage(L"Follow Leader macro updated (no party/warband leader detected; follows current target).")
+        end
         return
     end
 
@@ -507,6 +826,9 @@ end
 -- saved layout, DoesWindowExist, and the layout editor can resolve window names.
 local ROOT_WINDOW_NAMES = {
     "CustomUIPlayerStatusWindow",
+    "CustomUILowHpScreenFlashWindow",
+    -- Sibling overlay in PlayerStatusWindow.xml; must be instantiated here (anchors to CustomUIPlayerStatusWindow).
+    "CustomUIPlayerStatusWindowMinimal",
     "CustomUIPlayerPetWindow",
     "CustomUIHostileTargetWindow",
     "CustomUIFriendlyTargetWindow",
@@ -523,6 +845,8 @@ local ROOT_WINDOW_NAMES = {
     "CustomUISCTWindow", -- SCT root placeholder; was not in the old .mod list
     "CustomUIGroupIconsWorldProbe",
     "CustomUIGroupIconsDriver",
+    -- Stock vignette overlay (EA_ScreenFlashWindow); CreateWindow is often omitted from the stock mod on RoR.
+    "ScreenFlashWindow",
 }
 
 local function EnsureRootWindowInstances()
@@ -550,6 +874,8 @@ function CustomUI.Initialize()
     CustomUI.State.slashRegistered = false
 
     CustomUI.RegisterSlashCommands()
+    CustomUI.RegisterFollowLeaderHandlers()
+    CustomUI.RefreshFollowLeaderMacro()
     CustomUI.InitializeComponents()
     CustomUI.PrintStatusMessage()
 end
@@ -560,6 +886,7 @@ function CustomUI.Shutdown()
     end
 
     CustomUI.UnregisterSlashCommands()
+    CustomUI.UnregisterFollowLeaderHandlers()
     CustomUI.ShutdownComponents()
 
     CustomUI.State.initialized = false

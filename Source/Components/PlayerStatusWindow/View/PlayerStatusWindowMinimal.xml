@@ -1,0 +1,68 @@
+<Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../../../Interface.xsd">
+    <Windows>
+
+        <!-- ========================================================= -->
+        <!-- Minimal Player Status Window (180×20)                     -->
+        <!-- Player-Health texture tiled horizontally (like default)   -->
+        <!-- ========================================================= -->
+
+        <HorizontalResizeImage name="CustomUIPlayerStatusMinimalHPBarFilled" texture="EA_HUD_01" slice="Player-Health" textureScale="2.0">
+            <Size>
+                <AbsPoint x="73" y="20" />
+            </Size>
+            <Sizes left="0" middle="73" right="0" />
+            <TexSlices>
+                <Middle id="Player-Health" />
+            </TexSlices>
+        </HorizontalResizeImage>
+
+        <HorizontalResizeImage name="CustomUIPlayerStatusMinimalHPBarBackground" texture="EA_HUD_01" slice="Enemy-Health" textureScale="2.0">
+            <Size>
+                <AbsPoint x="73" y="20" />
+            </Size>
+            <Sizes left="0" middle="73" right="0" />
+            <TexSlices>
+                <Middle id="Enemy-Health" />
+            </TexSlices>
+        </HorizontalResizeImage>
+
+        <StatusBar name="CustomUIPlayerStatusMinimalHPBar" layer="background"
+                   background="CustomUIPlayerStatusMinimalHPBarBackground"
+                   foreground="CustomUIPlayerStatusMinimalHPBarFilled"
+                   reverseFill="false" interpolate="true">
+            <Size>
+                <AbsPoint x="180" y="40" />
+            </Size>
+        </StatusBar>
+
+        <Window name="CustomUIPlayerStatusWindowMinimal" movable="false" popable="false" savesettings="false" show="false">
+            <EventHandlers>
+                <EventHandler event="OnInitialize" function="CustomUI.PlayerStatusWindow.InitializeMinimal" />
+                <EventHandler event="OnUpdate" function="CustomUI.PlayerStatusWindow.Update" />
+            </EventHandlers>
+            <Size>
+                <AbsPoint x="180" y="40" />
+            </Size>
+            <Anchors>
+                <Anchor point="top" relativePoint="top" relativeTo="CustomUIPlayerStatusWindow">
+                    <AbsPoint x="0" y="0" />
+                </Anchor>
+            </Anchors>
+            <Windows>
+                <StatusBar name="$parentHPBar" inherits="CustomUIPlayerStatusMinimalHPBar" popable="false" layer="background" interpolate="true">
+                    <Size>
+                        <AbsPoint x="180" y="40" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+                            <AbsPoint x="0" y="0" />
+                        </Anchor>
+                    </Anchors>
+                </StatusBar>
+            </Windows>
+        </Window>
+    </Windows>
+</Interface>
+
+
+

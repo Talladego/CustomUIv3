@@ -94,19 +94,134 @@
                         </Window>
 						<!-- end General -->
 
-
-                        <!-- Buff Tracker -->
-                        <Window name="$parentBuffTracker" >
+                        <!-- Appearance -->
+                        <Window name="$parentAppearance" >
                             <Size>
-                                <AbsPoint x="500" y="240" />
+                                <AbsPoint x="500" y="312" />
                             </Size>
-                            <!-- README Pattern A (same as SCT): pin to ScrollChild; y = General(100) + gap(10); dual horizontal anchors, x=0. -->
                             <Anchors>
                                 <Anchor point="topleft" relativePoint="topleft">
                                     <AbsPoint x="0" y="110" />
                                 </Anchor>
                                 <Anchor point="topright" relativePoint="topright">
                                     <AbsPoint x="0" y="110" />
+                                </Anchor>
+                            </Anchors>
+                            <Windows>
+                                <FullResizeImage name="$parentBackground" inherits="SettingsSectionBackground" />
+                                <Label name="$parentTitle" inherits="EA_Settings_SectionTitle">
+                                    <Size>
+                                        <AbsPoint x="400" y="25" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="10" y="10" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+
+                                <Window name="$parentMinimalAppearance" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="40" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabPlayer.OnToggleMinimalAppearance" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Window name="$parentMinimalShowApBar" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentMinimalAppearance">
+                                            <AbsPoint x="0" y="8" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabPlayer.OnToggleMinimalShowApBar" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Window name="$parentMinimalHpBarArchetype" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentMinimalShowApBar">
+                                            <AbsPoint x="0" y="8" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabPlayer.OnToggleMinimalHpBarArchetype" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Window name="$parentLowHpScreenFlash" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentMinimalHpBarArchetype">
+                                            <AbsPoint x="0" y="8" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabPlayer.OnToggleLowHpScreenFlash" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <!-- Threshold row: positioned from Appearance origin so it cannot collide with
+                                     chained EA_LabelCheckButton anchors (client anchor math differs). -->
+                                <Window name="$parentLowHpScreenFlashThresholdRow">
+                                    <Size>
+                                        <AbsPoint x="480" y="48" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="0" y="206" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <Windows>
+                                        <Label name="$parentThresholdLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+                                            <Size>
+                                                <AbsPoint x="270" y="22" />
+                                            </Size>
+                                            <Anchors>
+                                                <Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+                                                    <AbsPoint x="45" y="12" />
+                                                </Anchor>
+                                            </Anchors>
+                                        </Label>
+                                        <ComboBox name="$parentThresholdCombo" inherits="EA_ComboBox_DefaultResizableTiny" handleinput="true" layer="default">
+                                            <Size>
+                                                <AbsPoint x="88" y="26" />
+                                            </Size>
+                                            <Anchors>
+                                                <Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+                                                    <AbsPoint x="328" y="12" />
+                                                </Anchor>
+                                            </Anchors>
+                                            <EventHandlers>
+                                                <EventHandler event="OnSelChanged" function="CustomUISettingsWindowTabPlayer.OnLowHpScreenFlashThresholdComboSelChanged" />
+                                            </EventHandlers>
+                                        </ComboBox>
+                                    </Windows>
+                                </Window>
+                            </Windows>
+                        </Window>
+                        <!-- end Appearance -->
+
+
+                        <!-- Buff Tracker -->
+                        <Window name="$parentBuffTracker" >
+                            <Size>
+                                <AbsPoint x="500" y="240" />
+                            </Size>
+                            <!-- README Pattern A: y = 110 + Appearance height (312) + gap(10). -->
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft">
+                                    <AbsPoint x="0" y="432" />
+                                </Anchor>
+                                <Anchor point="topright" relativePoint="topright">
+                                    <AbsPoint x="0" y="432" />
                                 </Anchor>
                             </Anchors>
                             <Windows>

@@ -3,6 +3,19 @@
         <Script file="Source/Components/PlayerStatusWindow/View/PlayerStatusWindow.lua" />
     </Scripts>
     <Windows>
+
+        <!-- Custom low-HP flash overlay (owned by CustomUI; avoids stock ScreenFlashWindow tint races). -->
+        <DynamicImage name="CustomUILowHpScreenFlashWindow" texture="EA_ScreenFlash" layer="overlay" handleinput="false" popable="false">
+            <Size>
+                <AbsPoint x="70" y="100" />
+            </Size>
+            <Anchors>
+                <Anchor point="topleft" relativePoint="topleft" relativeTo="" />
+                <Anchor point="bottomright" relativePoint="bottomright" relativeTo="" />
+            </Anchors>
+            <TexCoords x="0" y="0" />
+            <TexDims x="256" y="256" />
+        </DynamicImage>
     
         <!-- Player Window -->
         <Window name="CustomUIPlayerStatusWindow" movable="false" popable="false" savesettings="true">
@@ -249,11 +262,11 @@
                 </DynamicImage>
                 
                 
-                <!-- Group Leader Crown -->
+                <!-- Leader crowns: README §Notes — point on target (CareerIcon), relativePoint on crown. -->
                 <DynamicImage name="$parentGroupLeaderCrown" inherits="GroupLeaderCrown" handleinput="false" popable="false" layer="popup">
                     <Anchors>
-                        <Anchor point="topleft" relativePoint="topleft" relativeTo="">
-                            <AbsPoint x="41" y="-1" />
+                        <Anchor point="top" relativePoint="bottom" relativeTo="$parentCareerIcon">
+                            <AbsPoint x="-2" y="5" />
                         </Anchor>
                     </Anchors>
                 </DynamicImage>
@@ -262,8 +275,8 @@
                 <!-- Warband Leader Crown -->
                 <DynamicImage name="$parentWarbandLeaderCrown" inherits="WarbandLeaderCrown" handleinput="false" popable="false" layer="popup">
                     <Anchors>
-                        <Anchor point="topleft" relativePoint="topleft" relativeTo="">
-                            <AbsPoint x="41" y="-1" />
+                        <Anchor point="top" relativePoint="bottom" relativeTo="$parentCareerIcon">
+                            <AbsPoint x="-2" y="5" />
                         </Anchor>
                     </Anchors>
                 </DynamicImage>
@@ -290,6 +303,7 @@
                 
             </Windows>
         </Window>
+
     </Windows>
 </Interface>
 

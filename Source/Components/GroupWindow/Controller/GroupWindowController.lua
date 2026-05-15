@@ -49,8 +49,10 @@ local c_OFFLINE_LABEL_TEXT = GetString(StringTables.Default.LABEL_PARTY_MEMBER_O
 
 local m_enabled                  = false
 local m_stockGroupRegistered     = false
+local m_stockGroupUnhooked       = false
 local m_groupData                = nil
 local m_hasWorldGroup            = false
+local m_handlersRegistered       = false
 local m_memberBuffTrackers       = {}
 local m_memberRvrIndicators      = {}
 local m_memberStatusSnapshot     = {}
@@ -63,6 +65,76 @@ local m_isFadeIn                 = {}
 local m_isMouseOverMember        = {}
 local m_memberHealthTextLayoutApplied = {}
 local m_statusPollElapsed        = 0
+
+local function RegisterHandlers()
+    if m_handlersRegistered then return end
+    WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.GROUP_UPDATED, "CustomUI.GroupWindow.OnGroupUpdated")
+    WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.BATTLEGROUP_UPDATED, "CustomUI.GroupWindow.OnGroupUpdated")
+    WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.GROUP_PLAYER_ADDED, "CustomUI.GroupWindow.OnGroupPlayerAdded")
+    WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.GROUP_STATUS_UPDATED, "CustomUI.GroupWindow.OnStatusUpdated")
+    WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.GROUP_EFFECTS_UPDATED, "CustomUI.GroupWindow.OnEffectsUpdated")
+    WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.PLAYER_HEALTH_FADE_UPDATED, "CustomUI.GroupWindow.OnHealthFadeUpdated")
+    WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.SCENARIO_BEGIN, "CustomUI.GroupWindow.OnScenarioBegin")
+    WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.CITY_SCENARIO_BEGIN, "CustomUI.GroupWindow.OnScenarioBegin")
+    WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.SCENARIO_END, "CustomUI.GroupWindow.OnScenarioEnd")
+    WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.CITY_SCENARIO_END, "CustomUI.GroupWindow.OnScenarioEnd")
+    m_handlersRegistered = true
+end
+
+local function UnregisterHandlers()
+    if not m_handlersRegistered then return end
+    local e = SystemData.Events
+    WindowUnregisterEventHandler(c_WINDOW_NAME, e.GROUP_UPDATED)
+    WindowUnregisterEventHandler(c_WINDOW_NAME, e.BATTLEGROUP_UPDATED)
+    WindowUnregisterEventHandler(c_WINDOW_NAME, e.GROUP_PLAYER_ADDED)
+    WindowUnregisterEventHandler(c_WINDOW_NAME, e.GROUP_STATUS_UPDATED)
+    WindowUnregisterEventHandler(c_WINDOW_NAME, e.GROUP_EFFECTS_UPDATED)
+    WindowUnregisterEventHandler(c_WINDOW_NAME, e.PLAYER_HEALTH_FADE_UPDATED)
+    WindowUnregisterEventHandler(c_WINDOW_NAME, e.SCENARIO_BEGIN)
+    WindowUnregisterEventHandler(c_WINDOW_NAME, e.CITY_SCENARIO_BEGIN)
+    WindowUnregisterEventHandler(c_WINDOW_NAME, e.SCENARIO_END)
+    WindowUnregisterEventHandler(c_WINDOW_NAME, e.CITY_SCENARIO_END)
+    m_handlersRegistered = false
+end
+
+local function UnhookStockGroupWindowHandlers()
+    if m_stockGroupUnhooked then
+        return
+    end
+    local e = SystemData.Events
+    -- Stock ea_groupwindow/source/groupwindow.lua uses global RegisterEventHandler, not window-scoped.
+    UnregisterEventHandler(e.GROUP_UPDATED, "GroupWindow.OnGroupUpdated")
+    UnregisterEventHandler(e.BATTLEGROUP_UPDATED, "GroupWindow.OnGroupUpdated")
+    UnregisterEventHandler(e.GROUP_STATUS_UPDATED, "GroupWindow.OnStatusUpdated")
+    UnregisterEventHandler(e.GROUP_EFFECTS_UPDATED, "GroupWindow.OnEffectsUpdated")
+    UnregisterEventHandler(e.GROUP_PLAYER_ADDED, "GroupWindow.OnGroupPlayerAdded")
+    UnregisterEventHandler(e.SCENARIO_BEGIN, "GroupWindow.OnScenarioBegin")
+    UnregisterEventHandler(e.CITY_SCENARIO_BEGIN, "GroupWindow.OnScenarioBegin")
+    UnregisterEventHandler(e.SCENARIO_END, "GroupWindow.OnScenarioEnd")
+    UnregisterEventHandler(e.CITY_SCENARIO_END, "GroupWindow.OnScenarioEnd")
+    UnregisterEventHandler(e.SCENARIO_GROUP_JOIN, "GroupWindow.OnScenarioGroupJoin")
+    UnregisterEventHandler(e.SCENARIO_GROUP_LEAVE, "GroupWindow.OnScenarioGroupLeave")
+    m_stockGroupUnhooked = true
+end
+
+local function RehookStockGroupWindowHandlers()
+    if not m_stockGroupUnhooked then
+        return
+    end
+    local e = SystemData.Events
+    RegisterEventHandler(e.GROUP_UPDATED, "GroupWindow.OnGroupUpdated")
+    RegisterEventHandler(e.BATTLEGROUP_UPDATED, "GroupWindow.OnGroupUpdated")
+    RegisterEventHandler(e.GROUP_STATUS_UPDATED, "GroupWindow.OnStatusUpdated")
+    RegisterEventHandler(e.GROUP_EFFECTS_UPDATED, "GroupWindow.OnEffectsUpdated")
+    RegisterEventHandler(e.GROUP_PLAYER_ADDED, "GroupWindow.OnGroupPlayerAdded")
+    RegisterEventHandler(e.SCENARIO_BEGIN, "GroupWindow.OnScenarioBegin")
+    RegisterEventHandler(e.CITY_SCENARIO_BEGIN, "GroupWindow.OnScenarioBegin")
+    RegisterEventHandler(e.SCENARIO_END, "GroupWindow.OnScenarioEnd")
+    RegisterEventHandler(e.CITY_SCENARIO_END, "GroupWindow.OnScenarioEnd")
+    RegisterEventHandler(e.SCENARIO_GROUP_JOIN, "GroupWindow.OnScenarioGroupJoin")
+    RegisterEventHandler(e.SCENARIO_GROUP_LEAVE, "GroupWindow.OnScenarioGroupLeave")
+    m_stockGroupUnhooked = false
+end
 
 ----------------------------------------------------------------
 -- Helpers
@@ -533,9 +605,10 @@ local function EnsureMemberBuffTracker(index)
     -- Buff slot windows persist across /reloadui; destroy stale instances first.
     DestroyStaleMemberBuffWindows(index)
 
+    -- Parent buff container to the member row (GroupMemberUnitFrame is layer default), not Root — parity with TargetFrame.
     local tracker = CustomUI.BuffTracker:Create(
         MemberBuffWindowNamePrefix(index),
-        "Root",
+        MemberRowName(index),
         MemberBuffTargetType(index),
         c_BUFF_SLOTS_PER_MEMBER,
         c_BUFF_ROW_STRIDE,
@@ -830,7 +903,7 @@ local function UpdateContainerVisibility()
         for index = 1, c_MAX_GROUP_MEMBERS do
             local tracker = m_memberBuffTrackers[index]
             if tracker ~= nil and IsMemberValid(index) then
-                tracker:Refresh()
+                tracker:Refresh( false )
             end
         end
     else
@@ -860,16 +933,6 @@ function CustomUI.GroupWindow.Initialize()
     WindowClearAnchors(c_WINDOW_NAME)
     WindowAddAnchor(c_WINDOW_NAME, "bottomleft", "PlayerWindowPortraitFrame", "topleft", 0, 48)
 
-    WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.GROUP_UPDATED, "CustomUI.GroupWindow.OnGroupUpdated")
-    WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.BATTLEGROUP_UPDATED, "CustomUI.GroupWindow.OnGroupUpdated")
-    WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.GROUP_PLAYER_ADDED, "CustomUI.GroupWindow.OnGroupPlayerAdded")
-    WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.GROUP_STATUS_UPDATED, "CustomUI.GroupWindow.OnStatusUpdated")
-    WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.GROUP_EFFECTS_UPDATED, "CustomUI.GroupWindow.OnEffectsUpdated")
-    WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.PLAYER_HEALTH_FADE_UPDATED, "CustomUI.GroupWindow.OnHealthFadeUpdated")
-    WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.SCENARIO_BEGIN, "CustomUI.GroupWindow.OnScenarioBegin")
-    WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.CITY_SCENARIO_BEGIN, "CustomUI.GroupWindow.OnScenarioBegin")
-    WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.SCENARIO_END, "CustomUI.GroupWindow.OnScenarioEnd")
-    WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.CITY_SCENARIO_END, "CustomUI.GroupWindow.OnScenarioEnd")
     for index = 1, c_MAX_GROUP_MEMBERS do
         m_hitPointAlerts[index] = false
         m_fadeOutAnimationDelay[index] = 0
@@ -888,6 +951,7 @@ function CustomUI.GroupWindow.Initialize()
 end
 
 function CustomUI.GroupWindow.Shutdown()
+    UnregisterHandlers()
     HideAllMemberRows()
     ShutdownMemberBuffTrackers()
     ShutdownMemberRvrIndicators()
@@ -905,6 +969,7 @@ function CustomUI.GroupWindow.Shutdown()
     m_lastRosterNames = {}
     m_lastRosterSignature = nil
     m_statusPollElapsed = 0
+
 end
 
 function CustomUI.GroupWindow.OnHidden()
@@ -1102,10 +1167,12 @@ local GroupWindowComponent = {
 
 function GroupWindowComponent:Enable()
     m_enabled = true
+    RegisterHandlers()
 
     if EnsureStockGroupWindowRegistered() then
         LayoutEditor.UserHide(c_STOCK_WINDOW_NAME)
     end
+    UnhookStockGroupWindowHandlers()
 
     LayoutEditor.UserShow(self.WindowName)
 
@@ -1113,12 +1180,31 @@ function GroupWindowComponent:Enable()
     RefreshAllMemberStatuses()
     UpdateContainerVisibility()
 
+    -- Harden toggles: resync buffs immediately in case we missed effects events while stock owned the UI.
+    for i = 1, c_MAX_GROUP_MEMBERS do
+        local tr = m_memberBuffTrackers[i]
+        if tr and type(tr.Refresh) == "function" then
+            tr:Refresh( false )
+        end
+    end
+
     return true
 end
 
 function GroupWindowComponent:Disable()
     m_enabled = false
+    UnregisterHandlers()
+    -- Clear CustomUI buff trackers before handing back to stock to avoid stale state across rapid toggles.
+    for i = 1, c_MAX_GROUP_MEMBERS do
+        local tr = m_memberBuffTrackers[i]
+        if tr and type(tr.Clear) == "function" then
+            tr:Clear()
+        end
+    end
     LayoutEditor.UserHide(self.WindowName)
+    if DoesWindowExist(self.WindowName) then
+        WindowSetShowing(self.WindowName, false)
+    end
     HideAllMemberRows()
     ShutdownMemberBuffTrackers()
     ShutdownMemberRvrIndicators()
@@ -1137,10 +1223,16 @@ function GroupWindowComponent:Disable()
         m_memberHealthTextLayoutApplied[index] = false
     end
 
+    RehookStockGroupWindowHandlers()
     if EnsureStockGroupWindowRegistered() then
         LayoutEditor.UserShow(c_STOCK_WINDOW_NAME)
         LayoutEditor.UnregisterWindow(c_STOCK_WINDOW_NAME)
         m_stockGroupRegistered = false
+    end
+
+    -- Force stock to rebuild roster + buffs immediately after rehook/show.
+    if type(GroupWindow) == "table" and type(GroupWindow.OnGroupUpdated) == "function" then
+        GroupWindow.OnGroupUpdated()
     end
 
     return true
@@ -1168,36 +1260,21 @@ function GroupWindowComponent:ResetToDefaults()
 end
 
 function GroupWindowComponent:Shutdown()
+    CustomUI.GroupWindow.Shutdown()
 end
 
 ----------------------------------------------------------------
-----------------------------------------------------------------
 -- Buff settings
 ----------------------------------------------------------------
-
-local BUFF_FILTER_KEYS = {
-    "showBuffs", "showDebuffs", "showNeutral",
-    "showShort", "showLong", "showPermanent",
-    "playerCastOnly",
-}
-
-local BUFF_FILTER_DEFAULTS = {
-    showBuffs      = true,
-    showDebuffs    = true,
-    showNeutral    = true,
-    showShort      = true,
-    showLong       = true,
-    showPermanent  = true,
-    playerCastOnly = false,
-}
 
 function CustomUI.GroupWindow.GetSettings()
     CustomUI.Settings.GroupWindow = CustomUI.Settings.GroupWindow or {}
     local v = CustomUI.Settings.GroupWindow
     v.buffs = v.buffs or {}
-    for _, k in ipairs(BUFF_FILTER_KEYS) do
+    local defs = CustomUI.BuffTracker.FilterDefaults
+    for _, k in ipairs(CustomUI.BuffTracker.FilterSettingKeys) do
         if v.buffs[k] == nil then
-            v.buffs[k] = BUFF_FILTER_DEFAULTS[k]
+            v.buffs[k] = defs[k]
         end
     end
     return v

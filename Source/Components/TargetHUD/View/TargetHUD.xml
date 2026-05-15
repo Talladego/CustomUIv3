@@ -1,10 +1,11 @@
 <Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../../../Interface.xsd">
     <Windows>
 
-        <!-- layer="popup" keeps hostile/friendly Target HUD above GroupIcons world markers (background + secondary). -->
-        <Window name="CustomUITargetHUDTemplate" movable="false" savesettings="false" layer="popup">
+        <!-- default: same tier as stock HUD roots (e.g. PlayerWindow); below secondary panels (settings, TomeWindow, EA_Window_WorldMap). Still above GroupIcons (window layer background). -->
+        <!-- Root wider than the 155px HP bar so name + <icon> markup + rank fit; bar stays 155px centered. -->
+        <Window name="CustomUITargetHUDTemplate" movable="false" savesettings="false" layer="default">
             <Size>
-                <AbsPoint x="155" y="23" />
+                <AbsPoint x="220" y="45" />
             </Size>
             <EventHandlers>
                 <EventHandler event="OnShutdown" function="CustomUI.TargetHUD.OnShutdown" />
@@ -12,27 +13,31 @@
             </EventHandlers>
             <Windows>
 
+                <Label name="$parentTargetName" font="font_heading_unitframe_large_name" maxchars="48"
+                       textalign="center" autoresizewidth="false" ellipsisOnCrop="true" layer="overlay">
+                    <Size>
+                        <AbsPoint x="220" y="22" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+                            <AbsPoint x="0" y="0" />
+                        </Anchor>
+                    </Anchors>
+                </Label>
+
                 <Window name="$parentHealthBar" inherits="EA_Window_DefaultFrameStatusBar" handleinput="false">
                     <Size>
                         <AbsPoint x="155" y="23" />
                     </Size>
                     <Anchors>
-                        <Anchor point="bottomleft" relativePoint="bottomleft" relativeTo="$parent" />
-                        <Anchor point="bottomright" relativePoint="bottomright" relativeTo="$parent" />
-                    </Anchors>
-                </Window>
-
-                <Label name="$parentTargetName" font="font_heading_unitframe_large_name" maxchars="24"
-                       textalign="center" autoresizewidth="false" ellipsisOnCrop="true" layer="overlay">
-                    <Size>
-                        <AbsPoint x="155" y="23" />
-                    </Size>
-                    <Anchors>
-                        <Anchor point="top" relativePoint="bottom" relativeTo="$parentHealthBar">
-                            <AbsPoint x="0" y="0" />
+                        <Anchor point="bottomleft" relativePoint="bottomleft" relativeTo="$parent">
+                            <AbsPoint x="33" y="0" />
+                        </Anchor>
+                        <Anchor point="bottomright" relativePoint="bottomright" relativeTo="$parent">
+                            <AbsPoint x="-32" y="0" />
                         </Anchor>
                     </Anchors>
-                </Label>
+                </Window>
 
             </Windows>
         </Window>

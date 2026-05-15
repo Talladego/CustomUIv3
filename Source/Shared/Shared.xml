@@ -2,9 +2,10 @@
     <!-- Source/Shared/Shared.xml — current (shipped). Buff slot parent template for CustomUI.BuffTracker. See README "Source/Shared". -->
     <Windows>
 
-        <!-- Blank container used by CustomUI.BuffTracker as the slot parent window.
-             Created at runtime via CreateWindowFromTemplate(name, "CustomUIBuffContainerTemplate", parent). -->
-        <Window name="CustomUIBuffContainerTemplate" movable="false" savesettings="false" handleinput="true">
+                <!-- Blank container used by CustomUI.BuffTracker as the slot parent window.
+                         Created at runtime under Root, then anchored relative to the owning component. -->
+        <!-- default: same compositing tier as TargetUnitFrame / GroupMemberUnitFrame roots (below secondary: settings, Tome, map). -->
+        <Window name="CustomUIBuffContainerTemplate" movable="false" savesettings="false" handleinput="true" layer="default">
             <Size>
                 <AbsPoint x="1" y="1" />
             </Size>

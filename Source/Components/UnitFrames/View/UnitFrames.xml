@@ -37,6 +37,34 @@
             </Size>
         </StatusBar>
 
+        <!-- Target HUD HP: same CastBar strip as foreground + background (like Player-Health + Enemy-Health). Foreground = current HP (archetype tint); background = missing HP (red tint in Lua). -->
+        <HorizontalResizeImage name="CustomUIUnitFramesHPBarTargetHudForeground" texture="EA_HUD_01" slice="CastBar" alpha="1.0" textureScale="3.928571">
+            <Size>
+                <AbsPoint x="50" y="55" />
+            </Size>
+            <Sizes left="0" middle="50" right="0" />
+            <TexSlices>
+                <Middle id="CastBar" />
+            </TexSlices>
+        </HorizontalResizeImage>
+        <HorizontalResizeImage name="CustomUIUnitFramesHPBarTargetHudBackground" texture="EA_HUD_01" slice="CastBar" alpha="1.0" textureScale="3.928571">
+            <Size>
+                <AbsPoint x="50" y="55" />
+            </Size>
+            <Sizes left="0" middle="50" right="0" />
+            <TexSlices>
+                <Middle id="CastBar" />
+            </TexSlices>
+        </HorizontalResizeImage>
+        <StatusBar name="CustomUIUnitFramesHPBarTargetHud" layer="background"
+                   background="CustomUIUnitFramesHPBarTargetHudBackground"
+                   foreground="CustomUIUnitFramesHPBarTargetHudForeground"
+                   reverseFill="false" interpolate="true">
+            <Size>
+                <AbsPoint x="135" y="55" />
+            </Size>
+        </StatusBar>
+
         <Window name="CustomUIBGMember" popable="false" handleinput="true">
             <Size>
                 <AbsPoint x="139" y="55"/>
@@ -60,46 +88,25 @@
                     <TintColor r="0" g="0" b="0" />
                 </FullResizeImage>
 
-                <!-- Dead: PartyMarker-Skull; centered in health label area like DistantIcon (Clock). -->
-                <DynamicImage name="$parentSkullIcon" inherits="MainAssistCrown" popable="false" handleinput="false" layer="secondary" show="false">
+                <FullResizeImage name="$parentDimOverlay" inherits="EA_FullResizeImage_TintableSolidBackground" alpha="0.5" layer="default" handleinput="false" show="false">
                     <Anchors>
-                        <Anchor point="center" relativePoint="center" relativeTo="$parentLabelHealth" />
+                        <Anchor point="topleft" relativePoint="topleft" relativeTo="$parent" />
+                        <Anchor point="bottomright" relativePoint="bottomright" relativeTo="$parent" />
                     </Anchors>
-                </DynamicImage>
+                    <TintColor r="0" g="0" b="0" />
+                </FullResizeImage>
 
-                <Label name="$parentLabelName" font="font_heading_unitframe_con" textalign="center" layer="secondary" handleinput="false">
+                <StatusBar name="$parentHPBar" inherits="CustomUIUnitFramesHPBar" popable="false" layer="background" interpolate="true">
                     <Size>
-                        <AbsPoint x="135" y="20" />
+                        <AbsPoint x="135" y="55" />
                     </Size>
                     <Anchors>
                         <Anchor point="top" relativePoint="top" relativeTo="$parent">
-                            <AbsPoint x="0" y="0"/>
+                            <AbsPoint x="0" y="0" />
                         </Anchor>
                     </Anchors>
-                </Label>
-
-                <Label name="$parentLabelHealth" font="font_heading_unitframe_con" textalign="center" layer="secondary" handleinput="false">
-                    <Size>
-                        <AbsPoint x="135" y="20" />
-                    </Size>
-                    <Anchors>
-                        <Anchor point="bottom" relativePoint="top" relativeTo="$parentLabelName">
-                            <AbsPoint x="0" y="0"/>
-                        </Anchor>
-                    </Anchors>
-                </Label>
-
-                <!-- Distant: Clock slice from EA_HUD_01 (eatemplate_defaultwindowskin defaultskintextures.xml) replaces health text -->
-                <DynamicImage name="$parentDistantIcon" texture="EA_HUD_01" slice="Clock" layer="secondary" handleinput="false" show="false" textureScale="1.0">
-                    <Size>
-                        <AbsPoint x="22" y="23" />
-                    </Size>
-                    <Anchors>
-                        <Anchor point="center" relativePoint="center" relativeTo="$parentLabelHealth" />
-                    </Anchors>
-                </DynamicImage>
-
-                <StatusBar name="$parentHPBar" inherits="CustomUIUnitFramesHPBar" popable="false" layer="background" interpolate="true">
+                </StatusBar>
+                <StatusBar name="$parentHPBarTargetHud" inherits="CustomUIUnitFramesHPBarTargetHud" popable="false" layer="background" interpolate="true" show="false">
                     <Size>
                         <AbsPoint x="135" y="55" />
                     </Size>
@@ -121,19 +128,70 @@
                     </Anchors>
                 </StatusBar>
 
-                <DynamicImage name="$parentCareerIcon" textureScale="1.0" handleinput="true" layer="default">
+                <!-- Health row below 20px name strip (same vertical slot as before LabelName was reordered). -->
+                <Label name="$parentLabelHealth" font="font_clear_small_bold" textalign="center" layer="secondary" handleinput="false">
                     <Size>
-                        <AbsPoint x="32" y="32" />
+                        <AbsPoint x="135" y="20" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="top" relativePoint="top" relativeTo="$parent">
+                            <AbsPoint x="0" y="20"/>
+                        </Anchor>
+                    </Anchors>
+                    <Color r="255" g="255" b="255" a="255" />
+                </Label>
+
+                <!-- Distant: Clock slice replaces health text -->
+                <DynamicImage name="$parentDistantIcon" texture="EA_HUD_01" slice="Clock" layer="secondary" handleinput="false" show="false" textureScale="1.0">
+                    <Size>
+                        <AbsPoint x="22" y="23" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="center" relativePoint="center" relativeTo="$parentLabelHealth" />
+                    </Anchors>
+                </DynamicImage>
+
+                <!-- Dead: skull centered in health label area -->
+                <DynamicImage name="$parentSkullIcon" inherits="MainAssistCrown" popable="false" handleinput="false" layer="secondary" show="false">
+                    <Anchors>
+                        <Anchor point="center" relativePoint="center" relativeTo="$parentLabelHealth" />
+                    </Anchors>
+                </DynamicImage>
+
+                <!-- Career portrait: icon below ring in layer stack (default → secondary). Same pattern as GroupIcons Content Icon + Ring; popable=false so clicks do not raise the icon above the ring. -->
+                <DynamicImage name="$parentCareerIcon" textureScale="1.0" filtering="true" handleinput="true" layer="default" popable="false">
+                    <Size>
+                        <AbsPoint x="30" y="30" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="center" relativePoint="center" relativeTo="$parentCareerIconRing" />
+                    </Anchors>
+                    <EventHandlers>
+                        <EventHandler event="OnMouseOver" function="CustomUI.UnitFrames.OnMouseOverCareerIcon" />
+                    </EventHandlers>
+                </DynamicImage>
+                <DynamicImage name="$parentCareerIconRing" handleinput="false" layer="secondary" popable="false" textureScale="1.0" filtering="true" show="false">
+                    <Size>
+                        <AbsPoint x="42" y="42" />
                     </Size>
                     <Anchors>
                         <Anchor point="left" relativePoint="left" relativeTo="$parentHPBar">
                             <AbsPoint x="0" y="0" />
                         </Anchor>
                     </Anchors>
-                    <EventHandlers>
-                        <EventHandler event="OnMouseOver" function="CustomUI.UnitFrames.OnMouseOverCareerIcon" />
-                    </EventHandlers>
                 </DynamicImage>
+
+                <!-- Name above career ring/icon overlap (overlay); still below ContourBorder / highlight frames. -->
+                <Label name="$parentLabelName" font="font_heading_unitframe_con" textalign="center" layer="overlay" handleinput="false">
+                    <Size>
+                        <AbsPoint x="135" y="20" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="top" relativePoint="top" relativeTo="$parent">
+                            <AbsPoint x="0" y="0"/>
+                        </Anchor>
+                    </Anchors>
+                </Label>
 
                 <!-- Permanent black contour (drawn under target / mouseover rings) -->
                 <Window name="$parentContourBorder" layer="overlay" handleinput="false" show="true">
@@ -209,6 +267,19 @@
                         </DynamicImage>
                     </Windows>
                 </Window>
+
+                <!-- Career rank per member row (Lua): party / warband / scenario — UnitFramesController.ApplyMemberCareerRankLabel -->
+                <Label name="$parentLabelCareerRank" font="font_clear_small_bold" textalign="right" layer="popup" handleinput="false" maxchars="4" show="false">
+                    <Size>
+                        <AbsPoint x="34" y="16" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="bottomright" relativePoint="bottomright" relativeTo="$parent">
+                            <AbsPoint x="-3" y="-3" />
+                        </Anchor>
+                    </Anchors>
+                    <Color r="255" g="255" b="255" a="255" />
+                </Label>
             </Windows>
         </Window>
 
@@ -260,10 +331,11 @@
                     </Anchors>
                 </Window>
 
-                <DynamicImage name="$parentGroupLeaderIcon" inherits="GroupLeaderCrown">
+                <!-- Lua LayoutUnitFramesLeaderCrownOnCareerRing: anchors to leader row CareerIconRing (GroupIcons-style crown above ring, scaled for smaller UF icon). -->
+                <DynamicImage name="$parentGroupLeaderIcon" inherits="WarbandLeaderCrown" handleinput="false" layer="secondary" popable="false">
                     <Anchors>
-                        <Anchor point="top" relativePoint="bottom" relativeTo="$parent">
-                            <AbsPoint x="0" y="2" />
+                        <Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+                            <AbsPoint x="0" y="0" />
                         </Anchor>
                     </Anchors>
                 </DynamicImage>

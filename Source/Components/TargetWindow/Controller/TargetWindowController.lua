@@ -26,6 +26,7 @@ local c_FRIENDLY_UNIT_ID = "selffriendlytarget"
 -- Stock ea_targetwindow layout roots (see interface/default/ea_targetwindow/source/targetwindow.lua)
 local c_STOCK_PRIMARY_TARGET_LAYOUT   = "PrimaryTargetLayoutWindow"
 local c_STOCK_SECONDARY_TARGET_LAYOUT = "SecondaryTargetLayoutWindow"
+local c_STOCK_HOSTILE_TARGET_WINDOW   = "TargetWindow" -- ea_targetwindow uses this window for event handlers
 
 local c_MAX_BUFF_SLOTS = 20
 local c_BUFF_STRIDE = 5
@@ -38,16 +39,27 @@ local m_enabled = false
 local m_hostileFrame = nil
 local m_friendlyFrame = nil
 local m_initialized = false
+local m_handlersRegistered = false
 -- True until both stock target layout windows are registered with LayoutEditor and UserHide has been applied.
 local m_stockTargetHidePending = false
+local m_stockTargetUnhookPending = false
+local m_stockTargetUnhooked = false
 
 ----------------------------------------------------------------
 -- Local helpers
 ----------------------------------------------------------------
 
+-- Forward decls (used before definition).
+local TryUnhookStockTargetHandlers
+
 local function CreateTargetFrame(frameName, unitId, buffTargetType, parentWindowName)
     if not DoesWindowExist(parentWindowName) then
         return nil
+    end
+
+    -- Runtime windows persist across /reloadui; destroy stale frame before recreating.
+    if DoesWindowExist(frameName) then
+        DestroyWindow(frameName)
     end
 
     local frame = CustomUI.TargetFrame:Create(
@@ -78,6 +90,7 @@ local function CreateTargetFrame(frameName, unitId, buffTargetType, parentWindow
 
     frame.m_BuffTracker:SetBuffGroups(CustomUI.BuffTracker.BuffGroups)
     frame.m_BuffTracker:SetSortMode(CustomUI.BuffTracker.SortMode.PERM_LONG_SHORT)
+    CustomUI.BuffTracker.ApplySharedDefaultLists(frame.m_BuffTracker)
 
     return frame
 end
@@ -115,8 +128,36 @@ end
 local function SafeUserHide(windowName)
     if IsLayoutWindowRegistered(windowName) then
         LayoutEditor.UserHide(windowName)
-    else
+    end
+    if DoesWindowExist(windowName) then
         WindowSetShowing(windowName, false)
+    end
+end
+
+local function RegisterHandlers()
+    if m_handlersRegistered then return end
+    -- Single handler: UpdateFromClient() must run once per event (see RefreshBothTargetsFromClient).
+    WindowRegisterEventHandler(c_HOSTILE_WINDOW_NAME, SystemData.Events.PLAYER_TARGET_UPDATED, "CustomUI.TargetWindow.OnPlayerTargetUpdated")
+    WindowRegisterEventHandler(c_HOSTILE_WINDOW_NAME, SystemData.Events.PLAYER_TARGET_EFFECTS_UPDATED, "CustomUI.TargetWindow.OnHostileEffectsUpdated")
+    WindowRegisterEventHandler(c_FRIENDLY_WINDOW_NAME, SystemData.Events.PLAYER_TARGET_EFFECTS_UPDATED, "CustomUI.TargetWindow.OnFriendlyEffectsUpdated")
+    WindowRegisterEventHandler(c_HOSTILE_WINDOW_NAME, SystemData.Events.PLAYER_COMBAT_FLAG_UPDATED, "CustomUI.TargetWindow.OnCombatFlagUpdated")
+    m_handlersRegistered = true
+end
+
+local function UnregisterHandlers()
+    if not m_handlersRegistered then return end
+    local e = SystemData.Events
+    WindowUnregisterEventHandler(c_HOSTILE_WINDOW_NAME, e.PLAYER_TARGET_UPDATED)
+    WindowUnregisterEventHandler(c_HOSTILE_WINDOW_NAME, e.PLAYER_TARGET_EFFECTS_UPDATED)
+    WindowUnregisterEventHandler(c_FRIENDLY_WINDOW_NAME, e.PLAYER_TARGET_EFFECTS_UPDATED)
+    WindowUnregisterEventHandler(c_HOSTILE_WINDOW_NAME, e.PLAYER_COMBAT_FLAG_UPDATED)
+    m_handlersRegistered = false
+end
+
+local function SetTargetFrameBuffTrackerShowing(frame, showing)
+    local tracker = frame and frame.m_BuffTracker
+    if tracker and type(tracker.Show) == "function" then
+        tracker:Show(showing == true)
     end
 end
 
@@ -134,12 +175,14 @@ local function RefreshWindowVisibility()
     else
         SafeLayoutHide(c_HOSTILE_WINDOW_NAME)
     end
+    SetTargetFrameBuffTrackerShowing(m_hostileFrame, hostileVisible)
 
     if friendlyVisible then
         SafeLayoutShow(c_FRIENDLY_WINDOW_NAME)
     else
         SafeLayoutHide(c_FRIENDLY_WINDOW_NAME)
     end
+    SetTargetFrameBuffTrackerShowing(m_friendlyFrame, friendlyVisible)
 end
 
 -- Count CustomUI target frames currently visible (mirrors stock TargetWindow.NumberOfTargetWindowsShowing intent).
@@ -177,6 +220,9 @@ local function TryHideStockTargetWindows()
 
     -- Retry after reload / load-order races until stock TargetWindow.Initialize() has registered both.
     m_stockTargetHidePending = not (havePrimary and haveSecondary)
+
+    -- Unhook stock handlers independently of LayoutEditor registration state.
+    TryUnhookStockTargetHandlers()
 end
 
 local function ShowStockTargetWindows()
@@ -194,13 +240,55 @@ local function ShowStockTargetWindows()
     end
 end
 
+TryUnhookStockTargetHandlers = function()
+    if not m_enabled then
+        m_stockTargetUnhookPending = false
+        return
+    end
+
+    if m_stockTargetUnhooked then
+        return
+    end
+
+    if not DoesWindowExist(c_STOCK_HOSTILE_TARGET_WINDOW) then
+        m_stockTargetUnhookPending = true
+        return
+    end
+
+    local e = SystemData.Events
+    -- ea_targetwindow/source/targetwindow.lua registers these on "TargetWindow".
+    WindowUnregisterEventHandler(c_STOCK_HOSTILE_TARGET_WINDOW, e.PLAYER_COMBAT_FLAG_UPDATED)
+    WindowUnregisterEventHandler(c_STOCK_HOSTILE_TARGET_WINDOW, e.PLAYER_TARGET_UPDATED)
+    WindowUnregisterEventHandler(c_STOCK_HOSTILE_TARGET_WINDOW, e.PLAYER_TARGET_EFFECTS_UPDATED)
+
+    m_stockTargetUnhooked = true
+    m_stockTargetUnhookPending = false
+end
+
+local function TryRehookStockTargetHandlers()
+    if not m_stockTargetUnhooked then
+        return
+    end
+    if not DoesWindowExist(c_STOCK_HOSTILE_TARGET_WINDOW) then
+        -- Stock UI not loaded / window missing; nothing to restore yet.
+        m_stockTargetUnhooked = false
+        return
+    end
+
+    local e = SystemData.Events
+    WindowRegisterEventHandler(c_STOCK_HOSTILE_TARGET_WINDOW, e.PLAYER_COMBAT_FLAG_UPDATED, "TargetWindow.UpdateTargetCombat")
+    WindowRegisterEventHandler(c_STOCK_HOSTILE_TARGET_WINDOW, e.PLAYER_TARGET_UPDATED, "TargetWindow.UpdateTarget")
+    WindowRegisterEventHandler(c_STOCK_HOSTILE_TARGET_WINDOW, e.PLAYER_TARGET_EFFECTS_UPDATED, "TargetWindow.OnEffectsUpdated")
+    m_stockTargetUnhooked = false
+end
+
 -- Must call TargetInfo:UpdateFromClient() at most once per PLAYER_TARGET_UPDATED — GetUpdatedTargets()
 -- is consumed until the next event (see easystem_targetinfo/targetinfo.lua). Stock ea_targetwindow
 -- uses a single handler; two handlers each calling UpdateFromClient breaks the other slot after reload.
 local function RefreshBothTargetsFromClient(targetClassification)
     if targetClassification ~= nil
-        and targetClassification ~= c_HOSTILE_UNIT_ID
-        and targetClassification ~= c_FRIENDLY_UNIT_ID
+        and targetClassification ~= TargetInfo.HOSTILE_TARGET
+        and targetClassification ~= TargetInfo.FRIENDLY_TARGET
     then
         return
     end
@@ -223,12 +311,12 @@ local function RefreshBothTargetsFromClient(targetClassification)
 
     if TargetInfo:UnitEntityId(c_HOSTILE_UNIT_ID) ~= oldHostileEntityId then
         m_hostileFrame:StopInterpolatingStatus()
-        m_hostileFrame.m_BuffTracker:Refresh()
+        m_hostileFrame.m_BuffTracker:Refresh( true )
         targetHasChanged = true
     end
     if TargetInfo:UnitEntityId(c_FRIENDLY_UNIT_ID) ~= oldFriendlyEntityId then
         m_friendlyFrame:StopInterpolatingStatus()
-        m_friendlyFrame.m_BuffTracker:Refresh()
+        m_friendlyFrame.m_BuffTracker:Refresh( true )
         targetHasChanged = true
     end
 
@@ -260,8 +348,8 @@ local function ApplyTargetsFromCachedTargetInfo()
     m_hostileFrame:UpdateUnit()
     m_friendlyFrame:UpdateUnit()
 
-    m_hostileFrame.m_BuffTracker:Refresh()
-    m_friendlyFrame.m_BuffTracker:Refresh()
+    m_hostileFrame.m_BuffTracker:Refresh( true )
+    m_friendlyFrame.m_BuffTracker:Refresh( true )
 
     RefreshWindowVisibility()
 
@@ -349,18 +437,15 @@ function CustomUI.TargetWindow.Initialize()
         return
     end
 
-    -- Single handler: UpdateFromClient() must run once per event (see RefreshBothTargetsFromClient).
-    WindowRegisterEventHandler(c_HOSTILE_WINDOW_NAME, SystemData.Events.PLAYER_TARGET_UPDATED, "CustomUI.TargetWindow.OnPlayerTargetUpdated")
-    WindowRegisterEventHandler(c_HOSTILE_WINDOW_NAME, SystemData.Events.PLAYER_TARGET_EFFECTS_UPDATED, "CustomUI.TargetWindow.OnHostileEffectsUpdated")
-    WindowRegisterEventHandler(c_FRIENDLY_WINDOW_NAME, SystemData.Events.PLAYER_TARGET_EFFECTS_UPDATED, "CustomUI.TargetWindow.OnFriendlyEffectsUpdated")
-    WindowRegisterEventHandler(c_HOSTILE_WINDOW_NAME, SystemData.Events.PLAYER_COMBAT_FLAG_UPDATED, "CustomUI.TargetWindow.OnCombatFlagUpdated")
-
     m_initialized = true
 
+    -- Buff trackers start with nil filter (shows everything); sync persisted settings before Refresh.
+    CustomUI.TargetWindow.ApplyBuffSettings()
     ApplyTargetsFromCachedTargetInfo()
 end
 
 function CustomUI.TargetWindow.Shutdown()
+    UnregisterHandlers()
     if m_hostileFrame then
         m_hostileFrame.m_BuffTracker:Shutdown()
         m_hostileFrame:Destroy()
@@ -387,8 +472,12 @@ function CustomUI.TargetWindow.OnShutdown()
 end
 
 function CustomUI.TargetWindow.OnUpdate(timePassed)
+    if not m_enabled then
+        return
+    end
+
     -- Stock windows may register after CustomUI enables this component; retry until UserHide sticks.
-    if m_enabled and m_stockTargetHidePending then
+    if m_stockTargetHidePending then
         TryHideStockTargetWindows()
     end
 
@@ -399,6 +488,10 @@ function CustomUI.TargetWindow.OnUpdate(timePassed)
 end
 
 function CustomUI.TargetWindow.Update(timePassed)
+    if not m_enabled then
+        return
+    end
+
     if m_hostileFrame then
         m_hostileFrame.m_BuffTracker:Update(timePassed)
     end
@@ -450,18 +543,44 @@ function TargetWindowComponent:Enable()
     end
 
     m_enabled = true
+    RegisterHandlers()
     SafeUserShow(c_HOSTILE_WINDOW_NAME)
     SafeUserShow(c_FRIENDLY_WINDOW_NAME)
     TryHideStockTargetWindows()
+    TryUnhookStockTargetHandlers()
+    CustomUI.TargetWindow.ApplyBuffSettings()
     ApplyTargetsFromCachedTargetInfo()
+    -- Harden toggles: resync buffs immediately in case we missed effects events while stock owned the UI.
+    if m_hostileFrame and m_hostileFrame.m_BuffTracker and type(m_hostileFrame.m_BuffTracker.Refresh) == "function" then
+        m_hostileFrame.m_BuffTracker:Refresh()
+    end
+    if m_friendlyFrame and m_friendlyFrame.m_BuffTracker and type(m_friendlyFrame.m_BuffTracker.Refresh) == "function" then
+        m_friendlyFrame.m_BuffTracker:Refresh()
+    end
     return true
 end
 
 function TargetWindowComponent:Disable()
     m_enabled = false
+    UnregisterHandlers()
+    -- Clear CustomUI trackers before handing back to stock to avoid stale state across rapid toggles.
+    if m_hostileFrame and m_hostileFrame.m_BuffTracker and type(m_hostileFrame.m_BuffTracker.Clear) == "function" then
+        m_hostileFrame.m_BuffTracker:Clear()
+    end
+    if m_friendlyFrame and m_friendlyFrame.m_BuffTracker and type(m_friendlyFrame.m_BuffTracker.Clear) == "function" then
+        m_friendlyFrame.m_BuffTracker:Clear()
+    end
+    SetTargetFrameBuffTrackerShowing(m_hostileFrame, false)
+    SetTargetFrameBuffTrackerShowing(m_friendlyFrame, false)
     SafeUserHide(c_HOSTILE_WINDOW_NAME)
     SafeUserHide(c_FRIENDLY_WINDOW_NAME)
+    TryRehookStockTargetHandlers()
     ShowStockTargetWindows()
+    -- Force stock to rebuild unit + buff state immediately after rehook/show.
+    if type(TargetWindow) == "table" and type(TargetWindow.UpdateTarget) == "function" then
+        TargetWindow.UpdateTarget("selfhostiletarget")
+        TargetWindow.UpdateTarget("selffriendlytarget")
+    end
     return true
 end
 
@@ -493,6 +612,8 @@ function TargetWindowComponent:ResetToDefaults()
 end
 
 function TargetWindowComponent:Shutdown()
+    -- Shutdown is called by CustomUI core; fully tear down handlers/frames.
+    CustomUI.TargetWindow.Shutdown()
 end
 CustomUI.RegisterComponent("TargetWindow", TargetWindowComponent)
 
@@ -500,36 +621,22 @@ CustomUI.RegisterComponent("TargetWindow", TargetWindowComponent)
 -- Buff settings helpers
 ----------------------------------------------------------------
 
-local BUFF_FILTER_KEYS = {
-    "showBuffs", "showDebuffs", "showNeutral",
-    "showShort", "showLong", "showPermanent",
-    "playerCastOnly",
-}
-
-local BUFF_FILTER_DEFAULTS = {
-    showBuffs      = true,
-    showDebuffs    = true,
-    showNeutral    = true,
-    showShort      = true,
-    showLong       = true,
-    showPermanent  = true,
-    playerCastOnly = false,
-}
-
 function CustomUI.TargetWindow.GetSettings()
     CustomUI.Settings.TargetWindow = CustomUI.Settings.TargetWindow or {}
     local v = CustomUI.Settings.TargetWindow
+    local keys = CustomUI.BuffTracker.FilterSettingKeys
+    local defs = CustomUI.BuffTracker.FilterDefaults
 
     if v.buffs then
         v.buffsHostile = v.buffsHostile or {}
         v.buffsFriendly = v.buffsFriendly or {}
-        for _, k in ipairs(BUFF_FILTER_KEYS) do
+        for _, k in ipairs(keys) do
             local val = v.buffs[k]
             if v.buffsHostile[k] == nil then
-                v.buffsHostile[k] = val ~= nil and val or BUFF_FILTER_DEFAULTS[k]
+                v.buffsHostile[k] = val ~= nil and val or defs[k]
             end
             if v.buffsFriendly[k] == nil then
-                v.buffsFriendly[k] = val ~= nil and val or BUFF_FILTER_DEFAULTS[k]
+                v.buffsFriendly[k] = val ~= nil and val or defs[k]
             end
         end
         v.buffs = nil
@@ -537,24 +644,24 @@ function CustomUI.TargetWindow.GetSettings()
 
     if v.buffsHostile and not v.buffsFriendly then
         v.buffsFriendly = {}
-        for _, k in ipairs(BUFF_FILTER_KEYS) do
-            v.buffsFriendly[k] = v.buffsHostile[k] ~= nil and v.buffsHostile[k] or BUFF_FILTER_DEFAULTS[k]
+        for _, k in ipairs(keys) do
+            v.buffsFriendly[k] = v.buffsHostile[k] ~= nil and v.buffsHostile[k] or defs[k]
         end
     elseif v.buffsFriendly and not v.buffsHostile then
         v.buffsHostile = {}
-        for _, k in ipairs(BUFF_FILTER_KEYS) do
-            v.buffsHostile[k] = v.buffsFriendly[k] ~= nil and v.buffsFriendly[k] or BUFF_FILTER_DEFAULTS[k]
+        for _, k in ipairs(keys) do
+            v.buffsHostile[k] = v.buffsFriendly[k] ~= nil and v.buffsFriendly[k] or defs[k]
         end
     end
 
     v.buffsHostile = v.buffsHostile or {}
     v.buffsFriendly = v.buffsFriendly or {}
-    for _, k in ipairs(BUFF_FILTER_KEYS) do
+    for _, k in ipairs(keys) do
         if v.buffsHostile[k] == nil then
-            v.buffsHostile[k] = BUFF_FILTER_DEFAULTS[k]
+            v.buffsHostile[k] = defs[k]
         end
         if v.buffsFriendly[k] == nil then
-            v.buffsFriendly[k] = BUFF_FILTER_DEFAULTS[k]
+            v.buffsFriendly[k] = defs[k]
         end
     end
     return v

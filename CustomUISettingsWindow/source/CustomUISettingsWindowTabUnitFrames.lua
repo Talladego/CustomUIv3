@@ -23,11 +23,15 @@ local function EnsureUnitFramesGroupsSettings()
     if s.showActionPointsBar == nil then
         s.showActionPointsBar = false
     end
-    if s.colorMemberNamesByArchetype == nil then
-        s.colorMemberNamesByArchetype = false
+    if s.colorCareerIconRingByArchetype == nil then
+        s.colorCareerIconRingByArchetype = (s.colorMemberNamesByArchetype == true)
     end
+    s.colorMemberNamesByArchetype = nil
     if s.sortPartyMembersByRole == nil then
         s.sortPartyMembersByRole = false
+    end
+    if s.useTargetHudHpBarTexture == nil then
+        s.useTargetHudHpBarTexture = false
     end
     return s
 end
@@ -56,8 +60,11 @@ function CustomUISettingsWindowTabUnitFrames.Initialize()
     LabelSetText( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceShowActionPointsBarLabel", L"AP bar" )
     ButtonSetCheckButtonFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceShowActionPointsBarButton", false )
 
-    LabelSetText( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceColorNamesByArchetypeLabel", L"Archetype name colors" )
-    ButtonSetCheckButtonFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceColorNamesByArchetypeButton", false )
+    LabelSetText( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceTargetHudHpBarStyleLabel", L"Target HUD HP bar" )
+    ButtonSetCheckButtonFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceTargetHudHpBarStyleButton", false )
+
+    LabelSetText( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceCareerRingArchetypeColorsLabel", L"Archetype ring colors" )
+    ButtonSetCheckButtonFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceCareerRingArchetypeColorsButton", false )
 
     LabelSetText( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceSortPartyMembersByRoleLabel", L"Sort party by role" )
     ButtonSetCheckButtonFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceSortPartyMembersByRoleButton", false )
@@ -73,7 +80,8 @@ function CustomUISettingsWindowTabUnitFrames.UpdateSettings()
     ButtonSetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceWarbandButton", s.groupsWarband == true )
     ButtonSetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceScenarioButton", s.groupsScenario == true )
     ButtonSetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceShowActionPointsBarButton", s.showActionPointsBar == true )
-    ButtonSetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceColorNamesByArchetypeButton", s.colorMemberNamesByArchetype == true )
+    ButtonSetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceTargetHudHpBarStyleButton", s.useTargetHudHpBarTexture == true )
+    ButtonSetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceCareerRingArchetypeColorsButton", s.colorCareerIconRingByArchetype == true )
     ButtonSetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceSortPartyMembersByRoleButton", s.sortPartyMembersByRole == true )
 
 end
@@ -99,10 +107,17 @@ function CustomUISettingsWindowTabUnitFrames.OnToggleShowActionPointsBar()
     ApplyUnitFramesGroupsSettings()
 end
 
-function CustomUISettingsWindowTabUnitFrames.OnToggleColorNamesByArchetype()
+function CustomUISettingsWindowTabUnitFrames.OnToggleTargetHudHpBarStyle()
     EA_LabelCheckButton.Toggle()
     local s = EnsureUnitFramesGroupsSettings()
-    s.colorMemberNamesByArchetype = ButtonGetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceColorNamesByArchetypeButton" ) == true
+    s.useTargetHudHpBarTexture = ButtonGetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceTargetHudHpBarStyleButton" ) == true
+    ApplyUnitFramesGroupsSettings()
+end
+
+function CustomUISettingsWindowTabUnitFrames.OnToggleCareerRingArchetypeColors()
+    EA_LabelCheckButton.Toggle()
+    local s = EnsureUnitFramesGroupsSettings()
+    s.colorCareerIconRingByArchetype = ButtonGetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceCareerRingArchetypeColorsButton" ) == true
     ApplyUnitFramesGroupsSettings()
 end
 

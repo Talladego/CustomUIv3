@@ -1,5 +1,9 @@
 # CustomUI.SCT — Code Review Report
 
+**Status:** Functional review (2026-04-25). Doc-vs-code gap items moved to root [issues.md](../../issues.md) §Consolidated from auxiliary Markdown.
+
+**Follow-up index:** See root [issues.md](../../issues.md) §**Consolidated from auxiliary Markdown** → SCT for open items.
+
 **Reviewed against:** `plan.md` and `implementation.md`
 **Files reviewed:** SCTSettings.lua (705 ln), SCTAnim.lua (264 ln), SCTAnchors.lua (207 ln), SCTEntry.lua (456 ln), SCTTracker.lua (401 ln), SCTHandlers.lua (286 ln), SCTController.lua (61 ln), SCT.xml, CustomUI_EventTextLabel.xml, SCTAbilityIcon.xml, CustomUI.mod
 **Date:** 2026-04-25
@@ -214,7 +218,7 @@ All functions from §5.1 through §5.5 are present in `SCTSettings.lua`. The `Se
 | `/reloadui` mid-combat: text continues, no orphan windows | ✅ Verified in-game | Per implementation.md |
 | SCT has zero references to `CustomUISettingsWindow*` | ✅ | |
 | SettingsWindow has zero references to `CustomUI.Settings.SCT` | ✅ Step 2 done | |
-| `SCTEventText.lua` does not exist | ✅ Removed | |
+| Legacy monolithic SCT Lua (v1) | ✅ Removed — audit [`SCTOverrides.lua`](../Controller/SCTOverrides.lua) / [`SCTHandlers.lua`](../Controller/SCTHandlers.lua) | |
 | No file exceeds ~400 lines | ❌ | 5 files over target |
 | Per-event SCTLog gated by `m_debug` | ✅ (no per-event log calls exist) | |
 | `baseXOffset=0` centers event X on world object | ✅ | |

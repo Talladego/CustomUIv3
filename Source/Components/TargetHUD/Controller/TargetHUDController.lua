@@ -30,6 +30,7 @@ local c_BUFF_ICON_GAP  = 2
 
 local m_enabled     = false
 local m_initialized = false
+local m_handlersRegistered = false
 
 -- Per-HUD state tables (plain, no TargetUnitFrame).
 local m_hostile  = { unitId = c_HOSTILE_UNIT_ID,  attachedId = 0, buffTracker = nil }
@@ -40,8 +41,13 @@ local m_friendly = { unitId = c_FRIENDLY_UNIT_ID, attachedId = 0, buffTracker = 
 ----------------------------------------------------------------
 
 local function CreateHUDBuffTracker(parentWindowName, buffTargetType)
+    -- Runtime windows persist across /reloadui; destroy stale container before recreating.
+    local containerName = parentWindowName .. "Buff"
+    if DoesWindowExist(containerName) then
+        DestroyWindow(containerName)
+    end
     local tracker = CustomUI.BuffTracker:Create(
-        parentWindowName .. "Buff",
+        containerName,
         parentWindowName,
         buffTargetType,
         c_MAX_BUFF_SLOTS,
@@ -49,8 +55,6 @@ local function CreateHUDBuffTracker(parentWindowName, buffTargetType)
         SHOW_BUFF_FRAME_TIMER_LABELS)
 
     -- Anchor the container below the health bar.
-    -- Point = anchor point on the health bar (bottom edge).
-    -- RelativePoint = anchor point on the buff container (top edge).
     WindowClearAnchors(parentWindowName .. "Buff")
     WindowAddAnchor(parentWindowName .. "Buff", "bottom", parentWindowName .. "HealthBar", "top", 0, -c_BUFF_ICON_GAP)
 
@@ -64,16 +68,49 @@ local function CreateHUDBuffTracker(parentWindowName, buffTargetType)
     return tracker
 end
 
-local function DetachHUD(windowName, attachedId)
-    if attachedId ~= 0 then
-        DetachWindowFromWorldObject(windowName, attachedId)
+-- Sync buff container visibility to match HUD window state.
+local function SyncBuffContainerVisibility(hud)
+    if not hud.buffTracker then return end
+    if type(hud.buffTracker._ApplyContainerVisibility) == "function" then
+        hud.buffTracker:_ApplyContainerVisibility()
+    end
+end
+
+local function DetachHUD(windowName, hud)
+    if hud.attachedId ~= 0 then
+        DetachWindowFromWorldObject(windowName, hud.attachedId)
     end
     WindowSetShowing(windowName, false)
+    -- Hide buff container when HUD is hidden.
+    if hud.buffTracker then
+        hud.buffTracker:Clear()
+        SyncBuffContainerVisibility(hud)
+    end
+end
+
+local function RegisterHandlers()
+    if m_handlersRegistered then return end
+    d("[TargetHUD] RegisterHandlers")
+    WindowRegisterEventHandler(c_HOSTILE_WINDOW_NAME, SystemData.Events.PLAYER_TARGET_UPDATED, "CustomUI.TargetHUD.OnPlayerTargetUpdated")
+    WindowRegisterEventHandler(c_HOSTILE_WINDOW_NAME,  SystemData.Events.PLAYER_TARGET_STATE_UPDATED,   "CustomUI.TargetHUD.OnHostileStateUpdated")
+    WindowRegisterEventHandler(c_FRIENDLY_WINDOW_NAME, SystemData.Events.PLAYER_TARGET_STATE_UPDATED,   "CustomUI.TargetHUD.OnFriendlyStateUpdated")
+    WindowRegisterEventHandler(c_HOSTILE_WINDOW_NAME,  SystemData.Events.PLAYER_TARGET_EFFECTS_UPDATED, "CustomUI.TargetHUD.OnHostileEffectsUpdated")
+    WindowRegisterEventHandler(c_FRIENDLY_WINDOW_NAME, SystemData.Events.PLAYER_TARGET_EFFECTS_UPDATED, "CustomUI.TargetHUD.OnFriendlyEffectsUpdated")
+    m_handlersRegistered = true
+end
+
+local function UnregisterHandlers()
+    if not m_handlersRegistered then return end
+    local e = SystemData.Events
+    WindowUnregisterEventHandler(c_HOSTILE_WINDOW_NAME, e.PLAYER_TARGET_UPDATED)
+    WindowUnregisterEventHandler(c_HOSTILE_WINDOW_NAME, e.PLAYER_TARGET_STATE_UPDATED)
+    WindowUnregisterEventHandler(c_FRIENDLY_WINDOW_NAME, e.PLAYER_TARGET_STATE_UPDATED)
+    WindowUnregisterEventHandler(c_HOSTILE_WINDOW_NAME, e.PLAYER_TARGET_EFFECTS_UPDATED)
+    WindowUnregisterEventHandler(c_FRIENDLY_WINDOW_NAME, e.PLAYER_TARGET_EFFECTS_UPDATED)
+    m_handlersRegistered = false
 end
 
 -- Drives all HUD visuals from TargetInfo **without** calling UpdateFromClient().
--- Without a pending PLAYER_TARGET_UPDATED batch, GetUpdatedTargets() is nil and
--- TargetInfo:ClearUnits() wipes current targets (same as TargetWindow).
 -- Returns the new attachedId (0 = no target).
 local function RefreshHUDFromCache(hud, windowName)
     local entityId  = TargetInfo:UnitEntityId(hud.unitId)
@@ -81,10 +118,7 @@ local function RefreshHUDFromCache(hud, windowName)
 
     if not m_enabled or not hasTarget then
         if hud.attachedId ~= 0 then
-            DetachHUD(windowName, hud.attachedId)
-        end
-        if hud.buffTracker then
-            hud.buffTracker:Clear()
+            DetachHUD(windowName, hud)
         end
         return 0
     end
@@ -92,9 +126,9 @@ local function RefreshHUDFromCache(hud, windowName)
     -- Update health bar.
     StatusBarSetCurrentValue(windowName .. "HealthBarBar", TargetInfo:UnitHealth(hud.unitId))
 
-    -- Update name label.
+    -- Single label: <icon> career portrait + name + rank.
     local unitName   = TargetInfo:UnitName(hud.unitId)
-    local unitLevel  = TargetInfo:UnitBattleLevel(hud.unitId) or TargetInfo:UnitLevel(hud.unitId) or 0
+    local unitLevel  = TargetInfo:UnitLevel(hud.unitId) or 0
     local careerLine = TargetInfo:UnitCareer(hud.unitId)
     local iconNum    = (careerLine and careerLine ~= 0) and Icons.GetCareerIconIDFromCareerLine(careerLine) or nil
 
@@ -112,14 +146,21 @@ local function RefreshHUDFromCache(hud, windowName)
     LabelSetTextColor(labelName, nameColor.r, nameColor.g, nameColor.b)
 
     -- Attach / re-attach world object window.
-    if entityId ~= hud.attachedId then
+    if entityId ~= hud.attachedId or not WindowGetShowing(windowName) then
         if hud.attachedId ~= 0 then
             DetachWindowFromWorldObject(windowName, hud.attachedId)
         end
         AttachWindowToWorldObject(windowName, entityId)
         WindowSetShowing(windowName, true)
-        if hud.buffTracker then
-            hud.buffTracker:Clear()
+        if hud.buffTracker and entityId ~= hud.attachedId then
+            -- Show the buff container now that the owner HUD is visible.
+            SyncBuffContainerVisibility(hud)
+            -- Full refresh from engine buff cache; then force immediate rebuild.
+            hud.buffTracker:Refresh(true)
+            if hud.buffTracker.m_rebuildPending then
+                hud.buffTracker.m_rebuildPending = false
+                hud.buffTracker:OnBuffsChanged()
+            end
         end
     end
 
@@ -175,17 +216,9 @@ function CustomUI.TargetHUD.Initialize()
     if type(CustomUI.TargetHUD.ApplyBuffSettings) == "function" then
         CustomUI.TargetHUD.ApplyBuffSettings()
     else
-        -- Default behaviour: make HUD show player-cast only (preserves previous behaviour)
         if m_hostile.buffTracker then m_hostile.buffTracker:SetFilter({ playerCastOnly = true }) end
         if m_friendly.buffTracker then m_friendly.buffTracker:SetFilter({ playerCastOnly = true }) end
     end
-
-    -- Single handler: UpdateFromClient() must run once per event (see TargetWindowController).
-    WindowRegisterEventHandler(c_HOSTILE_WINDOW_NAME, SystemData.Events.PLAYER_TARGET_UPDATED, "CustomUI.TargetHUD.OnPlayerTargetUpdated")
-    WindowRegisterEventHandler(c_HOSTILE_WINDOW_NAME,  SystemData.Events.PLAYER_TARGET_STATE_UPDATED,   "CustomUI.TargetHUD.OnHostileStateUpdated")
-    WindowRegisterEventHandler(c_FRIENDLY_WINDOW_NAME, SystemData.Events.PLAYER_TARGET_STATE_UPDATED,   "CustomUI.TargetHUD.OnFriendlyStateUpdated")
-    WindowRegisterEventHandler(c_HOSTILE_WINDOW_NAME,  SystemData.Events.PLAYER_TARGET_EFFECTS_UPDATED, "CustomUI.TargetHUD.OnHostileEffectsUpdated")
-    WindowRegisterEventHandler(c_FRIENDLY_WINDOW_NAME, SystemData.Events.PLAYER_TARGET_EFFECTS_UPDATED, "CustomUI.TargetHUD.OnFriendlyEffectsUpdated")
 
     m_initialized = true
 end
@@ -197,6 +230,7 @@ function CustomUI.TargetHUD.OnShutdown()
 end
 
 function CustomUI.TargetHUD.Shutdown()
+    UnregisterHandlers()
     if m_hostile.buffTracker  then m_hostile.buffTracker:Shutdown();  m_hostile.buffTracker  = nil end
     if m_friendly.buffTracker then m_friendly.buffTracker:Shutdown(); m_friendly.buffTracker = nil end
 
@@ -217,36 +251,22 @@ end
 
 ----------------------------------------------------------------
 
-local BUFF_FILTER_KEYS = {
-    "showBuffs", "showDebuffs", "showNeutral",
-    "showShort", "showLong", "showPermanent",
-    "playerCastOnly",
-}
-
-local BUFF_FILTER_DEFAULTS = {
-    showBuffs      = true,
-    showDebuffs    = true,
-    showNeutral    = true,
-    showShort      = true,
-    showLong       = true,
-    showPermanent  = true,
-    playerCastOnly = false,
-}
-
 function CustomUI.TargetHUD.GetSettings()
     CustomUI.Settings.TargetHUD = CustomUI.Settings.TargetHUD or {}
     local v = CustomUI.Settings.TargetHUD
+    local keys = CustomUI.BuffTracker.FilterSettingKeys
+    local defs = CustomUI.BuffTracker.FilterDefaults
 
     if v.buffs then
         v.buffsHostile = v.buffsHostile or {}
         v.buffsFriendly = v.buffsFriendly or {}
-        for _, k in ipairs(BUFF_FILTER_KEYS) do
+        for _, k in ipairs(keys) do
             local val = v.buffs[k]
             if v.buffsHostile[k] == nil then
-                v.buffsHostile[k] = val ~= nil and val or BUFF_FILTER_DEFAULTS[k]
+                v.buffsHostile[k] = val ~= nil and val or defs[k]
             end
             if v.buffsFriendly[k] == nil then
-                v.buffsFriendly[k] = val ~= nil and val or BUFF_FILTER_DEFAULTS[k]
+                v.buffsFriendly[k] = val ~= nil and val or defs[k]
             end
         end
         v.buffs = nil
@@ -254,24 +274,24 @@ function CustomUI.TargetHUD.GetSettings()
 
     if v.buffsHostile and not v.buffsFriendly then
         v.buffsFriendly = {}
-        for _, k in ipairs(BUFF_FILTER_KEYS) do
-            v.buffsFriendly[k] = v.buffsHostile[k] ~= nil and v.buffsHostile[k] or BUFF_FILTER_DEFAULTS[k]
+        for _, k in ipairs(keys) do
+            v.buffsFriendly[k] = v.buffsHostile[k] ~= nil and v.buffsHostile[k] or defs[k]
         end
     elseif v.buffsFriendly and not v.buffsHostile then
         v.buffsHostile = {}
-        for _, k in ipairs(BUFF_FILTER_KEYS) do
-            v.buffsHostile[k] = v.buffsFriendly[k] ~= nil and v.buffsFriendly[k] or BUFF_FILTER_DEFAULTS[k]
+        for _, k in ipairs(keys) do
+            v.buffsHostile[k] = v.buffsFriendly[k] ~= nil and v.buffsFriendly[k] or defs[k]
         end
     end
 
     v.buffsHostile = v.buffsHostile or {}
     v.buffsFriendly = v.buffsFriendly or {}
-    for _, k in ipairs(BUFF_FILTER_KEYS) do
+    for _, k in ipairs(keys) do
         if v.buffsHostile[k] == nil then
-            v.buffsHostile[k] = BUFF_FILTER_DEFAULTS[k]
+            v.buffsHostile[k] = defs[k]
         end
         if v.buffsFriendly[k] == nil then
-            v.buffsFriendly[k] = BUFF_FILTER_DEFAULTS[k]
+            v.buffsFriendly[k] = defs[k]
         end
     end
     return v
@@ -301,8 +321,8 @@ end
 
 function CustomUI.TargetHUD.OnPlayerTargetUpdated(targetClassification)
     if targetClassification ~= nil
-        and targetClassification ~= c_HOSTILE_UNIT_ID
-        and targetClassification ~= c_FRIENDLY_UNIT_ID
+        and targetClassification ~= TargetInfo.HOSTILE_TARGET
+        and targetClassification ~= TargetInfo.FRIENDLY_TARGET
     then
         return
     end
@@ -310,10 +330,16 @@ function CustomUI.TargetHUD.OnPlayerTargetUpdated(targetClassification)
     RefreshBothHUDsFromCache()
 end
 
+-- OnUpdate fires on EACH HUD window (hostile/friendly) while they are visible.
+-- Used for buff timer ticks and periodic buff pruning.
 function CustomUI.TargetHUD.OnUpdate(timePassed)
-    if SystemData.ActiveWindow.name ~= c_HOSTILE_WINDOW_NAME then return end
-    if m_hostile.buffTracker  then m_hostile.buffTracker:Update(timePassed)  end
-    if m_friendly.buffTracker then m_friendly.buffTracker:Update(timePassed) end
+    if not m_enabled then return end
+    local wn = SystemData.ActiveWindow.name
+    if wn == c_HOSTILE_WINDOW_NAME then
+        if m_hostile.buffTracker then m_hostile.buffTracker:Update(timePassed) end
+    elseif wn == c_FRIENDLY_WINDOW_NAME then
+        if m_friendly.buffTracker then m_friendly.buffTracker:Update(timePassed) end
+    end
 end
 
 function CustomUI.TargetHUD.OnHostileStateUpdated()
@@ -327,12 +353,24 @@ end
 function CustomUI.TargetHUD.OnHostileEffectsUpdated(updateType, updatedEffects, isFullList)
     if updateType == GameData.BuffTargetType.TARGET_HOSTILE and m_hostile.buffTracker then
         m_hostile.buffTracker:UpdateBuffs(updatedEffects, isFullList)
+        -- Force immediate rebuild — no external tick is guaranteed for world-attached HUDs.
+        SyncBuffContainerVisibility(m_hostile)
+        if m_hostile.buffTracker.m_rebuildPending then
+            m_hostile.buffTracker.m_rebuildPending = false
+            m_hostile.buffTracker:OnBuffsChanged()
+        end
     end
 end
 
 function CustomUI.TargetHUD.OnFriendlyEffectsUpdated(updateType, updatedEffects, isFullList)
     if updateType == GameData.BuffTargetType.TARGET_FRIENDLY and m_friendly.buffTracker then
         m_friendly.buffTracker:UpdateBuffs(updatedEffects, isFullList)
+        -- Force immediate rebuild — no external tick is guaranteed for world-attached HUDs.
+        SyncBuffContainerVisibility(m_friendly)
+        if m_friendly.buffTracker.m_rebuildPending then
+            m_friendly.buffTracker.m_rebuildPending = false
+            m_friendly.buffTracker:OnBuffsChanged()
+        end
     end
 end
 
@@ -356,14 +394,16 @@ function TargetHUDComponent:Enable()
     end
 
     m_enabled = true
+    RegisterHandlers()
     RefreshBothHUDsFromCache()
     return true
 end
 
 function TargetHUDComponent:Disable()
     m_enabled = false
-    DetachHUD(c_HOSTILE_WINDOW_NAME,  m_hostile.attachedId)
-    DetachHUD(c_FRIENDLY_WINDOW_NAME, m_friendly.attachedId)
+    UnregisterHandlers()
+    DetachHUD(c_HOSTILE_WINDOW_NAME,  m_hostile)
+    DetachHUD(c_FRIENDLY_WINDOW_NAME, m_friendly)
     m_hostile.attachedId  = 0
     m_friendly.attachedId = 0
     return true
@@ -374,5 +414,6 @@ function TargetHUDComponent:ResetToDefaults()
 end
 
 function TargetHUDComponent:Shutdown()
+    CustomUI.TargetHUD.Shutdown()
 end
 CustomUI.RegisterComponent("TargetHUD", TargetHUDComponent)

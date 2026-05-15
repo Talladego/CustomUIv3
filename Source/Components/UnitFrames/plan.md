@@ -1,5 +1,9 @@
 ## UnitFrames — stock-extension review plan
 
+**Status:** Hook lifecycle refactor **open** — move install from `Initialize` to `Enable`/`Disable`.
+
+> **Backlog index:** See root [issues.md](../../issues.md) §Consolidated from auxiliary Markdown for the action item.
+
 ### Why this plan exists
 
 `Controller/UnitFramesController.lua` currently replaces stock functions on `BattlegroupHUD`:

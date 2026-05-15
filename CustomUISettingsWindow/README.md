@@ -5,6 +5,8 @@ must load the parent addon first; the `.mod` file declares that dependency. The
 shell is created on initialize (`CreateWindow` for `CustomUISettingsWindowTabbed`);
 players open it with **`/cui`** or **`/customui`** (registered by CustomUI).
 
+**Documentation index:** this file is listed with a last-updated date in the parent [README.md § Documentation](../README.md#documentation). When you edit this README, bump that date in the parent table.
+
 **Tabs (load order in `CustomUISettingsWindow.mod`):** Player → Target →
 TargetHUD → Group → UnitFrames → GroupIcons → SCT, plus the shared
 `CustomUISettingsWindowTabbed` chrome.

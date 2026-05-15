@@ -5,13 +5,13 @@
 --   here, no engine hooks — data and defaults only. Call sites must not add saved-variable
 --   paths to a specific settings window; tabs live in the CustomUISettingsWindow addon.
 if not CustomUI.SCT then CustomUI.SCT = {} end
--- Mirror SCT hard failures to LogLuaMessage where supported. Default on.
+-- Legacy toggle for optional file/ui-log mirrors (reserved; runtime logs honor CustomUI.DebugLogging instead).
 -- Legacy: old saves used `m_uilog`; when nil we migrate.
 if CustomUI.SCT.m_sctFileLog == nil then
     if type(CustomUI.SCT.m_uilog) == "boolean" then
         CustomUI.SCT.m_sctFileLog = CustomUI.SCT.m_uilog
     else
-        CustomUI.SCT.m_sctFileLog = true
+        CustomUI.SCT.m_sctFileLog = false
     end
 end
 
@@ -38,6 +38,80 @@ CustomUI.SCT.TICK_SCALES = { 0.75, 0.875, 1.0, 1.25, 1.75 }
 
 -- Crit-only size multiplier. Applied on top of the per-event Size slider (multiplicative).
 CustomUI.SCT.CRIT_SIZE_TICK_SCALES = { 1.0, 1.15, 1.3, 1.5, 1.75 }
+
+-- Per-tracker output throttle (1–10 msg/sec). Each worldObjNum has its own rate/token bucket.
+CustomUI.SCT.THROTTLE_MPS_TICKS = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 }
+-- Max queued events per tracker waiting for throttle (oldest dropped when over capacity for that world object).
+CustomUI.SCT.THROTTLE_QUEUE_TICKS = { 256, 512, 1024, 2048, 4096, 8192 }
+
+local c_DEFAULT_THROTTLE_QUEUE_MAX = 1024
+local c_DEFAULT_THROTTLE_MPS       = 5
+
+function CustomUI.SCT.ThrottleMpsToSliderPos(mps)
+    local ticks = CustomUI.SCT.THROTTLE_MPS_TICKS
+    local n = #ticks
+    if n <= 1 then
+        return 0
+    end
+    local best, idx = math.huge, 1
+    local target = tonumber(mps) or 0
+    for i, v in ipairs(ticks) do
+        local d = math.abs(target - v)
+        if d < best then
+            best, idx = d, i
+        end
+    end
+    return (idx - 1) / (n - 1)
+end
+
+function CustomUI.SCT.SliderPosToThrottleMps(pos)
+    local ticks = CustomUI.SCT.THROTTLE_MPS_TICKS
+    local n = #ticks
+    if n <= 1 then
+        return ticks[1] or 0
+    end
+    if type(pos) ~= "number" or pos ~= pos then
+        pos = 0
+    end
+    if pos < 0 then pos = 0 end
+    if pos > 1 then pos = 1 end
+    local idx = math.floor(pos * (n - 1) + 0.5) + 1
+    idx = math.max(1, math.min(n, idx))
+    return ticks[idx]
+end
+
+function CustomUI.SCT.ThrottleQueueToSliderPos(capacity)
+    local ticks = CustomUI.SCT.THROTTLE_QUEUE_TICKS
+    local n = #ticks
+    if n <= 1 then
+        return 0
+    end
+    local best, idx = math.huge, 1
+    local target = tonumber(capacity) or c_DEFAULT_THROTTLE_QUEUE_MAX
+    for i, v in ipairs(ticks) do
+        local d = math.abs(target - v)
+        if d < best then
+            best, idx = d, i
+        end
+    end
+    return (idx - 1) / (n - 1)
+end
+
+function CustomUI.SCT.SliderPosToThrottleQueueMax(pos)
+    local ticks = CustomUI.SCT.THROTTLE_QUEUE_TICKS
+    local n = #ticks
+    if n <= 1 then
+        return ticks[1] or c_DEFAULT_THROTTLE_QUEUE_MAX
+    end
+    if type(pos) ~= "number" or pos ~= pos then
+        pos = 0.5
+    end
+    if pos < 0 then pos = 0 end
+    if pos > 1 then pos = 1 end
+    local idx = math.floor(pos * (n - 1) + 0.5) + 1
+    idx = math.max(1, math.min(n, idx))
+    return ticks[idx]
+end
 
 -- [1] = event-text font (see CustomUI_EventTextLabel.xml / stock EA_Window_EventTextLabel); 2+ match wsct WSCT.LOCALS.FONTS order.
 CustomUI.SCT.TEXT_FONTS = {
@@ -239,7 +313,12 @@ end)()
 ----------------------------------------------------------------
 -- Settings() — private: returns validated/migrated `CustomUI.Settings.SCT`.
 -- Direct `CustomUI.Settings.SCT` access exists only here (plan §5 / Step 1 gate).
+--
+-- Normalization (loops + discrete slider quantization) runs once per logical change:
+-- `notifyChange()` clears the dirty flag so combat/settings hot paths only hit RAM lookups.
 ----------------------------------------------------------------
+
+local m_sctSettingsNormalizationClean = false
 
 local function isPointTypeKey(key)
     for _, pk in ipairs(CustomUI.SCT.POINT_TYPE_KEYS) do
@@ -266,6 +345,9 @@ end
 
 local function Settings()
     CustomUI.Settings.SCT          = CustomUI.Settings.SCT          or {}
+    if m_sctSettingsNormalizationClean then
+        return CustomUI.Settings.SCT
+    end
     local v = CustomUI.Settings.SCT
     v.outgoing = v.outgoing or { filters = {}, size = {}, color = {} }
     v.incoming = v.incoming or { filters = {}, size = {}, color = {} }
@@ -334,6 +416,32 @@ local function Settings()
     end
     v.showAbilityNameInText = v.showAbilityNameInText == true
 
+    -- Alternate diagonal X lanes for combat text (same spread formula as XP/Renown/Influence points).
+    if v.combatSplitLanes == nil then
+        v.combatSplitLanes = false
+    end
+    v.combatSplitLanes = v.combatSplitLanes == true
+
+    -- Message throttle: discrete 1–10 / sec (default 5). Missing value → default; legacy 0 (“unlimited”) → default.
+    local rawMps = v.throttleMessagesPerSecond
+    local mps
+    if rawMps == nil then
+        mps = c_DEFAULT_THROTTLE_MPS
+    else
+        mps = tonumber(rawMps)
+        if mps == nil or mps ~= mps or mps <= 0 then
+            mps = c_DEFAULT_THROTTLE_MPS
+        end
+    end
+    v.throttleMessagesPerSecond = CustomUI.SCT.SliderPosToThrottleMps(CustomUI.SCT.ThrottleMpsToSliderPos(mps))
+
+    local qmax = tonumber(v.throttleQueueMax)
+    if qmax == nil or qmax ~= qmax then
+        qmax = c_DEFAULT_THROTTLE_QUEUE_MAX
+    end
+    qmax = math.floor(qmax + 0.5)
+    v.throttleQueueMax = CustomUI.SCT.SliderPosToThrottleQueueMax(CustomUI.SCT.ThrottleQueueToSliderPos(qmax))
+
     -- Strip leading +/- from combat amounts is always on (setting removed from UI).
     v.stripCombatAmountSign = true
 
@@ -370,12 +478,19 @@ local function Settings()
     -- SCT ability icon hints (LRU); normalized on use in SCTAbilityIconCache.lua.
     v.abilityIconCache = v.abilityIconCache or {}
 
+    m_sctSettingsNormalizationClean = true
     return v
 end
 
 -- Live settings table; same object as `Settings()` (for runtime and legacy call sites).
 function CustomUI.SCT.GetSettings()
     return Settings()
+end
+
+-- Rare: external mutation of `CustomUI.Settings.SCT` without a setter — force next normalize.
+function CustomUI.SCT.InvalidateSettingsNormalization()
+    m_sctSettingsNormalizationClean = false
+    CustomUI.SCT._isAtDefault = nil
 end
 
 ----------------------------------------------------------------
@@ -509,6 +624,39 @@ end
 
 function CustomUI.SCT.GetShowAbilityNameInText()
     return Settings().showAbilityNameInText == true
+end
+
+function CustomUI.SCT.GetCombatSplitLanes()
+    return Settings().combatSplitLanes == true
+end
+
+function CustomUI.SCT.SetCombatSplitLanes(enabled)
+    Settings().combatSplitLanes = enabled == true
+    notifyChange()
+end
+
+function CustomUI.SCT.GetThrottleMessagesPerSecond()
+    return Settings().throttleMessagesPerSecond or c_DEFAULT_THROTTLE_MPS
+end
+
+function CustomUI.SCT.GetThrottleQueueMax()
+    return Settings().throttleQueueMax or c_DEFAULT_THROTTLE_QUEUE_MAX
+end
+
+function CustomUI.SCT.SetThrottleMessagesPerSecond(mps)
+    local v = Settings()
+    local x = tonumber(mps)
+    if x == nil or x ~= x then
+        x = c_DEFAULT_THROTTLE_MPS
+    end
+    v.throttleMessagesPerSecond = CustomUI.SCT.SliderPosToThrottleMps(CustomUI.SCT.ThrottleMpsToSliderPos(x))
+    notifyChange()
+end
+
+function CustomUI.SCT.SetThrottleQueueMax(capacity)
+    local v = Settings()
+    v.throttleQueueMax = CustomUI.SCT.SliderPosToThrottleQueueMax(CustomUI.SCT.ThrottleQueueToSliderPos(tonumber(capacity) or c_DEFAULT_THROTTLE_QUEUE_MAX))
+    notifyChange()
 end
 
 function CustomUI.SCT.GetStripCombatAmountSign()
@@ -777,6 +925,9 @@ function CustomUI.SCT.ApplySctSettingsTabFullReset()
     v.sctTextFontV2 = true
     v.abilityIconBeforeText = nil
     v.showAbilityNameInText = false
+    v.combatSplitLanes = false
+    v.throttleMessagesPerSecond = c_DEFAULT_THROTTLE_MPS
+    v.throttleQueueMax = c_DEFAULT_THROTTLE_QUEUE_MAX
     v.stripCombatAmountSign = false
     v.offsets = v.offsets or {}
     v.offsets.outgoing = { x = 0, y = 0 }
@@ -904,6 +1055,9 @@ local function checkDefault(v)
     if (v.textFont or 1) ~= 1           then return false end
     if v.showAbilityIcon == true        then return false end
     if v.showAbilityNameInText == true  then return false end
+    if v.combatSplitLanes == true       then return false end
+    if (tonumber(v.throttleMessagesPerSecond) or c_DEFAULT_THROTTLE_MPS) ~= c_DEFAULT_THROTTLE_MPS then return false end
+    if (tonumber(v.throttleQueueMax) or c_DEFAULT_THROTTLE_QUEUE_MAX) ~= c_DEFAULT_THROTTLE_QUEUE_MAX then return false end
     if v.offsets then
         if type(v.offsets.outgoing) == "table" and (v.offsets.outgoing.x or 0) ~= 0 then return false end
         if type(v.offsets.incoming) == "table" and (v.offsets.incoming.x or 0) ~= 0 then return false end
@@ -925,8 +1079,10 @@ end
 
 -- Fires after every public setter. SCTController.ApplyMode is defined later; lazy call is safe.
 function notifyChange()
+    m_sctSettingsNormalizationClean = false
     CustomUI.SCT._isAtDefault = nil
     if CustomUI.SCT.ApplyMode then
         CustomUI.SCT.ApplyMode()
     end
+    Settings()
 end

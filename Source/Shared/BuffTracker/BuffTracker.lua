@@ -9,6 +9,8 @@
 -- EATemplate_UnitFrames dependency and must remain untouched.
 --
 -- Usage:
+--   parentName: prefer the hosting unit-frame root (e.g. CustomUIPlayerStatusWindow,
+--   CustomUIGroupWindowMember1, TargetUnitFrame). Container is forced to layer "default".
 --   local tracker = CustomUI.BuffTracker:Create(
 --       windowName, parentName,
 --       GameData.BuffTargetType.SELF,
@@ -29,7 +31,7 @@
 --   -- Sort order (default: NONE = raw as returned by GetBuffs)
 --   tracker:SetSortMode( CustomUI.BuffTracker.SortMode.PERM_LONG_SHORT )
 --
---   -- Filtering (nil = show everything; all fields default true except playerCastOnly)
+--   -- Filtering (nil = show everything; defaults + key order: BuffFilterDefaults.lua → FilterDefaults / FilterSettingKeys)
 --   tracker:SetFilter({
 --       showBuffs      = true,   -- standard beneficial effects
 --       showDebuffs    = true,   -- harmful effects
@@ -41,12 +43,13 @@
 --   })
 --   tracker:SetFilter( nil )     -- clear; show everything
 --
---   -- Black/whitelist by server effect ID
---   -- Blacklist: absolute removal after filter (overrides whitelist).
---   -- Whitelist: adds back effectIds that the filter removed (does not override blacklist).
---   -- Having the same effectId in both lists is a misconfiguration; blacklist wins.
+--   -- Blacklist by effectIndex; whitelist by effectIndex and/or abilityId (SetWhitelist / SetWhitelistAbility). Defaults: BuffLists.lua.
+--   -- Blacklist: absolute removal unless conflict path (see OnBuffsChanged).
+--   -- Whitelist: adds back rows the filter removed when effectIndex or abilityId matches.
+--   -- Same effectIndex on black + white: warning; filter alone applies.
 --   tracker:SetBlacklist({ [12345] = true })
 --   tracker:SetWhitelist({ [67890] = true })
+--   tracker:SetWhitelistAbility({ [947] = true })  -- tonumber( buffData.abilityId )
 --
 --   -- Buff compression: merge multiple instances of the same logical ability into one icon
 --   -- (same abilityId from different casters, or multiple effect slots for one ability).
@@ -83,6 +86,22 @@ local function IsValidBuff( buffData )
          and buffData.iconNum     >  0 )
 end
 
+-- Stable iteration for hash-like buff maps (Low #14): deterministic merge paths / debugging.
+-- OBSOLETE: Use tracker:_GetSortedKeys( t ) which uses a scratch table to avoid allocations.
+local function _sortedMapKeys( t )
+    if t == nil then return {} end
+    local ks = {}
+    for k in pairs( t ) do
+        ks[ #ks + 1 ] = k
+    end
+    table.sort( ks, function( a, b )
+        local na, nb = tonumber( a ), tonumber( b )
+        if na and nb then return na < nb end
+        return tostring( a ) < tostring( b )
+    end )
+    return ks
+end
+
 -- Returns "buff", "debuff", or "neutral" for a given buff entry.
 local function GetBuffCategory( buffData )
     local slice = DataUtils.GetAbilityTypeTextureAndColor( buffData )
@@ -112,6 +131,11 @@ local c_SORT_PRIORITY = {
 local c_ICON_SIZE = 32
 local c_ICON_GAP  = 2
 local c_SLOT_W    = c_ICON_SIZE + c_ICON_GAP
+local c_CONTAINER_RUNTIME_PARENT = "Root"
+
+-- Performance constants
+local c_SORT_THROTTLE_INTERVAL = 0.1
+local c_REFRESH_THROTTLE_INTERVAL = 0.5
 
 -- Compression group key: prefer abilityId (stable per ability; same for all casters).
 -- effectIndex is unique per cast, so grouping only by effectIndex never merges
@@ -132,24 +156,46 @@ end
 -- Collapses entries that share a compression key into a single synthetic buffData.
 -- The entry with the longest remaining duration is used as the base; permanent beats timed.
 -- stackCount is set to the sum of member stackCount (same as multi-row merge).
-local function CompressBuffData( rawBuffData )
-    local groups = {}  -- [key] = { list of buffData }
-    local order  = {}  -- insertion-order list of keys
+local function CompressBuffData( self, rawBuffData, scratch )
+    scratch = scratch or {}
+    local groups = scratch.groups or {}
+    local order  = scratch.order  or {}
+    local result = scratch.result or {}
+    scratch.groups = groups
+    scratch.order  = order
+    scratch.result = result
 
-    for _, buffData in pairs( rawBuffData ) do
-        local id = GetCompressionGroupKey( buffData )
-        if not groups[ id ] then
-            groups[ id ] = {}
-            table.insert( order, id )
+    -- Release synthetic tables from previous pass back to pool
+    for i = #result, 1, -1 do
+        local entry = result[i]
+        if entry._isSynthetic and entry._syntheticOwner == "compress" then
+            self:_ReleaseTableToPool( entry )
         end
-        table.insert( groups[ id ], buffData )
+        result[i] = nil
     end
 
-    local result = {}
+    for k in pairs( groups ) do
+        groups[k] = nil
+    end
+    for i = #order, 1, -1 do
+        order[i] = nil
+    end
+
+    for _, buffData in ipairs( rawBuffData ) do
+        local id = GetCompressionGroupKey( buffData )
+        local grp = groups[id]
+        if not grp then
+            grp = {}
+            groups[id] = grp
+            order[#order + 1] = id
+        end
+        grp[#grp + 1] = buffData
+    end
+
     for _, id in ipairs( order ) do
-        local group = groups[ id ]
+        local group = groups[id]
         if #group == 1 then
-            table.insert( result, group[1] )
+            result[#result + 1] = group[1]
         else
             local best = group[1]
             for i = 2, #group do
@@ -164,10 +210,12 @@ local function CompressBuffData( rawBuffData )
             end
             local totalStacks = 0
             for i = 1, #group do totalStacks = totalStacks + (group[i].stackCount or 1) end
-            local compressed = {}
-            for k, v in pairs( best ) do compressed[k] = v end
+            
+            local compressed = self:_GetTableFromPool( best )
             compressed.stackCount = totalStacks
-            table.insert( result, compressed )
+            compressed._isSynthetic = true
+            compressed._syntheticOwner = "compress"
+            result[#result + 1] = compressed
         end
     end
 
@@ -186,9 +234,23 @@ if not CustomUI then CustomUI = {} end
 CustomUI.BuffFrame = BuffFrame:Subclass( "BuffIcon" )
 
 function CustomUI.BuffFrame:SetBuff( buffData )
-    self.m_buffData = buffData
-
     local isValidBuff = IsValidBuff( buffData )
+    local prev        = self.m_buffData
+
+    -- Sort-mode trackers call OnBuffsChanged ~10 Hz; re-applying the same effect reset alpha/tints every tick and
+    -- restarts stock fade animation → visible flicker. Same-effect refresh: timer only (duration lives on buffData).
+    if isValidBuff and IsValidBuff( prev )
+       and prev.effectIndex == buffData.effectIndex
+       and prev.iconNum == buffData.iconNum
+       and ( prev.stackCount or 1 ) == ( buffData.stackCount or 1 )
+    then
+        self.m_buffData = buffData
+        self:Update( true )
+        self:Show( self.m_IsTrackerShowing )
+        return
+    end
+
+    self.m_buffData = buffData
 
     if isValidBuff then
         local windowName       = self:GetName()
@@ -212,8 +274,9 @@ function CustomUI.BuffFrame:SetBuff( buffData )
             WindowSetTintColor( windowName .. "Frame", 255, 255, 255 )
         end
 
-        if buffData.stackCount > 1 then
-            LabelSetText  ( windowName .. "Timer", L"x" .. buffData.stackCount )
+        local stacks = buffData.stackCount or 1
+        if stacks > 1 then
+            LabelSetText  ( windowName .. "Timer", L"x" .. stacks )
             WindowSetShowing( windowName .. "Timer", true )
         else
             WindowSetShowing( windowName .. "Timer",
@@ -224,6 +287,106 @@ function CustomUI.BuffFrame:SetBuff( buffData )
     end
 
     self:Show( isValidBuff and self.m_IsTrackerShowing )
+end
+
+----------------------------------------------------------------
+-- Replace BuffFrame.OnMouseOver to use GetActiveWindow() instead of
+-- GetMouseOverWindow().  The XML template registers this function by
+-- name, so the engine always calls BuffFrame.OnMouseOver regardless of
+-- which class created the slot window.
+--
+-- Root cause: the stock handler uses FrameManager:GetMouseOverWindow()
+-- which resolves SystemData.MouseOverWindow.name.  When buff frames are
+-- nested inside a container window with handleinput="true" (as required
+-- for our layout), the engine may set MouseOverWindow to the container
+-- for slots that are not in the topmost hit-test position — in practice
+-- any slot not in the first row.  GetActiveWindow() resolves
+-- SystemData.ActiveWindow.name, which is always the specific slot window
+-- that owns the registered OnMouseOver handler, regardless of nesting.
+--
+-- A module-level variable replaces g_currentMouseOverBuff (a local in
+-- the stock bufftracker.lua that we cannot reach) so the timer update
+-- callback continues to work correctly.
+----------------------------------------------------------------
+
+local _customui_currentMouseOverBuff = nil
+
+do
+    local _origOnMouseOverEnd = BuffFrame.OnMouseOverEnd
+
+    BuffFrame.OnMouseOver = function()
+        local buffFrame = FrameManager:GetActiveWindow()
+        if buffFrame == nil then
+            return
+        end
+
+        local buffData = buffFrame.m_buffData
+        if IsValidBuff( buffData ) then
+            _customui_currentMouseOverBuff = buffFrame
+
+            Tooltips.CreateTextOnlyTooltip( SystemData.ActiveWindow.name, nil )
+            Tooltips.SetTooltipColorDef( 1, 1, Tooltips.COLOR_HEADING )
+            Tooltips.SetTooltipColorDef( 1, 2, Tooltips.COLOR_HEADING )
+            Tooltips.SetTooltipActionText(
+                GetString( StringTables.Default.TEXT_R_CLICK_TO_REMOVE_EFFECT ) )
+
+            BuffFrame.PopulateTooltipFields( buffData, true )
+
+            Tooltips.AnchorTooltip( { Point        = "bottom",
+                                       RelativeTo    = SystemData.ActiveWindow.name,
+                                       RelativePoint = "top",
+                                       XOffset       = 0,
+                                       YOffset       = 20 } )
+            Tooltips.SetUpdateCallback( function()
+                if _customui_currentMouseOverBuff == nil then return end
+                local data = _customui_currentMouseOverBuff.m_buffData
+                if IsValidBuff( data ) then
+                    BuffFrame.PopulateTooltipFields( data, false )
+                end
+            end )
+        end
+    end
+
+    BuffFrame.OnMouseOverEnd = function()
+        _customui_currentMouseOverBuff = nil
+        if _origOnMouseOverEnd then
+            _origOnMouseOverEnd()
+        end
+    end
+end
+
+----------------------------------------------------------------
+-- Optional debug instrumentation: log active/mouseover window names.
+-- Enable via CustomUI.DebugLogging = true  (wraps the already-replaced handler above)
+----------------------------------------------------------------
+
+if CustomUI.DebugLogging == true and not CustomUI._BuffFrameTooltipDebugWrapped then
+    CustomUI._BuffFrameTooltipDebugWrapped = true
+
+    local _patchedOnMouseOver    = BuffFrame.OnMouseOver
+    local _patchedOnMouseOverEnd = BuffFrame.OnMouseOverEnd
+
+    BuffFrame.OnMouseOver = function()
+        local aw  = SystemData and SystemData.ActiveWindow  and SystemData.ActiveWindow.name
+        local mow = SystemData and SystemData.MouseOverWindow and SystemData.MouseOverWindow.name
+        LogLuaMessage( "Lua", SystemData.UiLogFilters.INFO,
+            L"[CustomUI] BuffFrame.OnMouseOver active=" .. towstring( tostring( aw ) )
+            .. L" mouseover=" .. towstring( tostring( mow ) ) )
+        if _patchedOnMouseOver then
+            return _patchedOnMouseOver()
+        end
+    end
+
+    BuffFrame.OnMouseOverEnd = function()
+        local aw  = SystemData and SystemData.ActiveWindow  and SystemData.ActiveWindow.name
+        local mow = SystemData and SystemData.MouseOverWindow and SystemData.MouseOverWindow.name
+        LogLuaMessage( "Lua", SystemData.UiLogFilters.INFO,
+            L"[CustomUI] BuffFrame.OnMouseOverEnd active=" .. towstring( tostring( aw ) )
+            .. L" mouseover=" .. towstring( tostring( mow ) ) )
+        if _patchedOnMouseOverEnd then
+            return _patchedOnMouseOverEnd()
+        end
+    end
 end
 
 ----------------------------------------------------------------
@@ -252,13 +415,11 @@ CustomUI.BuffTracker.Alignment = {
     CENTER = "center",
 }
 
-function CustomUI.BuffTracker.ApplyPlayerStatusRules( tracker )
+-- Applies shipped DefaultBlacklist / DefaultWhitelist / DefaultWhitelistAbility when present.
+function CustomUI.BuffTracker.ApplySharedDefaultLists( tracker )
     if tracker == nil then
         return
     end
-
-    tracker:SetSortMode( CustomUI.BuffTracker.SortMode.PERM_LONG_SHORT )
-    tracker:SetBuffGroups( CustomUI.BuffTracker.BuffGroups )
 
     if CustomUI.BuffTracker.DefaultBlacklist ~= nil then
         tracker:SetBlacklist( CustomUI.BuffTracker.DefaultBlacklist )
@@ -267,6 +428,20 @@ function CustomUI.BuffTracker.ApplyPlayerStatusRules( tracker )
     if CustomUI.BuffTracker.DefaultWhitelist ~= nil then
         tracker:SetWhitelist( CustomUI.BuffTracker.DefaultWhitelist )
     end
+
+    if CustomUI.BuffTracker.DefaultWhitelistAbility ~= nil then
+        tracker:SetWhitelistAbility( CustomUI.BuffTracker.DefaultWhitelistAbility )
+    end
+end
+
+function CustomUI.BuffTracker.ApplyPlayerStatusRules( tracker )
+    if tracker == nil then
+        return
+    end
+
+    tracker:SetSortMode( CustomUI.BuffTracker.SortMode.PERM_LONG_SHORT )
+    tracker:SetBuffGroups( CustomUI.BuffTracker.BuffGroups )
+    CustomUI.BuffTracker.ApplySharedDefaultLists( tracker )
 end
 
 -- Seconds separating "short" from "long". Override per-tracker after Create.
@@ -275,7 +450,7 @@ CustomUI.BuffTracker.DurationThreshold = 60
 ----------------------------------------------------------------
 -- Create
 -- windowName  : name for the container window and slot prefix
--- parentName  : parent window for the container
+-- parentName  : visual owner used for anchors, visibility, and inherited scale
 -- buffTargetType, maxBuffCount, buffRowStride, showTimerLabels: as before
 --
 -- The container window is sized to hold maxBuffCount slots at their
@@ -292,13 +467,21 @@ function CustomUI.BuffTracker:Create( windowName, parentName,
     local containerH = rows * c_ICON_SIZE + (rows - 1) * c_ICON_GAP
 
     -- Create the container window that owns all slot windows.
-    -- Components anchor this window; slots are internal.
-    CreateWindowFromTemplate( windowName, "CustomUIBuffContainerTemplate", parentName )
+    -- Keep it under Root so the owner's hit bounds cannot clip interactive buff slots.
+    -- Components still anchor this window relative to their own frames; slots are internal.
+    CreateWindowFromTemplate( windowName, "CustomUIBuffContainerTemplate", c_CONTAINER_RUNTIME_PARENT )
     WindowSetDimensions( windowName, containerW, containerH )
     WindowSetShowing( windowName, false )
+    -- Note: the parent container must keep handleinput enabled or child BuffIcon slots
+    -- may not receive mouse events (tooltips rely on BuffFrame.OnMouseOver).
 
     local newTracker = {
         m_containerName     = windowName,
+        m_ownerName         = parentName,
+        m_containerW        = containerW,
+        m_containerH        = containerH,
+        m_requestedShow     = false,
+        m_relativeScale     = 1.0,
         m_buffData          = {},
         m_targetType        = buffTargetType,
         m_maxBuffs          = maxBuffCount,
@@ -311,8 +494,9 @@ function CustomUI.BuffTracker:Create( windowName, parentName,
         m_sortMode          = nil,
         m_durationThreshold = CustomUI.BuffTracker.DurationThreshold,
         m_filterConfig      = nil,
-        m_blacklist         = {},
-        m_whitelist         = {},
+        m_blacklist          = {},
+        m_whitelist          = {},
+        m_whitelistAbility   = {},
         m_forceShowTrackerPriority100 = false,
         m_compiledSortFunc  = nil,
         m_compressMultiCast = true,
@@ -322,6 +506,22 @@ function CustomUI.BuffTracker:Create( windowName, parentName,
         -- Raw escape hooks
         filterFunc          = nil,
         sortFunc            = nil,
+        -- Reused across OnBuffsChanged to cut allocations (sort-on trackers).
+        m_scratchPostFilter = {},
+        m_scratchInResult   = {},
+        m_scratchCompress   = {},
+        m_scratchGroups     = {},
+        m_visibleSlotCount  = 0,
+        -- Follow-up #29: coalesce rebuild work while hidden.
+        m_dirtyWhileHidden  = false,
+        -- Follow-up #35: batch/coalesce setter-triggered rebuilds.
+        m_batchDepth        = 0,
+        m_rebuildPending    = false,
+        -- Performance optimizations: throttling and memory pooling
+        m_timeSinceLastRefresh = 999,
+        m_tablePool            = {},
+        m_scratchSeen          = {},
+        m_scratchSortedKeys    = {},
     }
 
     -- Create all slot windows parented to the container.
@@ -335,6 +535,9 @@ function CustomUI.BuffTracker:Create( windowName, parentName,
 
         if buffFrame ~= nil then
             newTracker.m_buffFrames[ buffSlot ] = buffFrame
+            -- Some parent layouts place the buff container outside its parent's bounds; make
+            -- sure each slot window always participates in hit-testing for tooltips.
+            WindowSetHandleInput( buffFrameName, true )
 
             local col = (buffSlot - 1) % buffRowStride
             local row = math.floor( (buffSlot - 1) / buffRowStride )
@@ -350,6 +553,11 @@ function CustomUI.BuffTracker:Create( windowName, parentName,
 
     newTracker = setmetatable( newTracker, self )
 
+    newTracker.m_sortResortElapsed = 0
+
+    newTracker:_ApplyContainerHitArea()
+    newTracker:_ApplyContainerScale()
+
     newTracker:_RebuildSortFunc()
     newTracker:Refresh()
 
@@ -363,7 +571,7 @@ end
 function CustomUI.BuffTracker:SetSortMode( mode )
     self.m_sortMode = mode
     self:_RebuildSortFunc()
-    self:OnBuffsChanged()
+    self:_RequestRebuild()
 end
 
 function CustomUI.BuffTracker:SetFilter( config )
@@ -380,32 +588,39 @@ function CustomUI.BuffTracker:SetFilter( config )
             playerCastOnly = config.playerCastOnly == true,  -- uses buffData.castByPlayer
         }
     end
-    self:OnBuffsChanged()
+    self:_RequestRebuild()
 end
 
 -- idTable: { [effectIndex] = true }.  Pass nil or {} to clear.
 function CustomUI.BuffTracker:SetBlacklist( idTable )
     self.m_blacklist = idTable or {}
     self:_WarnListConflicts()
-    self:OnBuffsChanged()
+    self:_RequestRebuild()
 end
 
 -- idTable: { [effectIndex] = true }.  Pass nil or {} to clear.
 function CustomUI.BuffTracker:SetWhitelist( idTable )
     self.m_whitelist = idTable or {}
     self:_WarnListConflicts()
-    self:OnBuffsChanged()
+    self:_RequestRebuild()
+end
+
+-- idTable: { [abilityId] = true } — matches tonumber( buffData.abilityId ). Pass nil or {} to clear.
+function CustomUI.BuffTracker:SetWhitelistAbility( idTable )
+    self.m_whitelistAbility = idTable or {}
+    self:_WarnListConflicts()
+    self:_RequestRebuild()
 end
 
 function CustomUI.BuffTracker:SetForceShowTrackerPriority100( enabled )
     self.m_forceShowTrackerPriority100 = enabled == true
     self:_RebuildSortFunc()
-    self:OnBuffsChanged()
+    self:_RequestRebuild()
 end
 
 function CustomUI.BuffTracker:SetCompressMultiCast( enabled )
     self.m_compressMultiCast = enabled == true
-    self:OnBuffsChanged()
+    self:_RequestRebuild()
 end
 
 function CustomUI.BuffTracker:SetBuffGroups( groups )
@@ -418,12 +633,12 @@ function CustomUI.BuffTracker:SetBuffGroups( groups )
             end
         end
     end
-    self:OnBuffsChanged()
+    self:_RequestRebuild()
 end
 
 function CustomUI.BuffTracker:SetGroupBuffs( enabled )
     self.m_groupBuffs = enabled == true
-    self:OnBuffsChanged()
+    self:_RequestRebuild()
 end
 
 -- Sets the alignment mode for slot layout within the container.
@@ -431,7 +646,7 @@ end
 -- "center" : visible slots re-centered horizontally on each OnBuffsChanged.
 function CustomUI.BuffTracker:SetAlignment( mode )
     self.m_alignment = mode or CustomUI.BuffTracker.Alignment.LEFT
-    self:OnBuffsChanged()
+    self:_RequestRebuild()
 end
 
 -- Enables or disables mouse input on the container and all slot windows.
@@ -448,22 +663,24 @@ end
 
 -- Scales the container window (and all slots inherit the scale).
 function CustomUI.BuffTracker:SetScale( scale )
-    if self.m_containerName and DoesWindowExist( self.m_containerName ) then
-        WindowSetScale( self.m_containerName, scale )
-    end
+    self.m_relativeScale = tonumber( scale ) or 1.0
+    self:_ApplyContainerScale()
 end
 
 -- Clears all displayed buffs and triggers a layout refresh.
 -- Use on target change or when the tracked unit becomes invalid.
 function CustomUI.BuffTracker:Clear()
     self.m_buffData = {}
-    self:OnBuffsChanged()
+    self:_RequestRebuild()
 end
 
 -- Shows or hides the container window.
 function CustomUI.BuffTracker:Show( show )
-    if self.m_containerName and DoesWindowExist( self.m_containerName ) then
-        WindowSetShowing( self.m_containerName, show == true )
+    self.m_requestedShow = show == true
+    self:_ApplyContainerVisibility()
+    if self:IsShowing() and self.m_dirtyWhileHidden then
+        self.m_dirtyWhileHidden = false
+        self:_RequestRebuild()
     end
 end
 
@@ -481,17 +698,68 @@ function CustomUI.BuffTracker:GetContainerName()
 end
 
 -- Destroys the container and all slot windows.
+-- Each slot Frame must be explicitly removed from FrameManager before the container
+-- window is destroyed; otherwise stale Frame Lua objects remain in FrameManager and
+-- block re-registration when the tracker is recreated (e.g. group member rejoin).
 function CustomUI.BuffTracker:Shutdown()
+    for _, frame in ipairs( self.m_buffFrames ) do
+        if frame and DoesWindowExist( frame:GetName() ) then
+            frame:Destroy()
+        end
+    end
     if self.m_containerName and DoesWindowExist( self.m_containerName ) then
         DestroyWindow( self.m_containerName )
     end
     self.m_containerName = nil
     self.m_buffFrames    = {}
+    self.m_visibleSlotCount = 0
 end
 
 ----------------------------------------------------------------
 -- Internal helpers
 ----------------------------------------------------------------
+
+function CustomUI.BuffTracker:_GetTableFromPool( src )
+    local t = table.remove( self.m_tablePool ) or {}
+    if src then
+        for k, v in pairs( src ) do
+            t[k] = v
+        end
+    end
+    return t
+end
+
+function CustomUI.BuffTracker:_ReleaseTableToPool( t )
+    if t == nil then return end
+    for k in pairs( t ) do
+        t[k] = nil
+    end
+    table.insert( self.m_tablePool, t )
+end
+
+function CustomUI.BuffTracker:_GetSortedKeys( t )
+    local ks = self.m_scratchSortedKeys
+    local n = 0
+    for k in pairs( t ) do
+        n = n + 1
+        ks[n] = k
+    end
+    -- Clear trailing old keys
+    for i = #ks, n + 1, -1 do
+        ks[i] = nil
+    end
+
+    table.sort( ks, function( a, b )
+        local typeA, typeB = type( a ), type( b )
+        if typeA == "number" and typeB == "number" then
+            return a < b
+        end
+        local na, nb = tonumber( a ), tonumber( b )
+        if na and nb then return na < nb end
+        return tostring( a ) < tostring( b )
+    end )
+    return ks
+end
 
 function CustomUI.BuffTracker:_RebuildSortFunc()
     local priority  = c_SORT_PRIORITY[ self.m_sortMode ]
@@ -514,8 +782,8 @@ function CustomUI.BuffTracker:_RebuildSortFunc()
             end
         end
 
-        local catA = GetDurationCategory( a, threshold )
-        local catB = GetDurationCategory( b, threshold )
+        local catA = a._sortDurCat or GetDurationCategory( a, threshold )
+        local catB = b._sortDurCat or GetDurationCategory( b, threshold )
         local priA = priority[ catA ]
         local priB = priority[ catB ]
 
@@ -579,18 +847,37 @@ function CustomUI.BuffTracker:_PassesFilter( buffData )
 end
 
 function CustomUI.BuffTracker:_ApplyBuffGroups( sourceData )
-    local groupBuckets = {}
-    local result       = {}
+    local scratch      = self.m_scratchGroups
+    local groupBuckets = scratch.groupBuckets or {}
+    local result       = scratch.result       or {}
+    scratch.groupBuckets = groupBuckets
+    scratch.result       = result
 
-    for _, buffData in pairs( sourceData ) do
+    for k in pairs( groupBuckets ) do
+        groupBuckets[k] = nil
+    end
+
+    -- Release synthetic tables from previous pass
+    for i = #result, 1, -1 do
+        local entry = result[i]
+        if entry._isSynthetic and entry._syntheticOwner == "group" then
+            self:_ReleaseTableToPool( entry )
+        end
+        result[i] = nil
+    end
+
+    for _, buffData in ipairs( sourceData ) do
         local groupIdx = self.m_groupLookup[ buffData.abilityId ]
         if groupIdx then
-            if not groupBuckets[ groupIdx ] then
-                groupBuckets[ groupIdx ] = { members = {} }
+            local bucket = groupBuckets[ groupIdx ]
+            if not bucket then
+                bucket = { members = {} }
+                groupBuckets[ groupIdx ] = bucket
             end
-            table.insert( groupBuckets[ groupIdx ].members, buffData )
+            local members = bucket.members
+            members[#members + 1] = buffData
         else
-            table.insert( result, buffData )
+            result[#result + 1] = buffData
         end
     end
 
@@ -609,23 +896,116 @@ function CustomUI.BuffTracker:_ApplyBuffGroups( sourceData )
                     best = c
                 end
             end
-            local synthetic = {}
-            for k, v in pairs( best ) do synthetic[k] = v end
+            local synthetic = self:_GetTableFromPool( best )
             synthetic.stackCount = #members
-            table.insert( result, synthetic )
+            synthetic._isSynthetic = true
+            synthetic._syntheticOwner = "group"
+            result[#result + 1] = synthetic
         end
     end
 
     return result
 end
 
+-- Follow-up #35: coalesce multiple setter calls into one rebuild.
+function CustomUI.BuffTracker:BeginBatch()
+    self.m_batchDepth = (self.m_batchDepth or 0) + 1
+end
+
+function CustomUI.BuffTracker:EndBatch()
+    local d = (self.m_batchDepth or 0) - 1
+    if d < 0 then d = 0 end
+    self.m_batchDepth = d
+    if d == 0 and self.m_rebuildPending then
+        self.m_rebuildPending = false
+        self:_RequestRebuild()
+    end
+end
+
+function CustomUI.BuffTracker:_RequestRebuild( immediate )
+    self.m_rebuildPending = true
+
+    if (self.m_batchDepth or 0) > 0 then
+        return
+    end
+    if not self:IsShowing() then
+        self.m_dirtyWhileHidden = true
+        return
+    end
+
+    if immediate or (self.m_sortResortElapsed or 0) >= c_SORT_THROTTLE_INTERVAL then
+        self.m_rebuildPending = false
+        self.m_sortResortElapsed = 0
+        self:OnBuffsChanged()
+    end
+end
+
 function CustomUI.BuffTracker:_WarnListConflicts()
-    for effectId in pairs( self.m_whitelist ) do
+    if CustomUI.DebugLogging ~= true then
+        return
+    end
+    for _, effectId in ipairs( _sortedMapKeys( self.m_whitelist ) ) do
         if self.m_blacklist[ effectId ] then
             LogLuaMessage( "Lua", SystemData.UiLogFilters.WARNING,
                 L"[CustomUI] effectIndex " .. tostring( effectId )
                 .. L" is in both blacklist and whitelist. Both rules are ignored; filter result applies." )
         end
+    end
+end
+
+function CustomUI.BuffTracker:_IsOwnerShowing()
+    if self.m_ownerName == nil or self.m_ownerName == "" then
+        return true
+    end
+    if not DoesWindowExist( self.m_ownerName ) then
+        return false
+    end
+
+    local current = self.m_ownerName
+    local guard = 0
+    while current ~= nil and current ~= "" and DoesWindowExist( current ) do
+        if WindowGetShowing( current ) ~= true then
+            return false
+        end
+        if type( WindowGetParent ) ~= "function" then
+            return true
+        end
+        current = WindowGetParent( current )
+        guard = guard + 1
+        if guard > 20 then
+            return true
+        end
+    end
+
+    return true
+end
+
+function CustomUI.BuffTracker:_ApplyContainerVisibility()
+    if self.m_containerName and DoesWindowExist( self.m_containerName ) then
+        WindowSetShowing( self.m_containerName,
+            self.m_requestedShow == true and self:_IsOwnerShowing() )
+    end
+end
+
+function CustomUI.BuffTracker:_ApplyContainerScale()
+    if not ( self.m_containerName and DoesWindowExist( self.m_containerName ) ) then
+        return
+    end
+
+    local ownerScale = 1.0
+    if self.m_ownerName and DoesWindowExist( self.m_ownerName ) then
+        ownerScale = tonumber( WindowGetScale( self.m_ownerName ) ) or 1.0
+    end
+
+    WindowSetScale( self.m_containerName, ownerScale * ( self.m_relativeScale or 1.0 ) )
+end
+
+function CustomUI.BuffTracker:_ApplyContainerHitArea()
+    if self.m_containerName
+       and self.m_containerW
+       and self.m_containerH
+       and DoesWindowExist( self.m_containerName ) then
+        WindowSetDimensions( self.m_containerName, self.m_containerW, self.m_containerH )
     end
 end
 
@@ -663,22 +1043,76 @@ end
 ----------------------------------------------------------------
 
 function CustomUI.BuffTracker:Update( elapsedTime )
-    -- Tick durations in m_buffData.
-    for _, buffData in pairs( self.m_buffData ) do
+    local wasShowing = self:IsShowing()
+    self:_ApplyContainerScale()
+    self:_ApplyContainerVisibility()
+    if not wasShowing and self:IsShowing() and self.m_dirtyWhileHidden then
+        self.m_dirtyWhileHidden = false
+        self:_RequestRebuild()
+    end
+
+    self.m_sortResortElapsed = (self.m_sortResortElapsed or 0) + elapsedTime
+    self.m_timeSinceLastRefresh = (self.m_timeSinceLastRefresh or 0) + elapsedTime
+
+    -- Tick durations and prune expired buffs in a single pass.
+    -- Removing an existing key during pairs() is safe in Lua 5.1.
+    local pruned = false
+    for bk, buffData in pairs( self.m_buffData ) do
         if IsValidBuff( buffData ) and not buffData.permanentUntilDispelled then
-            buffData.duration = math.max( 0, buffData.duration - elapsedTime )
+            local d = ( buffData.duration or 0 ) - elapsedTime
+            if d <= 0 then
+                self:_ReleaseTableToPool( buffData )
+                self.m_buffData[ bk ] = nil
+                pruned = true
+            else
+                buffData.duration = d
+            end
+        end
+    end
+    if pruned then
+        self.m_rebuildPending = true
+    end
+
+    -- Tick timer labels for visible slots only (smooth countdown).
+    -- Cap by m_maxBuffs: OnBuffsChanged only has slots for that many frames (#finalData can exceed it).
+    local visCount = math.min( self.m_visibleSlotCount or 0, self.m_maxBuffs or 0 )
+    for buffSlot = 1, visCount do
+        local frame = self.m_buffFrames[ buffSlot ]
+        if frame and frame.Update and frame.m_buffData and frame.m_buffData.effectIndex then
+            if frame.m_buffData._isSynthetic and not frame.m_buffData.permanentUntilDispelled then
+                local d = (frame.m_buffData.duration or 0) - elapsedTime
+                if d < 0 then d = 0 end
+                frame.m_buffData.duration = d
+            end
+            frame:Update( false )
         end
     end
 
-    if self.m_compiledSortFunc or self.sortFunc then
-        -- Re-sort and reassign slots. SetBuff shares the same buffData reference
-        -- so frame timer labels see the already-ticked duration — no second tick needed.
-        self:OnBuffsChanged()
-    else
-        -- No sort: just refresh timer labels on each frame (stock behaviour).
-        for _, buffFrame in ipairs( self.m_buffFrames ) do
-            buffFrame:Update( false )
+    local sortActive = self.m_compiledSortFunc or self.sortFunc
+    local durCatChanged = false
+
+    if sortActive and not pruned then
+        local threshold = self.m_durationThreshold
+        for _, buffData in pairs( self.m_buffData ) do
+            if IsValidBuff( buffData ) and not buffData.permanentUntilDispelled then
+                local catNow = GetDurationCategory( buffData, threshold )
+                local prev   = buffData._layoutDurCat
+                if prev ~= nil and catNow ~= prev then
+                    durCatChanged = true
+                    break
+                end
+            end
         end
+    end
+
+    if durCatChanged then
+        self.m_rebuildPending = false
+        self.m_sortResortElapsed = 0
+        self:OnBuffsChanged()
+    elseif self.m_rebuildPending and self.m_sortResortElapsed >= c_SORT_THROTTLE_INTERVAL then
+        self.m_rebuildPending = false
+        self.m_sortResortElapsed = 0
+        self:OnBuffsChanged()
     end
 end
 
@@ -688,37 +1122,98 @@ end
 
 local function CopyBuffData( src )
     local copy = {}
-    for k, v in pairs( src ) do copy[k] = v end
+    for k, v in pairs( src ) do
+        copy[ k ] = v
+    end
     return copy
 end
 
-function CustomUI.BuffTracker:Refresh()
+local function AssignBuffData( dst, src )
+    for k in pairs( dst ) do
+        dst[k] = nil
+    end
+    for k, v in pairs( src ) do
+        dst[k] = v
+    end
+end
+
+function CustomUI.BuffTracker:Refresh( force )
+    if not force and ( self.m_timeSinceLastRefresh or 999 ) < c_REFRESH_THROTTLE_INTERVAL then
+        self:_RequestRebuild()
+        return
+    end
+    self.m_timeSinceLastRefresh = 0
+
     local allBuffs = GetBuffs( self.m_targetType )
-    self.m_buffData = {}
+    local buffData = self.m_buffData
+    local seen = self.m_scratchSeen or {}
+    self.m_scratchSeen = seen
+    for k in pairs( seen ) do seen[k] = nil end
+
     if allBuffs then
-        for id, buffData in pairs( allBuffs ) do
-            self.m_buffData[id] = CopyBuffData( buffData )
+        for id, buffEntry in pairs( allBuffs ) do
+            local existing = buffData[id]
+            if existing then
+                AssignBuffData( existing, buffEntry )
+            else
+                buffData[id] = self:_GetTableFromPool( buffEntry )
+            end
+            seen[id] = true
         end
     end
-    self:OnBuffsChanged()
+    for id, existing in pairs( buffData ) do
+        if not seen[id] then
+            self:_ReleaseTableToPool( existing )
+            buffData[id] = nil
+        end
+    end
+    self:_RequestRebuild( force == true )
 end
 
 function CustomUI.BuffTracker:UpdateBuffs( updatedBuffsTable, isFullList )
     if not updatedBuffsTable then return end
 
     if isFullList then
-        self.m_buffData = {}
-    end
+        local seen = self.m_scratchSeen or {}
+        self.m_scratchSeen = seen
+        for k in pairs( seen ) do seen[k] = nil end
 
-    for buffId, buffData in pairs( updatedBuffsTable ) do
-        if IsValidBuff( buffData ) then
-            self.m_buffData[buffId] = CopyBuffData( buffData )
-        elseif not isFullList then
-            self.m_buffData[buffId] = nil
+        for buffId, buffData in pairs( updatedBuffsTable ) do
+            if IsValidBuff( buffData ) then
+                local existing = self.m_buffData[buffId]
+                if existing then
+                    AssignBuffData( existing, buffData )
+                else
+                    self.m_buffData[buffId] = self:_GetTableFromPool( buffData )
+                end
+                seen[buffId] = true
+            end
+        end
+        for id, existing in pairs( self.m_buffData ) do
+            if not seen[id] then
+                self:_ReleaseTableToPool( existing )
+                self.m_buffData[id] = nil
+            end
+        end
+    else
+        for buffId, buffData in pairs( updatedBuffsTable ) do
+            if IsValidBuff( buffData ) then
+                local existing = self.m_buffData[buffId]
+                if existing then
+                    AssignBuffData( existing, buffData )
+                else
+                    self.m_buffData[buffId] = self:_GetTableFromPool( buffData )
+                end
+            else
+                if self.m_buffData[buffId] then
+                    self:_ReleaseTableToPool( self.m_buffData[buffId] )
+                    self.m_buffData[buffId] = nil
+                end
+            end
         end
     end
 
-    self:OnBuffsChanged()
+    self:_RequestRebuild()
 end
 
 ----------------------------------------------------------------
@@ -726,13 +1221,36 @@ end
 ----------------------------------------------------------------
 
 function CustomUI.BuffTracker:OnBuffsChanged()
-    local whitelist  = self.m_whitelist
-    local blacklist  = self.m_blacklist
+    -- Follow-up #29: skip full pipeline while hidden; rebuild on next Show(true).
+    if not self:IsShowing() then
+        self.m_dirtyWhileHidden = true
+        return
+    end
 
-    local postFilter = {}
-    local inResult   = {}
+    local whitelist         = self.m_whitelist
+    local whitelistAbility  = self.m_whitelistAbility
+    local blacklist         = self.m_blacklist
 
-    for _, buffData in pairs( self.m_buffData ) do
+    local postFilter = self.m_scratchPostFilter
+    local inResult   = self.m_scratchInResult
+    for i = #postFilter, 1, -1 do
+        postFilter[i] = nil
+    end
+    for k in pairs( inResult ) do
+        inResult[ k ] = nil
+    end
+
+    local function WhitelistHits( buffData )
+        local effectId = buffData.effectIndex
+        local aid      = tonumber( buffData.abilityId )
+        return (effectId ~= nil and whitelist[effectId])
+            or (aid ~= nil and whitelistAbility[aid])
+    end
+
+    -- Single pass: filter + blacklist/whitelist + whitelist add-back merged.
+    -- Sorted iteration preserves stable display order for NONE sort mode.
+    for _, bk in ipairs( self:_GetSortedKeys( self.m_buffData ) ) do
+        local buffData = self.m_buffData[ bk ]
         if self.m_forceShowTrackerPriority100
            and tonumber( buffData.trackerPriority ) == 100 then
             local effectId = buffData.effectIndex
@@ -741,40 +1259,31 @@ function CustomUI.BuffTracker:OnBuffsChanged()
                 inResult[ effectId ] = true
             end
         else
-        local effectId   = buffData.effectIndex
-        local inBlack    = blacklist[ effectId ]
-        local inWhite    = whitelist[ effectId ]
-        local conflicted = inBlack and inWhite
-        local passes     = self.filterFunc
-                           and self.filterFunc( buffData )
-                           or  self:_PassesFilter( buffData )
+            local effectId   = buffData.effectIndex
+            local inBlack    = blacklist[ effectId ]
+            local inWhite    = WhitelistHits( buffData )
+            local conflicted = inBlack and inWhite
+            local passes     = self.filterFunc
+                               and self.filterFunc( buffData )
+                               or  self:_PassesFilter( buffData )
 
-        if conflicted then
-            if passes then
+            local shouldAdd
+            if conflicted then
+                shouldAdd = passes              -- black+white conflict: filter decides
+            elseif not inBlack then
+                shouldAdd = passes or inWhite   -- not blacklisted: filter OR whitelisted
+            end
+            -- (blacklisted and not conflicted: never add, even if whitelisted)
+
+            if shouldAdd and effectId ~= nil and not inResult[ effectId ] then
                 table.insert( postFilter, buffData )
                 inResult[ effectId ] = true
             end
-        elseif not inBlack then
-            if passes then
-                table.insert( postFilter, buffData )
-                inResult[ effectId ] = true
-            end
-        end
-        end
-    end
-
-    for _, buffData in pairs( self.m_buffData ) do
-        local effectId = buffData.effectIndex
-        if whitelist[ effectId ]
-           and not blacklist[ effectId ]
-           and not inResult[ effectId ] then
-            table.insert( postFilter, buffData )
-            inResult[ effectId ] = true
         end
     end
 
     local postCompress = self.m_compressMultiCast
-                         and CompressBuffData( postFilter )
+                         and CompressBuffData( self, postFilter, self.m_scratchCompress )
                          or  postFilter
 
     local finalData = postCompress
@@ -784,6 +1293,16 @@ function CustomUI.BuffTracker:OnBuffsChanged()
 
     local sortFn = self.sortFunc or self.m_compiledSortFunc
     if sortFn then
+        -- Follow-up #30: decorate-sort duration category once per rebuild (compiled sort only).
+        if sortFn == self.m_compiledSortFunc then
+            local threshold = self.m_durationThreshold
+            for i = 1, #finalData do
+                local b = finalData[i]
+                if b then
+                    b._sortDurCat = GetDurationCategory( b, threshold )
+                end
+            end
+        end
         table.sort( finalData, sortFn )
     end
 
@@ -794,6 +1313,17 @@ function CustomUI.BuffTracker:OnBuffsChanged()
         else
             buffFrame:SetBuff( nil )
         end
+    end
+
+    -- Re-apply full container dimensions after slot visibility changes.  The engine's
+    -- layout pass (triggered by the SetBuff show/hide calls above) auto-fits the container
+    -- to its currently-visible children, collapsing its height to just the first row.
+    -- Slots in rows 2+ end up outside the container's hit bounds and never fire OnMouseOver.
+    -- CENTER alignment resizes the container itself inside _ApplyCenterAlignment below, so
+    -- we only need this for LEFT-aligned trackers.
+    if self.m_alignment == CustomUI.BuffTracker.Alignment.LEFT
+       and self.m_containerName then
+        self:_ApplyContainerHitArea()
     end
 
     -- Apply center alignment after slots have been shown/hidden.
@@ -807,5 +1337,18 @@ function CustomUI.BuffTracker:OnBuffsChanged()
         self:_ApplyCenterAlignment( visibleSlots )
     end
 
-    self.m_VisibleRowCount = self:GetVisibleRowCount( maxBuffIndex )
+    -- Visible slots cannot exceed created frames (m_maxBuffs); #finalData may be larger.
+    local visibleSlots = math.min( maxBuffIndex, self.m_maxBuffs or maxBuffIndex )
+    self.m_VisibleRowCount  = self:GetVisibleRowCount( visibleSlots )
+    self.m_visibleSlotCount = visibleSlots
+
+    -- Snapshot duration categories for dirty detection in Update (sort-on path only).
+    if self.m_compiledSortFunc or self.sortFunc then
+        local threshold = self.m_durationThreshold
+        for _, buffData in pairs( self.m_buffData ) do
+            if IsValidBuff( buffData ) then
+                buffData._layoutDurCat = GetDurationCategory( buffData, threshold )
+            end
+        end
+    end
 end

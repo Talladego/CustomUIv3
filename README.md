@@ -4,14 +4,18 @@ CustomUI is a modular Return of Reckoning addon that replaces and enhances stock
 
 ## Documentation
 
-- **`README.md`**: architecture overview, component list, and contributor-facing conventions.
-- **`issues.md`**: code quality backlog (bugs, tech debt, and audit notes; keep items here until resolved).
-- **`plan.md`**: historical implementation plan notes (some sections reflect older patterns; treat as reference, not the current source of truth).
-- **`CustomUISettingsWindow/README.md`**: developer notes for the **separate** settings UI addon (tab layout + XML anchoring pitfalls + diagnostics).
-- **Component refactor plans** (scoped follow-ups):
-  - **`Source/Components/SCT/plan.md`**: historical notes from the v2 SCT migration (handler swap + stock subclasses); v2 is **complete** — runtime lives in `SCTOverrides.lua` / `SCTHandlers.lua`.
-  - **`Source/Components/PlayerStatusWindow/plan.md`**: PlayerPetWindow stock-hook lifecycle tightening.
-  - **`Source/Components/UnitFrames/plan.md`**: BattlegroupHUD stock-hook lifecycle tightening (symmetry / unload edge cases).
+**This README is the documentation entry point.** Markdown docs and curated data paths (below) carry a **last updated** stamp (ISO date); refresh the stamp when those files materially change.
+
+| Document | Purpose | Updated |
+|----------|---------|---------|
+| [README.md](README.md) | Entry point — architecture, components, conventions | 2026-05-13 |
+| [guard_whitelist.csv](guard_whitelist.csv) | Guard / Save Da Runts ability IDs (ingested into `DefaultWhitelistAbility`) | 2026-05-02 |
+| [review.md](review.md) | Code-quality audit with key findings | 2026-05-13 |
+| [issues.md](issues.md) | Backlog — open issues and resolved history | 2026-05-13 |
+| [plan.md](plan.md) | Code-quality execution phases and performance notes | 2026-05-13 |
+| [CustomUISettingsWindow/README.md](CustomUISettingsWindow/README.md) | Settings addon — tab layout, XML pitfalls, diagnostics | 2026-05-02 |
+| [Source/Components/SCT/plan.md](Source/Components/SCT/plan.md) | SCT v2 design (deviation-only model) | 2026-04-29 |
+| [Source/Components/SCT/implementation.md](Source/Components/SCT/implementation.md) | SCT v2 implementation notes | 2026-04-26 |
 
 ## Installation
 
@@ -46,7 +50,7 @@ Controller-only (`Controller/GroupIconsController.lua`); `View/GroupIcons.xml` d
 
 - **Roster grid**: up to 6 parties × 6 members (`CustomUIGroupIcon_<party>_<member>`). Scenario mode with the scenario toggle ON fills slots from `GameData.GetScenarioPlayerGroups()` (`sgroupindex` / `sgroupslotnum`). Open-world warband uses `GetBattlegroupMemberData` with optional `PartyUtils.GetWarbandMember` hydration. Party-only uses row 1 via `PartyUtils.GetPartyMember` when available.
 - **Live `worldObjNum` rule**: an icon attaches only when the current refresh yields a non-zero entity id from party/warband/scenario row data. Cached ids refresh `LearnKnown` / sticky maps but are **not** used alone for attach (invalid ids tend to snap UI to the screen origin).
-- **Outsiders**: `PLAYER_TARGET_UPDATED` for hostile / friendly / mouseover classifications is queued and resolved next `OnUpdate` after stock TargetInfo updates. Non-roster players get realm-colored rings and per-frame `MoveWindowToWorldObject` until the probe detects a dead or unloaded entity (FIFO cap `48`).
+- **Outsiders**: `PLAYER_TARGET_UPDATED` for hostile / friendly / mouseover classifications is queued and resolved next `OnUpdate` after stock TargetInfo updates. Non-roster players get realm-colored rings attached with **`AttachWindowToWorldObject`** (same as roster). The invisible probe runs on **`c_OUTSIDER_PROBE_INTERVAL`** (~5 Hz) with **`MoveWindowToWorldObject(probe, wid)` only** — to detect dead/unloaded entities and untrack; icon windows are **not** moved each frame. FIFO cap `48` evicts the oldest *non-priority* track: entity IDs for the current **hostile** and **friendly** player targets in `TargetInfo` are never chosen for eviction first.
 - **Self**: never shown.
 - **Settings**: `CustomUI.Settings.GroupIcons` (party / warband / scenario roster toggles, outsider hostile+friendly, archetype ring colors); UI lives in **CustomUISettingsWindow**.
 
@@ -76,8 +80,9 @@ into the selected tab class (`UpdateSettings`, `ApplyCurrent`, `ResetSettings`, 
 where implemented.
 
 Tab layout, `SWTab<Name>Contents*` naming, and the XML section-stacking rules are in
-`CustomUISettingsWindow/README.md`. `plan.md` still describes the older
-`RegisterTab` pattern for historical context only.
+[CustomUISettingsWindow/README.md](CustomUISettingsWindow/README.md). Root [plan.md](plan.md)
+opens with the live **code quality & fix plan**; later sections retain the older `RegisterTab`
+pattern for historical context only.
 
 
 ## Shared subsystems
@@ -91,7 +96,7 @@ A `BuffTracker` subclass that extends the stock frame with:
 - **Compression** (`CompressBuffData`) — merges multiple instances of the same logical ability into one icon (including different casters); sums `stackCount` correctly so two casters each with ×3 stacks show as ×6. Groups by `abilityId` when present, else by `effectIndex`. Distinct from **buff grouping** (`SetBuffGroups`), which collapses configured `abilityId` variants (e.g. stat lines) into one icon.
 - **Stack display** — shows `xN` on the timer label when `stackCount > 1`; falls back to duration when the count drops to 1 (never shows ×1).
 - **Filter** (`SetFilter`) — category (buff/debuff/neutral), duration bucket (short/long/permanent), and caster (`playerCastOnly`) gates. Pass `nil` to show everything.
-- **Blacklist / Whitelist** — `Blacklist.lua` and `Whitelist.lua` filter buffs by `effectIndex`; blacklist removes unconditionally, whitelist adds back what the filter removed. Conflicted IDs cancel both rules and fall back to the filter result.
+- **Blacklist / Whitelist** — `BuffLists.lua` defines `DefaultBlacklist`, `DefaultWhitelist`, and `DefaultWhitelistAbility`. Blacklist keys **`effectIndex`**. Whitelist matches **`effectIndex`** and/or **`buffData.abilityId`**. Whitelist rescues buffs the filter hid; blacklist still blocks those rows when keyed on `effectIndex`. Same `effectIndex` on both lists triggers a conflict warning and relies on the filter only. Shipped **`DefaultWhitelistAbility`** includes Guard / Save Da Runts ability IDs from `guard_whitelist.csv`. Target buff trackers apply defaults via **`ApplySharedDefaultLists`** alongside player/group/HUD trackers.
 
 ### CustomUI.TargetFrame
 
@@ -140,6 +145,7 @@ Each component uses:
 CustomUI/
 	CustomUI.mod
 	README.md
+	review.md
 	issues.md
 	plan.md
 	CustomUISettingsWindow/   ← separate UiMod; tab XML/Lua, own README
@@ -152,8 +158,7 @@ CustomUI/
 			BuffTracker/
 				BuffTracker.lua
 				BuffGroups.lua
-				Blacklist.lua
-				Whitelist.lua
+				BuffLists.lua
 			UnitFrame/
 				TargetFrame.lua
 		Components/
@@ -193,11 +198,6 @@ CustomUI/
 				Controller/
 					UnitFramesController.lua
 					UnitFramesEvents.lua          ← stock vs CustomUI window names (used by controller)
-					UnitFramesModel.lua           ← stub factories (optional refactor)
-					UnitFramesRenderer.lua        ← no-op render pass stub
-					Adapters/
-						WarbandAdapter.lua        ← stub
-						ScenarioFloatingAdapter.lua ← stub
 				View/
 					UnitFrames.xml
 			SCT/
@@ -221,7 +221,7 @@ CustomUI/
 | Path | Status | Role |
 |------|--------|------|
 | `Shared.xml` | **Current** | Defines `CustomUIBuffContainerTemplate`; `BuffTracker` creates slot windows from it. |
-| `BuffTracker/` (`BuffTracker.lua`, `BuffGroups.lua`, `Blacklist.lua`, `Whitelist.lua`) | **Current** | Core buff list behavior: trackers used by `PlayerStatusWindow`, `TargetWindow` (via `TargetFrame`), `GroupWindow`, `TargetHUD`. Blacklist/Whitelist are default tables; BuffGroups is merge metadata. |
+| `BuffTracker/` (`BuffTracker.lua`, `BuffGroups.lua`, `BuffLists.lua`) | **Current** | Core buff list behavior: trackers used by `PlayerStatusWindow`, `TargetWindow` (via `TargetFrame`), `GroupWindow`, `TargetHUD`. `BuffLists.lua` holds default blacklist/whitelist tables; BuffGroups is merge metadata. |
 | `UnitFrame/TargetFrame.lua` | **Current** | Stock `TargetUnitFrame` subclass with `CustomUI.BuffTracker`; used only by **TargetWindow**. |
 
 All of the above are loaded from `CustomUI.mod` on the main path and are required for shipped components.
@@ -235,6 +235,7 @@ The old in-addon `CustomUI.SettingsWindow` / `MiniSettingsWindow` shells and per
 
 ### Safe Hooking and Wrappers
 - Always use `pcall` when wrapping or hooking engine or stock functions to prevent errors from propagating and breaking the UI.
+- **No blind `pcall`:** capture `local ok, … = pcall(…)` and forward every return value from stock on success; log on failure. See [plan.md § `pcall` convention](plan.md).
 - Forward all arguments (`...`) and return values in wrappers to preserve original behavior.
 - Log errors in wrappers for easier debugging.
 
@@ -249,7 +250,7 @@ The old in-addon `CustomUI.SettingsWindow` / `MiniSettingsWindow` shells and per
 
 ### Global Namespace Safety
 - Prefer `CustomUI.*` tables and locals. For `ListData table="…"`, use the same `Namespace.field` style as stock (e.g. `LayoutEditor.windowBrowserDataList` in the client); do not introduce a new bare global for list data.
-- Optional client debug logging reads `rawget(_G, "d")` only via `CustomUI.GetClientDebugLog()` in `Source/CustomUI.lua`; addons must not assign global `d`.
+- Optional client debug logging: `CustomUI.GetClientDebugLog()` returns `rawget(_G, "d")` (read-only; addons must not assign global `d`). **`CustomUI.SCTLog(msg)`** mirrors traces when `CustomUI.DebugLogging` is true — calls `d()` when present, otherwise **`LogLuaMessage`** at DEBUG so **`uilog.log`** receives lines without a client `d` hook.
 
 ### Shared Defaults and Code
 - Extract duplicated tables or logic (such as buff filter defaults) into shared modules under `Shared/`.
@@ -304,6 +305,7 @@ The SCT component cannot follow the standard window-visibility contract because 
 
 - `CustomUI.SCT.EventEntry` and `CustomUI.SCT.PointGainEntry` subclass the stock entry classes (custom scale, color, and crit animation).
 - `CustomUI.SCT.EventTracker` is derived from the stock tracker but spawns CustomUI entries.
+- **`CustomUI.SCT.EventTrackers`** has a hard cap (`c_EVENT_TRACKERS_MAX` in `SCTHandlers.lua`); LRU-style eviction (touch sequence + quiescent-first) prevents unbounded growth when many distinct targets appear in one fight.
 - `CustomUI.SCT.InstallHandlers()` / `RestoreHandlers()` swap `RegisterEventHandler` bindings between stock `EA_System_EventText.*` handlers and `CustomUI.SCT.*` handlers.
 
 Stock `EA_System_EventText` functions and stock class globals remain intact for other addons to call/hook.

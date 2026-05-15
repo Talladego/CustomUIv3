@@ -2,6 +2,7 @@
 -- GroupWindow test harness (dev) — not part of Controller/View
 -- Fakes group roster data and slash gwharness. Do not add production UI or lifecycle
 -- here; keep the real Group window split documented in GroupWindowController.lua.
+-- TODO: remove this file from the shipping manifest once GroupWindow is feature-complete.
 ----------------------------------------------------------------
 
 if not CustomUI then

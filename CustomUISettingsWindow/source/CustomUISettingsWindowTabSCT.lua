@@ -453,10 +453,16 @@ local function RefreshSctControls()
     end
     SctHideColorPicker()
     m_refreshing = true
-    for _, d in ipairs(CustomUI.SCT.GetSettingsRowDescriptors()) do
-        SetupRow(ContentPrefixForRowSuffix(d.suffix), d.suffix)
+    local ok, err = pcall(function()
+        for _, d in ipairs(CustomUI.SCT.GetSettingsRowDescriptors()) do
+            SetupRow(ContentPrefixForRowSuffix(d.suffix), d.suffix)
+        end
+    end)
+    m_refreshing = false  -- always clear, even on error
+    if not ok and CustomUI.DebugLogging == true then
+        LogLuaMessage("Lua", SystemData.UiLogFilters.WARNING,
+            L"[CustomUI] RefreshSctControls error: " .. tostring(err))
     end
-    m_refreshing = false
 end
 
 local function ParseControlName(winName)
@@ -627,6 +633,9 @@ local c_SCT_ROW_ORDER = {
     "CritAnimation",
     "CritSize",
     "AbilityIcon",
+    "CombatSplitLanes",
+    "MessageThrottle",
+    "MessageThrottleQueue",
     "TextFont",
 }
 local c_SCT_ROW_HEIGHT = 37
@@ -722,6 +731,38 @@ local function SyncAbilityIconButton()
     end
 end
 
+local function CombatSplitLanesCheckPrefix()
+    return c_SCT_PREFIX .. "RowCombatSplitLanes"
+end
+
+local function SyncCombatSplitLanesButton()
+    local p = CombatSplitLanesCheckPrefix()
+    if DoesWindowExist(p .. "CombatSplitLanesCheckButton") then
+        ButtonSetPressedFlag(p .. "CombatSplitLanesCheckButton", CustomUI.SCT.GetCombatSplitLanes())
+    end
+end
+
+local function RowMessageThrottleMpsSlider()
+    return c_SCT_PREFIX .. "RowMessageThrottleMessageThrottleMps"
+end
+
+local function RowMessageThrottleQueueSlider()
+    return c_SCT_PREFIX .. "RowMessageThrottleQueueMessageThrottleQueueMax"
+end
+
+local function SyncMessageThrottleSliders()
+    local mpsW = RowMessageThrottleMpsSlider()
+    local qW = RowMessageThrottleQueueSlider()
+    m_refreshing = true
+    if DoesWindowExist(mpsW) then
+        SliderBarSetCurrentPosition(mpsW, CustomUI.SCT.ThrottleMpsToSliderPos(CustomUI.SCT.GetThrottleMessagesPerSecond()))
+    end
+    if DoesWindowExist(qW) then
+        SliderBarSetCurrentPosition(qW, CustomUI.SCT.ThrottleQueueToSliderPos(CustomUI.SCT.GetThrottleQueueMax()))
+    end
+    m_refreshing = false
+end
+
 function CustomUISettingsWindowTabSCT.Initialize()
     ReanchorSctRows()
     ReanchorCombatTextRows()
@@ -777,6 +818,23 @@ function CustomUISettingsWindowTabSCT.Initialize()
     end
     if DoesWindowExist(c_SCT_PREFIX .. "RowAbilityIconShowAbilityNameInTextButton") then
         ButtonSetCheckButtonFlag( c_SCT_PREFIX .. "RowAbilityIconShowAbilityNameInTextButton", true )
+    end
+    if DoesWindowExist(c_SCT_PREFIX .. "RowCombatSplitLanesCombatLanesRowTitleLabel") then
+        LabelSetText(c_SCT_PREFIX .. "RowCombatSplitLanesCombatLanesRowTitleLabel", L"Combat stacking")
+    end
+    if DoesWindowExist(c_SCT_PREFIX .. "RowCombatSplitLanesCombatSplitLanesCheckLabel") then
+        LabelSetText(c_SCT_PREFIX .. "RowCombatSplitLanesCombatSplitLanesCheckLabel",
+            L"Split lanes (like points)")
+    end
+    if DoesWindowExist(c_SCT_PREFIX .. "RowCombatSplitLanesCombatSplitLanesCheckButton") then
+        ButtonSetCheckButtonFlag(c_SCT_PREFIX .. "RowCombatSplitLanesCombatSplitLanesCheckButton", true)
+    end
+
+    if DoesWindowExist(c_SCT_PREFIX .. "RowMessageThrottleMessageThrottleLabel") then
+        LabelSetText(c_SCT_PREFIX .. "RowMessageThrottleMessageThrottleLabel", L"Max messages / sec")
+    end
+    if DoesWindowExist(c_SCT_PREFIX .. "RowMessageThrottleQueueMessageThrottleQueueLabel") then
+        LabelSetText(c_SCT_PREFIX .. "RowMessageThrottleQueueMessageThrottleQueueLabel", L"Throttle queue size")
     end
     LabelSetText( c_SCT_PREFIX .. "RowCombatXOffsetCombatXOffsetLabel", L"X Offset" )
     LabelSetText( c_SCT_PREFIX .. "RowCombatXOffsetCombatXOffsetIncomingLabel", L"X Offset" )
@@ -840,6 +898,8 @@ function CustomUISettingsWindowTabSCT.Initialize()
     SyncXOffsetSliders()
     SyncYOffsetSliders()
     SyncAbilityIconButton()
+    SyncCombatSplitLanesButton()
+    SyncMessageThrottleSliders()
 end
 
 function CustomUISettingsWindowTabSCT.UpdateSettings()
@@ -851,6 +911,8 @@ function CustomUISettingsWindowTabSCT.UpdateSettings()
     SyncXOffsetSliders()
     SyncYOffsetSliders()
     SyncAbilityIconButton()
+    SyncCombatSplitLanesButton()
+    SyncMessageThrottleSliders()
     RefreshSctControls()
     SctTabDbg("UpdateSettings: done")
 end
@@ -947,6 +1009,43 @@ function CustomUISettingsWindowTabSCT.OnToggleAbilityNameInText()
     SyncAbilityIconButton()
 end
 
+function CustomUISettingsWindowTabSCT.OnToggleCombatSplitLanes()
+    if m_refreshing then
+        return
+    end
+    EA_LabelCheckButton.Toggle()
+    local w = CombatSplitLanesCheckPrefix() .. "CombatSplitLanesCheckButton"
+    local enabled = DoesWindowExist(w) and ButtonGetPressedFlag(w)
+    CustomUI.SCT.SetCombatSplitLanes(enabled == true)
+    SyncCombatSplitLanesButton()
+end
+
+function CustomUISettingsWindowTabSCT.OnMessageThrottleMpsChanged()
+    if m_refreshing then
+        return
+    end
+    local w = RowMessageThrottleMpsSlider()
+    if not DoesWindowExist(w) then
+        return
+    end
+    local pos = SliderBarGetCurrentPosition(w)
+    CustomUI.SCT.SetThrottleMessagesPerSecond(CustomUI.SCT.SliderPosToThrottleMps(pos))
+    CustomUISettingsWindowTabSCT.OnMouseOverSliderValue()
+end
+
+function CustomUISettingsWindowTabSCT.OnMessageThrottleQueueChanged()
+    if m_refreshing then
+        return
+    end
+    local w = RowMessageThrottleQueueSlider()
+    if not DoesWindowExist(w) then
+        return
+    end
+    local pos = SliderBarGetCurrentPosition(w)
+    CustomUI.SCT.SetThrottleQueueMax(CustomUI.SCT.SliderPosToThrottleQueueMax(pos))
+    CustomUISettingsWindowTabSCT.OnMouseOverSliderValue()
+end
+
 function CustomUISettingsWindowTabSCT.OnCritSizeChanged()
     if m_refreshing then
         return
@@ -1001,6 +1100,31 @@ function CustomUISettingsWindowTabSCT.OnMouseOverSliderValue()
         or (SystemData.ActiveWindow and SystemData.ActiveWindow.name)
         or ""
     if active == "" then
+        return
+    end
+
+    -- 0) Message throttle sliders
+    local throttleMps = RowMessageThrottleMpsSlider()
+    if active == throttleMps or string.find(active, "MessageThrottleMps", 1, true) then
+        if DoesWindowExist(throttleMps) then
+            local pos = SliderBarGetCurrentPosition(throttleMps)
+            if type(pos) == "number" then
+                local mps = CustomUI.SCT.SliderPosToThrottleMps(pos)
+                local tip = L"Max " .. towstring(mps) .. L" messages/sec per world object"
+                SctShowSliderValueTooltip(throttleMps, tip)
+            end
+        end
+        return
+    end
+    local throttleQ = RowMessageThrottleQueueSlider()
+    if active == throttleQ or string.find(active, "MessageThrottleQueueMax", 1, true) then
+        if DoesWindowExist(throttleQ) then
+            local pos = SliderBarGetCurrentPosition(throttleQ)
+            if type(pos) == "number" then
+                local n = CustomUI.SCT.SliderPosToThrottleQueueMax(pos)
+                SctShowSliderValueTooltip(throttleQ, L"Queue capacity per world object: " .. towstring(n))
+            end
+        end
         return
     end
 

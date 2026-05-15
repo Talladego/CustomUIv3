@@ -1,5 +1,9 @@
 ## PlayerStatusWindow / PlayerPetWindow — stock-extension review plan
 
+**Status:** Pet hook refactoring **complete** (2026-05-04). See [issues.md](../../issues.md) High **#1**–**#2** for resolution details.
+
+This file remains as a **regression checklist** — see below.
+
 ### Why this plan exists
 
 This component currently **monkey-patches a stock table**:

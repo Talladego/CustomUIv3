@@ -22,6 +22,8 @@
             <Dependency name="EA_TacticsWindow" />
             <!-- PlayerStatusWindow component: ensures stock player status resources are loaded so this component can reuse default assets. -->
             <Dependency name="EA_PlayerStatusWindow" />
+            <!-- Low HP screen vignette (ScreenFlashWindow) when enabled in Player Status settings. -->
+            <Dependency name="EA_ScreenFlashWindow" />
             <!-- GroupWindow component: ensures stock group window assets are loaded so member rows render correctly. -->
             <Dependency name="EA_GroupWindow" />
             <!-- Common optional: slash command registration for /customui and /cui control commands. -->
@@ -36,11 +38,12 @@
             <File name="Source/Shared/Shared.xml" />
             <File name="Source/Shared/BuffTracker/BuffTracker.lua" />
             <File name="Source/Shared/BuffTracker/BuffGroups.lua" />
-            <File name="Source/Shared/BuffTracker/Blacklist.lua" />
-            <File name="Source/Shared/BuffTracker/Whitelist.lua" />
+            <File name="Source/Shared/BuffTracker/BuffLists.lua" />
+            <File name="Source/Shared/BuffTracker/BuffFilterDefaults.lua" />
             <File name="Source/Shared/UnitFrame/TargetFrame.lua" />
             <File name="Source/Components/PlayerStatusWindow/Controller/PlayerStatusWindowController.lua" />
             <File name="Source/Components/PlayerStatusWindow/View/PlayerStatusWindow.xml" />
+            <File name="Source/Components/PlayerStatusWindow/View/PlayerStatusWindowMinimal.xml" />
             <File name="Source/Components/TargetWindow/Controller/TargetWindowController.lua" />
             <File name="Source/Components/TargetWindow/View/TargetWindow.xml" />
             <File name="Source/Components/PlayerStatusWindow/Controller/PlayerPetWindowController.lua" />
@@ -50,11 +53,7 @@
             <File name="Source/Components/GroupWindow/Controller/GroupWindowController.lua" />
             <File name="Source/Components/GroupWindow/Controller/GroupWindowTestHarness.lua" />
             <File name="Source/Components/GroupWindow/View/GroupWindow.xml" />
-            <File name="Source/Components/UnitFrames/Controller/UnitFramesModel.lua" />
             <File name="Source/Components/UnitFrames/Controller/UnitFramesEvents.lua" />
-            <File name="Source/Components/UnitFrames/Controller/UnitFramesRenderer.lua" />
-            <File name="Source/Components/UnitFrames/Controller/Adapters/WarbandAdapter.lua" />
-            <File name="Source/Components/UnitFrames/Controller/Adapters/ScenarioFloatingAdapter.lua" />
             <File name="Source/Components/UnitFrames/Controller/UnitFramesController.lua" />
             <File name="Source/Components/UnitFrames/View/UnitFrames.xml" />
             <File name="Source/Components/GroupIcons/Controller/GroupIconsController.lua" />

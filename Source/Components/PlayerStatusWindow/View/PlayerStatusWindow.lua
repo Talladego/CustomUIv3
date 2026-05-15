@@ -9,7 +9,9 @@
 
 -- Health text label
 function CustomUI.PlayerStatusWindow.UpdateHealthTextLabel()
-    local healthText = GameData.Player.hitPoints.current .. L"/" .. GameData.Player.hitPoints.maximum
+    local hp = GameData.Player and GameData.Player.hitPoints
+    if not hp then return end
+    local healthText = hp.current .. L"/" .. hp.maximum
     LabelSetText( "CustomUIPlayerStatusWindowStatusContainerHealthText", healthText )
 end
 
@@ -55,8 +57,10 @@ function CustomUI.PlayerStatusWindow.OnMouseoverRvRIndicator()
 end
 
 function CustomUI.PlayerStatusWindow.MouseOverLevel()
-    local levelString = PartyUtils.GetLevelText( GameData.Player.level, GameData.Player.battleLevel )
-    if ( GameData.Player.level ~= GameData.Player.battleLevel ) then
+    local p = GameData and GameData.Player
+    if not p then return end
+    local levelString = PartyUtils.GetLevelText(p.level, p.battleLevel)
+    if ( p.level ~= p.battleLevel ) then
         Tooltips.CreateTextOnlyTooltip( SystemData.ActiveWindow.name )
         local statusString = nil
         if ( GetBolsterBuddy() ) then
@@ -72,9 +76,11 @@ function CustomUI.PlayerStatusWindow.MouseOverLevel()
 end
 
 function CustomUI.PlayerStatusWindow.MouseOverCareerIcon()
+    local p = GameData and GameData.Player
+    if not p then return end
     local careerName = L""
-    if GameData.Player.career and GameData.Player.career.name then
-        careerName = GameData.Player.career.name
+    if p.career and p.career.name then
+        careerName = p.career.name
     end
 
     Tooltips.CreateTextOnlyTooltip( SystemData.ActiveWindow.name )
@@ -115,12 +121,14 @@ end
 ----------------------------------------------------------------
 
 function CustomUI.PlayerStatusWindow.PaintPortraitTooltip()
+    if not GameData.Player then return end
     Tooltips.CreateTextOnlyTooltip( SystemData.ActiveWindow.name )
     Tooltips.SetTooltipText( 1, 1, GameData.Player.name )
     Tooltips.SetTooltipColorDef( 1, 1, Tooltips.COLOR_HEADING )
     local levelString = PartyUtils.GetLevelText( GameData.Player.level, GameData.Player.battleLevel )
     Tooltips.SetTooltipText( 2, 1, GetStringFormat( StringTables.Default.LABEL_RANK_X, { levelString } ) )
-    Tooltips.SetTooltipText( 3, 1, GetStringFormatFromTable( "HUDStrings", StringTables.HUD.LABEL_HUD_PLAYER_WINDOW_TOOLTIP_CAREER_NAME, { GameData.Player.career.name } ) )
+    local careerName = GameData.Player.career and GameData.Player.career.name or L""
+    Tooltips.SetTooltipText( 3, 1, GetStringFormatFromTable( "HUDStrings", StringTables.HUD.LABEL_HUD_PLAYER_WINDOW_TOOLTIP_CAREER_NAME, { careerName } ) )
     Tooltips.Finalize()
     Tooltips.AnchorTooltip( CustomUI.PlayerStatusWindow.TOOLTIP_ANCHOR )
 end

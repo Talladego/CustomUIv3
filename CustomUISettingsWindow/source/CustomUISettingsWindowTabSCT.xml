@@ -100,7 +100,8 @@
                         <Window name="$parentSCT">
                             <!-- Same horizontal stretch as $parentGeneral: dual anchors to ScrollChild. -->
                             <Size>
-                                <AbsPoint x="850" y="200" />
+                                <!-- CritAnimation + CritSize + AbilityIcon + CombatSplitLanes + MessageThrottle×2 + TextFont @ 37px each; first row y=45 → needs ≥300 (+ pad). -->
+                                <AbsPoint x="850" y="311" />
                             </Size>
                             <Anchors>
                                 <Anchor point="topleft" relativePoint="topleft">
@@ -291,6 +292,128 @@
 												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnToggleAbilityNameInText" />
 											</EventHandlers>
 										</Window>
+									</Windows>
+								</Window>
+
+								<Window name="$parentRowCombatSplitLanes">
+									<Size>
+										<AbsPoint x="850" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+											<AbsPoint x="0" y="45" />
+										</Anchor>
+										<Anchor point="topright" relativePoint="topright" relativeTo="$parent">
+											<AbsPoint x="0" y="45" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+										<Label name="$parentCombatLanesRowTitleLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+											<Size>
+												<AbsPoint x="220" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="45" y="2" />
+												</Anchor>
+											</Anchors>
+										</Label>
+										<Window name="$parentCombatSplitLanesCheck" inherits="CustomUI_Templates_TooltipCheckButton" handleinput="true">
+											<Size>
+												<AbsPoint x="360" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="270" y="2" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+												<EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSCT.OnToggleCombatSplitLanes" />
+											</EventHandlers>
+										</Window>
+									</Windows>
+								</Window>
+
+								<Window name="$parentRowMessageThrottle">
+									<Size>
+										<AbsPoint x="850" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+											<AbsPoint x="0" y="45" />
+										</Anchor>
+										<Anchor point="topright" relativePoint="topright" relativeTo="$parent">
+											<AbsPoint x="0" y="45" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+										<Label name="$parentMessageThrottleLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+											<Size>
+												<AbsPoint x="220" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="45" y="2" />
+												</Anchor>
+											</Anchors>
+										</Label>
+										<SliderBar name="$parentMessageThrottleMps" inherits="EA_Default_SliderBar" handleinput="true" numticks="9">
+											<Size>
+												<AbsPoint x="280" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="270" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnMessageThrottleMpsChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
+											</EventHandlers>
+										</SliderBar>
+									</Windows>
+								</Window>
+
+								<Window name="$parentRowMessageThrottleQueue">
+									<Size>
+										<AbsPoint x="850" y="37" />
+									</Size>
+									<Anchors>
+										<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+											<AbsPoint x="0" y="45" />
+										</Anchor>
+										<Anchor point="topright" relativePoint="topright" relativeTo="$parent">
+											<AbsPoint x="0" y="45" />
+										</Anchor>
+									</Anchors>
+									<Windows>
+										<Label name="$parentMessageThrottleQueueLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+											<Size>
+												<AbsPoint x="220" y="20" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="45" y="2" />
+												</Anchor>
+											</Anchors>
+										</Label>
+										<SliderBar name="$parentMessageThrottleQueueMax" inherits="EA_Default_SliderBar" handleinput="true" numticks="5">
+											<Size>
+												<AbsPoint x="280" y="25" />
+											</Size>
+											<Anchors>
+												<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+													<AbsPoint x="270" y="0" />
+												</Anchor>
+											</Anchors>
+											<EventHandlers>
+												<EventHandler event="OnSlide" function="CustomUISettingsWindowTabSCT.OnMessageThrottleQueueChanged" />
+												<EventHandler event="OnMouseOver" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValue" />
+												<EventHandler event="OnMouseOverEnd" function="CustomUISettingsWindowTabSCT.OnMouseOverSliderValueEnd" />
+											</EventHandlers>
+										</SliderBar>
 									</Windows>
 								</Window>
 

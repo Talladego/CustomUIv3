@@ -218,6 +218,80 @@ local function NormalizeArchtypeLookupName(name)
     return string.lower(s)
 end
 
+
+local function UnitFramesHpBarArchetypeRgbForPlayer(playerName, careerLine)
+    if not playerName then
+        return UnitFramesHpBarArchetypeRgbForCareerLine(careerLine)
+    end
+    
+    local playerNameStr = NormalizeArchtypeLookupName(playerName)
+    if not playerNameStr or playerNameStr == "" then
+        return UnitFramesHpBarArchetypeRgbForCareerLine(careerLine)
+    end
+    
+    -- First, check if player has alt-spec archtype from GRP_STATS packet (warband/party mode)
+    if RoRGroupScoreboard and RoRGroupScoreboard.playersDataRaw then
+        for charId, pdata in pairs(RoRGroupScoreboard.playersDataRaw) do
+            if pdata and pdata.name then
+                local scoreboardNameStr = NormalizeArchtypeLookupName(pdata.name)
+                if scoreboardNameStr and scoreboardNameStr ~= "" then
+                    if playerNameStr == scoreboardNameStr or string.sub(playerNameStr, 2) == string.sub(scoreboardNameStr, 2) then
+                        if pdata.archtype and pdata.archtype > 0 then
+                            local effectiveArch = c_UF_SCOREBOARD_ARCHETYPE_TO_RING[tonumber(pdata.archtype)]
+                            if effectiveArch == nil then
+                                effectiveArch = careerLine and c_UF_RING_CAREER_ARCHETYPE[careerLine]
+                                if effectiveArch == c_UF_RING_ARCHETYPE_HEAL then
+                                    effectiveArch = c_UF_RING_ARCHETYPE_DPS
+                                end
+                            end
+                            local rgb = effectiveArch and c_UF_RING_ARCHETYPE_RGB[effectiveArch]
+                            if rgb then
+                                return rgb[1], rgb[2], rgb[3]
+                            end
+                        end
+                        return UnitFramesHpBarArchetypeRgbForCareerLine(careerLine)
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Second, check scenario roster via GameData.GetScenarioPlayers() (scenario mode)
+    if type(GameData.GetScenarioPlayers) == "function" then
+        local scenarioPlayers = GameData.GetScenarioPlayers()
+        if scenarioPlayers and type(scenarioPlayers) == "table" then
+            for _, player in ipairs(scenarioPlayers) do
+                if player and player.name then
+                    local scenarioNameStr = NormalizeArchtypeLookupName(player.name)
+                    if scenarioNameStr and scenarioNameStr ~= "" then
+                        if playerNameStr == scenarioNameStr or string.sub(playerNameStr, 2) == string.sub(scenarioNameStr, 2) then
+                            -- In scenarios, archtype is encoded in the last character of experiencebonus field
+                            local expBonus = player.experiencebonus
+                            local archtypeIndex = expBonus and type(expBonus) == "string" and tonumber(string.sub(expBonus, -1))
+                            if archtypeIndex and archtypeIndex > 0 then
+                                local effectiveArch = c_UF_SCOREBOARD_ARCHETYPE_TO_RING[archtypeIndex]
+                                if effectiveArch == nil then
+                                    effectiveArch = careerLine and c_UF_RING_CAREER_ARCHETYPE[careerLine]
+                                    if effectiveArch == c_UF_RING_ARCHETYPE_HEAL then
+                                        effectiveArch = c_UF_RING_ARCHETYPE_DPS
+                                    end
+                                end
+                                local rgb = effectiveArch and c_UF_RING_ARCHETYPE_RGB[effectiveArch]
+                                if rgb then
+                                    return rgb[1], rgb[2], rgb[3]
+                                end
+                            end
+                            return UnitFramesHpBarArchetypeRgbForCareerLine(careerLine)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return UnitFramesHpBarArchetypeRgbForCareerLine(careerLine)
+end
+
 local function UnitFramesCareerRingRgbForPlayer(playerName, careerLine)
     if not playerName then
         return UnitFramesCareerRingRgbForCareerLine(careerLine)
@@ -265,7 +339,8 @@ local function UnitFramesCareerRingRgbForPlayer(playerName, careerLine)
                     if scenarioNameStr and scenarioNameStr ~= "" then
                         if playerNameStr == scenarioNameStr or string.sub(playerNameStr, 2) == string.sub(scenarioNameStr, 2) then
                             -- In scenarios, archtype is encoded in the last character of experiencebonus field
-                            local archtypeIndex = tonumber(string.sub(player.experiencebonus, -1))
+                            local expBonus = player.experiencebonus
+                            local archtypeIndex = expBonus and type(expBonus) == "string" and tonumber(string.sub(expBonus, -1))
                             if archtypeIndex and archtypeIndex > 0 then
                                 local effectiveArch = c_UF_SCOREBOARD_ARCHETYPE_TO_RING[archtypeIndex]
                                 if effectiveArch == nil then
@@ -588,6 +663,58 @@ local function UnitFramesSortBucketForCareerLine(line)
     return c_UF_SORT_BUCKET_UNKNOWN
 end
 
+local function UnitFramesGetEffectiveArchetypeForPlayer(playerName, careerLine)
+    if playerName == nil then
+        return UnitFramesSortBucketForCareerLine(careerLine)
+    end
+    
+    local playerNameStr = NormalizeArchtypeLookupName(playerName)
+    if not playerNameStr or playerNameStr == "" then
+        return UnitFramesSortBucketForCareerLine(careerLine)
+    end
+    
+    -- First, check if player has alt-spec archtype from GRP_STATS packet (warband/party mode)
+    if RoRGroupScoreboard and RoRGroupScoreboard.playersDataRaw then
+        for charId, pdata in pairs(RoRGroupScoreboard.playersDataRaw) do
+            if pdata and pdata.name then
+                local scoreboardNameStr = NormalizeArchtypeLookupName(pdata.name)
+                if scoreboardNameStr and scoreboardNameStr ~= "" then
+                    if playerNameStr == scoreboardNameStr or string.sub(playerNameStr, 2) == string.sub(scoreboardNameStr, 2) then
+                        if pdata.archtype and pdata.archtype > 0 and pdata.archtype <= 4 then
+                            return pdata.archtype
+                        end
+                        return UnitFramesSortBucketForCareerLine(careerLine)
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Second, check scenario roster via GameData.GetScenarioPlayers() (scenario mode)
+    if type(GameData.GetScenarioPlayers) == "function" then
+        local scenarioPlayers = GameData.GetScenarioPlayers()
+        if scenarioPlayers and type(scenarioPlayers) == "table" then
+            for _, player in ipairs(scenarioPlayers) do
+                if player and player.name then
+                    local scenarioNameStr = NormalizeArchtypeLookupName(player.name)
+                    if scenarioNameStr and scenarioNameStr ~= "" then
+                        if playerNameStr == scenarioNameStr or string.sub(playerNameStr, 2) == string.sub(scenarioNameStr, 2) then
+                            local expBonus = player.experiencebonus
+                            local archtypeIndex = expBonus and type(expBonus) == "string" and tonumber(string.sub(expBonus, -1))
+                            if archtypeIndex and archtypeIndex > 0 and archtypeIndex <= 4 then
+                                return archtypeIndex
+                            end
+                            return UnitFramesSortBucketForCareerLine(careerLine)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return UnitFramesSortBucketForCareerLine(careerLine)
+end
+
 local function CareerAlphabeticalSortKey(line)
     line = tonumber(line)
     if line == nil or type(GetCareerLine) ~= "function" then
@@ -614,9 +741,10 @@ local function SortMembersForUnitFramesDisplay(members)
     for i = 1, table.getn(members) do
         local m = members[i]
         local line = m and m.careerLine
+        local name = m and (m.name or (m.player and m.player.name))
         table.insert(enriched, {
             m = m,
-            bucket = UnitFramesSortBucketForCareerLine(line),
+            bucket = UnitFramesGetEffectiveArchetypeForPlayer(name, line),
             careerKey = CareerAlphabeticalSortKey(line),
             br = BattleRankDescendingSortKey(m),
             ord = i,
@@ -1507,13 +1635,13 @@ local function ScanScenarioDistancesFromMapPoints()
     end
 end
 
---- showBars is legacy (reserved). hideHpBarForDistant: hide only the HP StatusBar (green fill + red missing-HP track).
+--- showBars is legacy (reserved). dimFrames: frame-wide DimOverlay only (offline / distant) — no per-widget alpha fade.
 --- Row backdrop stays the same EA_FullResizeImage tint as stock BGMember; do not hide it (stock keeps it when distant).
---- LabelHealth: always white (same font as LabelCareerRank in XML); alpha still reflects offline/dead/distant dimming.
+--- LabelHealth: always white at full opacity; career ring/icon/HP/AP bars stay at 1.0 unless DimOverlay covers them.
 --- careerLineForHpTint: used when useTargetHudHpBarTexture — foreground archetype tint; background red (missing HP).
-local function ApplyStatusSettings(memberWindow, alpha, showBars, dimFrames, careerLineForHpTint)
+local function ApplyStatusSettings(memberWindow, showBars, dimFrames, careerLineForHpTint, playerName)
     LabelSetTextColor(memberWindow .. "LabelHealth", 255, 255, 255)
-    WindowSetFontAlpha(memberWindow .. "LabelHealth", alpha)
+    WindowSetFontAlpha(memberWindow .. "LabelHealth", 1.0)
     local useTh = ShouldUseTargetHudHpBarTexture()
     local hpClassic = memberWindow .. "HPBar"
     local hpTh = memberWindow .. "HPBarTargetHud"
@@ -1535,11 +1663,21 @@ local function ApplyStatusSettings(memberWindow, alpha, showBars, dimFrames, car
         WindowSetShowing(hpTh, showBars and useTh)
         WindowSetAlpha(hpTh, 1.0)
         if useTh and showBars then
-            local fr, fg, fb = UnitFramesHpBarArchetypeRgbForCareerLine(careerLineForHpTint)
+            local fr, fg, fb = UnitFramesHpBarArchetypeRgbForPlayer(playerName, careerLineForHpTint)
             StatusBarSetForegroundTint(hpTh, fr, fg, fb)
             StatusBarSetBackgroundTint(hpTh, c_UF_TARGETHUD_HP_MISSING_R, c_UF_TARGETHUD_HP_MISSING_G, c_UF_TARGETHUD_HP_MISSING_B)
         end
     end
+    
+    local ringWin = memberWindow .. "CareerIconRing"
+    local iconWin = memberWindow .. "CareerIcon"
+    if DoesWindowExist(ringWin) then
+        WindowSetAlpha(ringWin, 1.0)
+    end
+    if DoesWindowExist(iconWin) then
+        WindowSetAlpha(iconWin, 1.0)
+    end
+
     WindowSetShowing(memberWindow .. "Background", true)
     local bgWin = memberWindow .. "Background"
     if DoesWindowExist(bgWin) then
@@ -1853,26 +1991,24 @@ local function SetMemberTextAndState(memberWindow, member)
     local isDead = hpRaw <= 0 and member.online == true
 
     local careerLine = member and member.careerLine
+    local playerName = member and member.name
+    local dimFrames = false
     if member.online ~= true then
         healthText = GetString(StringTables.Default.LABEL_PARTY_MEMBER_OFFLINE)
-        ApplyStatusSettings(memberWindow, 0.5, true, true, careerLine)
+        dimFrames = true
         SetMemberSkullIconShowing(memberWindow, false)
     elseif isDead then
         healthText = L""
-        ApplyStatusSettings(memberWindow, 1.0, true, false, careerLine)
         SetMemberSkullIconShowing(memberWindow, true)
     elseif member.isDistant then
         healthText = L""
-        ApplyStatusSettings(memberWindow, 0.5, true, true, careerLine)
+        dimFrames = true
         SetMemberSkullIconShowing(memberWindow, false)
-    elseif hpRounded >= 100 and apRounded >= 100 then
-        ApplyStatusSettings(memberWindow, 1.0, true, false, careerLine)
-        SetMemberSkullIconShowing(memberWindow, false)
-    elseif hpRaw > 0 then
-        ApplyStatusSettings(memberWindow, 1.0, true, false, careerLine)
+    else
         SetMemberSkullIconShowing(memberWindow, false)
     end
 
+    ApplyStatusSettings(memberWindow, true, dimFrames, careerLine, playerName)
     LabelSetText(memberWindow .. "LabelHealth", healthText)
     ApplyDistantHealthIndicator(memberWindow, member.isDistant == true and member.online == true and not isDead)
     WindowSetGameActionData(memberWindow, GameData.PlayerActions.SET_TARGET, 0, memberName)
@@ -1902,17 +2038,7 @@ local function SetScenarioMemberTextAndState(memberWindow, player, groupIndex, m
             hpPct = ClampPercent(100 * cur / max)
         end
     end
-    local apPct = tonumber(player and player.ap) or 0
-    if selfScenario and GameData.Player.actionPoints then
-        local ac = tonumber(GameData.Player.actionPoints.current) or 0
-        local am = tonumber(GameData.Player.actionPoints.maximum) or 1
-        if am > 0 then
-            apPct = ClampPercent(100 * ac / am)
-        end
-    end
-
     local hpDisplay = RoundScenarioHpForDisplay(hpPct, not selfScenario)
-    local apDisplay = RoundApPercentForDisplay(apPct)
 
     WindowSetGameActionData(memberWindow, GameData.PlayerActions.SET_TARGET, 0, playerName)
 
@@ -1939,23 +2065,20 @@ local function SetScenarioMemberTextAndState(memberWindow, player, groupIndex, m
         isDistant = true
     end
 
+    local dimFrames = false
     if isDead then
         LabelSetText(memberWindow .. "LabelHealth", L"")
-        ApplyStatusSettings(memberWindow, 1.0, true, false, careerLine)
         SetMemberSkullIconShowing(memberWindow, true)
     elseif isDistant then
         LabelSetText(memberWindow .. "LabelHealth", L"")
-        ApplyStatusSettings(memberWindow, 0.5, true, true, careerLine)
+        dimFrames = true
         SetMemberSkullIconShowing(memberWindow, false)
     else
         LabelSetText(memberWindow .. "LabelHealth", towstring(hpDisplay) .. L"%")
         SetMemberSkullIconShowing(memberWindow, false)
-        if hpDisplay >= 100 and apDisplay >= 100 then
-            ApplyStatusSettings(memberWindow, 0.5, true, false, careerLine)
-        else
-            ApplyStatusSettings(memberWindow, 1.0, true, false, careerLine)
-        end
     end
+
+    ApplyStatusSettings(memberWindow, true, dimFrames, careerLine, player and player.name)
 
     ApplyMemberLabelNameColor(memberWindow, player and player.isRVRFlagged == true)
 
@@ -2421,6 +2544,8 @@ function UnitFrames.OnWarbandMemberUpdated()
         ShowWarbandDualModeWindows()
     elseif mode == "warband_party1" then
         ShowWarbandParty1DualModeWindows()
+    elseif mode == "party" then
+        ShowPartyDualModeWindows()
     end
     RefreshTargetBorders()
     RefreshMouseOverBorders()
@@ -2632,22 +2757,17 @@ local function RefreshUnitFramesCareerRingsForArchtype()
     local displayMode = GetActiveUnitFramesDisplayMode()
     if displayMode == "warband" or displayMode == "warband_party1" or displayMode == "party" then
         -- Refresh warband/party member rings
-        local warbandSize = GetWarbandSize()
-        for groupIndex = 1, 2 do  -- 2 groups max
-            for memberIndex = 1, warbandSize / 2 do  -- Members per group
+        for groupIndex = 1, c_MAX_GROUP_WINDOWS do
+            for memberIndex = 1, c_GROUP_MEMBERS do
                 local memberWindow = MemberWindowName(groupIndex, memberIndex)
                 if DoesWindowExist(memberWindow) then
-                    -- Get current member data from warband
-                    if type(GetWarbandData) == "function" then
-                        local warbandData = GetWarbandData()
-                        if warbandData and warbandData.members then
-                            local slot = (groupIndex - 1) * (warbandSize / 2) + memberIndex
-                            local member = warbandData.members[slot]
-                            if member and member.name and member.careerLine then
-                                -- Re-render career ring with updated archtype color
-                                SetCareerIcon(memberWindow, member)
-                            end
-                        end
+                    local member = TryGetWarbandMember(groupIndex, memberIndex)
+                    if member == nil and displayMode == "party" then
+                        member = TryGetPartyFrameMember(groupIndex, memberIndex)
+                    end
+                    if member ~= nil then
+                        -- Re-render career ring with updated archtype color
+                        SetCareerIcon(memberWindow, member)
                     end
                 end
             end
@@ -2674,6 +2794,39 @@ end
 
 function UnitFrames.Initialize()
     UnitFrames.InitializeWindow()
+
+    if not m_eventsRegistered and DoesWindowExist(c_ROOT_WINDOW_NAME) then
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.GROUP_UPDATED, "CustomUI.UnitFrames.OnVisibilityStateChanged")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.GROUP_STATUS_UPDATED, "CustomUI.UnitFrames.OnVisibilityStateChanged")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.GROUP_PLAYER_ADDED, "CustomUI.UnitFrames.OnVisibilityStateChanged")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.BATTLEGROUP_UPDATED, "CustomUI.UnitFrames.OnVisibilityStateChanged")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.BATTLEGROUP_MEMBER_UPDATED, "CustomUI.UnitFrames.OnWarbandMemberUpdated")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_PLAYERS_LIST_GROUPS_UPDATED, "CustomUI.UnitFrames.OnScenarioRosterOrSlotsUpdated")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_PLAYERS_LIST_RESERVATIONS_UPDATED, "CustomUI.UnitFrames.OnScenarioRosterOrSlotsUpdated")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_PLAYER_HITS_UPDATED, "CustomUI.UnitFrames.OnScenarioPlayerHitsUpdated")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_GROUP_JOIN, "CustomUI.UnitFrames.OnScenarioRosterOrSlotsUpdated")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_GROUP_LEAVE, "CustomUI.UnitFrames.OnScenarioRosterOrSlotsUpdated")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_GROUP_UPDATED, "CustomUI.UnitFrames.OnVisibilityStateChanged")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_PLAYERS_LIST_UPDATED, "CustomUI.UnitFrames.OnVisibilityStateChanged")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.LOADING_END, "CustomUI.UnitFrames.OnVisibilityStateChanged")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.PLAYER_ZONE_CHANGED, "CustomUI.UnitFrames.OnVisibilityStateChanged")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.ENTER_WORLD, "CustomUI.UnitFrames.OnVisibilityStateChanged")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_BEGIN, "CustomUI.UnitFrames.OnScenarioLifecycleRefresh")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.CITY_SCENARIO_BEGIN, "CustomUI.UnitFrames.OnScenarioLifecycleRefresh")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_END, "CustomUI.UnitFrames.OnScenarioLifecycleRefresh")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.CITY_SCENARIO_END, "CustomUI.UnitFrames.OnScenarioLifecycleRefresh")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.PLAYER_TARGET_UPDATED, "CustomUI.UnitFrames.OnTargetUpdated")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.PLAYER_CUR_HIT_POINTS_UPDATED, "CustomUI.UnitFrames.OnPlayerSelfResourcesUpdated")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.PLAYER_MAX_HIT_POINTS_UPDATED, "CustomUI.UnitFrames.OnPlayerSelfResourcesUpdated")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.PLAYER_CUR_ACTION_POINTS_UPDATED, "CustomUI.UnitFrames.OnPlayerSelfResourcesUpdated")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.PLAYER_MAX_ACTION_POINTS_UPDATED, "CustomUI.UnitFrames.OnPlayerSelfResourcesUpdated")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.PLAYER_CAREER_RANK_UPDATED, "CustomUI.UnitFrames.OnPlayerCareerRankUpdated")
+        m_eventsRegistered = true
+    end
+end
+
+function UnitFrames.Enable()
+    m_enabled = true
 
     if type(BattlegroupHUD) == "table"
     and type(BattlegroupHUD.OnMenuClickSetBackgroundOpacity) == "function"
@@ -2708,49 +2861,17 @@ function UnitFrames.Initialize()
         end
     end
 
-    if not m_eventsRegistered and DoesWindowExist(c_ROOT_WINDOW_NAME) then
-        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.GROUP_UPDATED, "CustomUI.UnitFrames.OnVisibilityStateChanged")
-        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.GROUP_STATUS_UPDATED, "CustomUI.UnitFrames.OnVisibilityStateChanged")
-        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.GROUP_PLAYER_ADDED, "CustomUI.UnitFrames.OnVisibilityStateChanged")
-        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.BATTLEGROUP_UPDATED, "CustomUI.UnitFrames.OnVisibilityStateChanged")
-        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.BATTLEGROUP_MEMBER_UPDATED, "CustomUI.UnitFrames.OnWarbandMemberUpdated")
-        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_PLAYERS_LIST_GROUPS_UPDATED, "CustomUI.UnitFrames.OnScenarioRosterOrSlotsUpdated")
-        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_PLAYERS_LIST_RESERVATIONS_UPDATED, "CustomUI.UnitFrames.OnScenarioRosterOrSlotsUpdated")
-        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_PLAYER_HITS_UPDATED, "CustomUI.UnitFrames.OnScenarioPlayerHitsUpdated")
-        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_GROUP_JOIN, "CustomUI.UnitFrames.OnScenarioRosterOrSlotsUpdated")
-        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_GROUP_LEAVE, "CustomUI.UnitFrames.OnScenarioRosterOrSlotsUpdated")
-        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_GROUP_UPDATED, "CustomUI.UnitFrames.OnVisibilityStateChanged")
-        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_PLAYERS_LIST_UPDATED, "CustomUI.UnitFrames.OnVisibilityStateChanged")
-        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.LOADING_END, "CustomUI.UnitFrames.OnVisibilityStateChanged")
-        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.PLAYER_ZONE_CHANGED, "CustomUI.UnitFrames.OnVisibilityStateChanged")
-        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.ENTER_WORLD, "CustomUI.UnitFrames.OnVisibilityStateChanged")
-        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_BEGIN, "CustomUI.UnitFrames.OnScenarioLifecycleRefresh")
-        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.CITY_SCENARIO_BEGIN, "CustomUI.UnitFrames.OnScenarioLifecycleRefresh")
-        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.SCENARIO_END, "CustomUI.UnitFrames.OnScenarioLifecycleRefresh")
-        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.CITY_SCENARIO_END, "CustomUI.UnitFrames.OnScenarioLifecycleRefresh")
-        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.PLAYER_TARGET_UPDATED, "CustomUI.UnitFrames.OnTargetUpdated")
-        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.PLAYER_CUR_HIT_POINTS_UPDATED, "CustomUI.UnitFrames.OnPlayerSelfResourcesUpdated")
-        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.PLAYER_MAX_HIT_POINTS_UPDATED, "CustomUI.UnitFrames.OnPlayerSelfResourcesUpdated")
-        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.PLAYER_CUR_ACTION_POINTS_UPDATED, "CustomUI.UnitFrames.OnPlayerSelfResourcesUpdated")
-        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.PLAYER_MAX_ACTION_POINTS_UPDATED, "CustomUI.UnitFrames.OnPlayerSelfResourcesUpdated")
-        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.PLAYER_CAREER_RANK_UPDATED, "CustomUI.UnitFrames.OnPlayerCareerRankUpdated")
-        m_eventsRegistered = true
-
-        -- Hook RoRGroupScoreboard GRP_STATS packet to refresh archtype-based ring colors when data arrives late
-        if type(RoRGroupScoreboard) == "table" and type(RoRGroupScoreboard.Packet) == "function" and m_stockRoRGroupScoreboardPacket == nil then
-            m_stockRoRGroupScoreboardPacket = RoRGroupScoreboard.Packet
-            RoRGroupScoreboard.Packet = function(text)
-                -- Call original handler to update playersDataRaw
-                m_stockRoRGroupScoreboardPacket(text)
-                -- Refresh CustomUI unit frame rings with newly arrived archtype data
-                RefreshUnitFramesCareerRingsForArchtype()
-            end
+    -- Hook RoRGroupScoreboard GRP_STATS packet to refresh archtype-based ring colors when data arrives late
+    if type(RoRGroupScoreboard) == "table" and type(RoRGroupScoreboard.Packet) == "function" and m_stockRoRGroupScoreboardPacket == nil then
+        m_stockRoRGroupScoreboardPacket = RoRGroupScoreboard.Packet
+        RoRGroupScoreboard.Packet = function(text)
+            -- Call original handler to update playersDataRaw
+            m_stockRoRGroupScoreboardPacket(text)
+            -- Refresh CustomUI unit frame rings with newly arrived archtype data
+            RefreshUnitFramesCareerRingsForArchtype()
         end
     end
-end
 
-function UnitFrames.Enable()
-    m_enabled = true
     -- Root hosts OnUpdate; CreateWindow(..., false) leaves it hidden — hidden windows may not tick.
     SetUnitFramesTickWindowShowing(true)
     UnitFrames.InitializeWindow()
@@ -2784,6 +2905,27 @@ function UnitFrames.Disable()
     RefreshMouseOverBorders()
     SetUnitFramesTickWindowShowing(false)
     HideCustomShowStock()
+
+    if m_stockOnMenuClickSetBackgroundOpacity ~= nil then
+        if type(BattlegroupHUD) == "table" then
+            BattlegroupHUD.OnMenuClickSetBackgroundOpacity = m_stockOnMenuClickSetBackgroundOpacity
+        end
+        m_stockOnMenuClickSetBackgroundOpacity = nil
+    end
+
+    if m_stockOnOpacitySlide ~= nil then
+        if type(BattlegroupHUD) == "table" then
+            BattlegroupHUD.OnOpacitySlide = m_stockOnOpacitySlide
+        end
+        m_stockOnOpacitySlide = nil
+    end
+
+    if m_stockRoRGroupScoreboardPacket ~= nil then
+        if type(RoRGroupScoreboard) == "table" then
+            RoRGroupScoreboard.Packet = m_stockRoRGroupScoreboardPacket
+        end
+        m_stockRoRGroupScoreboardPacket = nil
+    end
 
     return true
 end
@@ -2830,6 +2972,13 @@ function UnitFrames.Shutdown()
             BattlegroupHUD.OnOpacitySlide = m_stockOnOpacitySlide
         end
         m_stockOnOpacitySlide = nil
+    end
+
+    if m_stockRoRGroupScoreboardPacket ~= nil then
+        if type(RoRGroupScoreboard) == "table" then
+            RoRGroupScoreboard.Packet = m_stockRoRGroupScoreboardPacket
+        end
+        m_stockRoRGroupScoreboardPacket = nil
     end
 end
 

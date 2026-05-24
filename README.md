@@ -4,18 +4,15 @@ CustomUI is a modular Return of Reckoning addon that replaces and enhances stock
 
 ## Documentation
 
-**This README is the documentation entry point.** Markdown docs and curated data paths (below) carry a **last updated** stamp (ISO date); refresh the stamp when those files materially change.
+**This README is the architecture and conventions reference.** Backlog, audits, and plans live in [TODO.md](TODO.md). Settings-window XML/layout pitfalls live in [CustomUISettingsWindow/README.md](CustomUISettingsWindow/README.md); settings backlog in [CustomUISettingsWindow/TODO.md](CustomUISettingsWindow/TODO.md).
 
-| Document | Purpose | Updated |
-|----------|---------|---------|
-| [README.md](README.md) | Entry point — architecture, components, conventions | 2026-05-13 |
-| [guard_whitelist.csv](guard_whitelist.csv) | Guard / Save Da Runts ability IDs (ingested into `DefaultWhitelistAbility`) | 2026-05-02 |
-| [review.md](review.md) | Code-quality audit with key findings | 2026-05-13 |
-| [issues.md](issues.md) | Backlog — open issues and resolved history | 2026-05-13 |
-| [plan.md](plan.md) | Code-quality execution phases and performance notes | 2026-05-13 |
-| [CustomUISettingsWindow/README.md](CustomUISettingsWindow/README.md) | Settings addon — tab layout, XML pitfalls, diagnostics | 2026-05-02 |
-| [Source/Components/SCT/plan.md](Source/Components/SCT/plan.md) | SCT v2 design (deviation-only model) | 2026-04-29 |
-| [Source/Components/SCT/implementation.md](Source/Components/SCT/implementation.md) | SCT v2 implementation notes | 2026-04-26 |
+| Document | Purpose |
+|----------|---------|
+| [README.md](README.md) | Architecture, components, conventions, runtime usage |
+| [TODO.md](TODO.md) | Open issues, reviews, plans, validation checklists |
+| [guard_whitelist.csv](guard_whitelist.csv) | Guard / Save Da Runts ability IDs (ingested into `DefaultWhitelistAbility`) |
+| [CustomUISettingsWindow/README.md](CustomUISettingsWindow/README.md) | Settings UI — tab layout, XML pitfalls, diagnostics |
+| [CustomUISettingsWindow/TODO.md](CustomUISettingsWindow/TODO.md) | Settings addon backlog |
 
 ## Installation
 
@@ -80,9 +77,9 @@ into the selected tab class (`UpdateSettings`, `ApplyCurrent`, `ResetSettings`, 
 where implemented.
 
 Tab layout, `SWTab<Name>Contents*` naming, and the XML section-stacking rules are in
-[CustomUISettingsWindow/README.md](CustomUISettingsWindow/README.md). Root [plan.md](plan.md)
-opens with the live **code quality & fix plan**; later sections retain the older `RegisterTab`
-pattern for historical context only.
+[CustomUISettingsWindow/README.md](CustomUISettingsWindow/README.md). Open work and phased
+history are in [TODO.md](TODO.md). The old in-addon `RegisterTab` broker was removed; do not
+reintroduce it.
 
 
 ## Shared subsystems
@@ -97,6 +94,8 @@ A `BuffTracker` subclass that extends the stock frame with:
 - **Stack display** — shows `xN` on the timer label when `stackCount > 1`; falls back to duration when the count drops to 1 (never shows ×1).
 - **Filter** (`SetFilter`) — category (buff/debuff/neutral), duration bucket (short/long/permanent), and caster (`playerCastOnly`) gates. Pass `nil` to show everything.
 - **Blacklist / Whitelist** — `BuffLists.lua` defines `DefaultBlacklist`, `DefaultWhitelist`, and `DefaultWhitelistAbility`. Blacklist keys **`effectIndex`**. Whitelist matches **`effectIndex`** and/or **`buffData.abilityId`**. Whitelist rescues buffs the filter hid; blacklist still blocks those rows when keyed on `effectIndex`. Same `effectIndex` on both lists triggers a conflict warning and relies on the filter only. Shipped **`DefaultWhitelistAbility`** includes Guard / Save Da Runts ability IDs from `guard_whitelist.csv`. Target buff trackers apply defaults via **`ApplySharedDefaultLists`** alongside player/group/HUD trackers.
+- **Removal Grace Period** — Implements a `0.25` second removal grace period (`_pendingRemovalTime`) for lost buffs. If a duplicate buff with a new server-assigned ID/index arrives before expiration, it immediately purges the pending-removal instance, preventing visual icon flickering during stack transitions or refreshes.
+- **Accurate Stack Updates** — Compares incoming data against visual state tracked directly on the `BuffFrame` widget itself (`m_displayedEffectIndex`, `m_displayedIconNum`, and `m_displayedStackCount`) rather than comparing the tracker's buff data reference (which is mutated in-place), ensuring stack count increases and decreases are correctly rendered.
 
 ### CustomUI.TargetFrame
 
@@ -145,10 +144,8 @@ Each component uses:
 CustomUI/
 	CustomUI.mod
 	README.md
-	review.md
-	issues.md
-	plan.md
-	CustomUISettingsWindow/   ← separate UiMod; tab XML/Lua, own README
+	TODO.md
+	CustomUISettingsWindow/   ← separate UiMod; README + TODO + tab XML/Lua
 		CustomUISettingsWindow.mod
 		source/ …
 	Source/
@@ -235,7 +232,7 @@ The old in-addon `CustomUI.SettingsWindow` / `MiniSettingsWindow` shells and per
 
 ### Safe Hooking and Wrappers
 - Always use `pcall` when wrapping or hooking engine or stock functions to prevent errors from propagating and breaking the UI.
-- **No blind `pcall`:** capture `local ok, … = pcall(…)` and forward every return value from stock on success; log on failure. See [plan.md § `pcall` convention](plan.md).
+- **No blind `pcall`:** capture `local ok, … = pcall(…)` and forward every return value from stock on success; log on failure. See [TODO.md](TODO.md) (code-quality notes).
 - Forward all arguments (`...`) and return values in wrappers to preserve original behavior.
 - Log errors in wrappers for easier debugging.
 
@@ -256,7 +253,7 @@ The old in-addon `CustomUI.SettingsWindow` / `MiniSettingsWindow` shells and per
 - Extract duplicated tables or logic (such as buff filter defaults) into shared modules under `Shared/`.
 
 ### SCT Component Global Overwrites
-- SCT must receive engine combat/point events, but it should do so without replacing stock globals. Prefer **handler swapping** (unregister stock event handlers, register CustomUI handlers) and **inheriting stock classes** rather than redefining them. See `Source/Components/SCT/plan.md`.
+- SCT must receive engine combat/point events, but it should do so without replacing stock globals. Prefer **handler swapping** (unregister stock event handlers, register CustomUI handlers) and **inheriting stock classes** rather than redefining them. See README § SCT and [TODO.md](TODO.md).
 
 ### Code Hygiene
 - Remove dead code, commented-out blocks, and dev/test harnesses from release builds.
@@ -341,7 +338,7 @@ Stock `PetWindow:UpdatePet()` — triggered via `PetWindow.UpdatePetProxy` — c
 
 `CustomUI.PlayerPetWindow` wraps `PetWindow.UpdatePet` with a thin hook that calls the original and then forces `PetHealthWindow` hidden again:
 
-- Current behavior: the wrapper is installed during `Initialize()` and gated by `m_enabled`. Planned follow-up is to install only on `Enable` and restore on `Disable`/`Shutdown` so stock is untouched while disabled (see `Source/Components/PlayerStatusWindow/plan.md`).
+- The wrapper is installed on **Enable** and restored on **Disable** / **Shutdown** so stock is untouched while disabled (see [TODO.md](TODO.md) completed notes).
 - `Enable` also hides `PetHealthWindow` immediately via `LayoutEditor.UserHide` and `WindowSetShowing`.
 - `Disable` restores the wrapper, re-shows `PetHealthWindow`, and unregisters it from `LayoutEditor`.
 - The saved original is stored at module scope and re-wrap is guarded, so repeated enable/disable cycles don't produce wrapper-of-wrapper corruption.

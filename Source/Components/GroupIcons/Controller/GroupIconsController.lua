@@ -7,8 +7,8 @@
 -- Behavior overview:
 --   • Roster (party row 1, open-world warband 4×6): career icon + ring on member worldObjNum.
 --     Scenario with Scenario checkbox ON: roster grid only for *your* scenario party (sgroupindex match); other scenario parties use outsider tracking with Friendly/Hostile gates — rings match roster style when Scenario enabled else realm blue/red.
---     Self is skipped. Crown + orange-gold ring on group leader (party row or warband grid; scenario roster omits crown); leader slot drawn at 1.5× scale.
---     Rings use full archetype (or all-green) tint for every roster member; leader still uses c_LEADER_RING_RGB.
+--     Self is skipped. Crown on group leader (party row or warband grid; scenario roster omits crown); leader slot drawn at 1.5× scale.
+--     Rings use full archetype (or all-green) tint for every roster member.
 --   • Roster attach requires a live worldObjNum this refresh (party slot / scenario roster optional scenarioWorldObjNum).
 --     Cached ids refine LearnKnown when live wid is 0 (distant / unloaded row); zone change clears caches.
 --     Outsiders: FIFO when full; same AutoMark-style spatial wid probe as roster (below) + window/name checks.
@@ -34,7 +34,7 @@ local c_FRAME_SIZE   = 48   -- Content square and outer window width; vertical b
 local c_ICON_DRAW    = 34   -- career icon display size (inside ring)
 local c_RING_SIZE    = 48   -- ring overlay size (scale up so band clears icon corners)
 
--- Archetype ring colors (all warband/party rows use the same full palette; leader uses c_LEADER_RING_RGB).
+-- Archetype ring colors (all warband/party rows use the same full palette).
 local c_ARCHETYPE_TANK  = 1
 local c_ARCHETYPE_DPS   = 2
 local c_ARCHETYPE_HEAL  = 3
@@ -129,17 +129,16 @@ local c_WORLD_PROBE_ATTACH_Z = 1.0
 -- Roster spatial hide only after this many consecutive probe intervals (~0.2s each) reporting “gone” — avoids flicker when projection flickers at boundaries.
 local c_ROSTER_SPATIAL_GONE_STREAK = 4
 
--- Realm ring RGB (outsider targets); archetype colors stay on group members.
-local c_REALM_RING_ORDER  = { 0, 0, 255 }
-local c_REALM_RING_DEST   = { 255, 0, 0 }
-local c_RING_GREEN        = { 0, 255, 0 } -- roster when archetypeColors off
--- Party/warband leader roster ring (overrides archetype / green-off palette).
-local c_LEADER_RING_RGB     = { 255, 185, 55 }
+-- Ring colors
+local c_RING_FRIENDLY     = { 0, 255, 0 }   -- Green
+local c_RING_HOSTILE      = { 255, 0, 0 }   -- Red
+local c_RING_CYAN         = { 0, 255, 255 } -- Cyan (roster when archetypeColors off)
+
 
 local c_DEFAULT_SETTINGS = {
     showParty = true,
     showWarband = true,
-    archetypeColors = true,
+    archetypeColors = false,
     showFriendly = true,
     showHostile = true,
 }
@@ -162,11 +161,24 @@ local function EnsureSettings()
 end
 
 local function RealmRingRgbForCareerLine(careerLine)
-    local realm = careerLine and c_CAREER_REALM[careerLine]
-    if realm == GameData.Realm.ORDER then
-        return c_REALM_RING_ORDER[1], c_REALM_RING_ORDER[2], c_REALM_RING_ORDER[3]
-    elseif realm == GameData.Realm.DESTRUCTION then
-        return c_REALM_RING_DEST[1], c_REALM_RING_DEST[2], c_REALM_RING_DEST[3]
+    local playerRealm = GameData and GameData.Player and GameData.Player.realm
+    local careerRealm = careerLine and c_CAREER_REALM[careerLine]
+    if not careerRealm then
+        return 160, 160, 160
+    end
+    if playerRealm == GameData.Realm.ORDER or playerRealm == GameData.Realm.DESTRUCTION then
+        if careerRealm == playerRealm then
+            return c_RING_FRIENDLY[1], c_RING_FRIENDLY[2], c_RING_FRIENDLY[3]
+        else
+            return c_RING_HOSTILE[1], c_RING_HOSTILE[2], c_RING_HOSTILE[3]
+        end
+    else
+        -- Fallback if player realm is unknown: legacy Order blue / Destruction red
+        if careerRealm == GameData.Realm.ORDER then
+            return 0, 0, 255
+        elseif careerRealm == GameData.Realm.DESTRUCTION then
+            return 255, 0, 0
+        end
     end
     return 160, 160, 160
 end
@@ -174,7 +186,7 @@ end
 local function GroupRingRgbForCareerLine(careerLine)
     local s = EnsureSettings()
     if not s.archetypeColors then
-        return c_RING_GREEN[1], c_RING_GREEN[2], c_RING_GREEN[3], "green"
+        return c_RING_CYAN[1], c_RING_CYAN[2], c_RING_CYAN[3], "cyan"
     end
     local arch = careerLine and c_CAREER_ARCHETYPE[careerLine]
     local rgb = arch and c_ARCHETYPE_RGB[arch]
@@ -237,7 +249,7 @@ function GroupIcon.New(partyIndex, memberIndex)
     self.lastCareerLine = nil
     self.lastCareerNamesId = nil -- Icons careers table id (scenario roster); nil = use careerLine → atlas only
     self.lastWarbandCrown = nil
-    self.lastRingTintKey = nil -- "archetype" | "leader" | "realm:r,g,b"
+    self.lastRingTintKey = nil -- "archetype" | "realm:r,g,b"
     -- Roster slots only (partyIndex 1..6): hide stuck world-attached UI without Destroy (Enemy ObjectWindows pattern).
     self.rosterSpatialHidden = false
     self.rosterSavedWorldAttachScale = nil
@@ -303,9 +315,6 @@ function GroupIcon:Attach(name, worldObjNum, careerLine, showWarbandCrown, useRe
     if useRealmRingTint then
         rr, gg, bb = RealmRingRgbForCareerLine(careerLine)
         self.lastRingTintKey = string.format("realm:%d,%d,%d", rr, gg, bb)
-    elseif showWarbandCrown then
-        rr, gg, bb = c_LEADER_RING_RGB[1], c_LEADER_RING_RGB[2], c_LEADER_RING_RGB[3]
-        self.lastRingTintKey = "leader"
     else
         rr, gg, bb, self.lastRingTintKey = GroupRingRgbForCareerLine(careerLine)
     end
@@ -412,28 +421,12 @@ function GroupIcon:Update(name, worldObjNum, careerLine, showWarbandCrown, useRe
     if useRealmRingTint then
         local r, g, b = RealmRingRgbForCareerLine(careerLine)
         wantRingKey = string.format("realm:%d,%d,%d", r, g, b)
-    elseif showWarbandCrown then
-        wantRingKey = "leader"
     else
         local _, _, _, key = GroupRingRgbForCareerLine(careerLine)
         wantRingKey = key
     end
     if worldObjNum == 0 then
         self:_detach()
-        return
-    end
-    -- Fast path: only leader crown toggled; skip Destroy/Attach for identical attach state.
-    local crownWin = self.windowName and (self.windowName .. "ContentWarbandCrown")
-    if crownWin and DoesWindowExist(crownWin)
-        and self.playerName == name
-        and self.worldObjNum == worldObjNum
-        and self.lastCareerLine == careerLine
-        and self.lastCareerNamesId == careerNamesId
-        and self.lastWarbandCrown ~= showWarbandCrown
-        and self.lastRingTintKey == wantRingKey
-    then
-        WindowSetShowing(crownWin, showWarbandCrown)
-        self.lastWarbandCrown = showWarbandCrown
         return
     end
     -- Re-attach if the player, world object, career (ring / icon), warband crown, or ring tint mode changed.
@@ -1142,22 +1135,78 @@ local function WantRosterWorldMarkers()
     return s.showParty == true or s.showWarband == true
 end
 
-local function WarmRefreshWarbandIfNeeded(dt)
+local function CheckRosterWorldObjChanges()
+    local s = EnsureSettings()
+    local inScenario = IsScenarioContext()
+    
+    local function checkMember(partyIndex, memberIndex, member)
+        if not member or not member.name then
+            return false
+        end
+        local icon = m_icons[partyIndex][memberIndex]
+        local liveWid = tonumber(member.worldObjNum) or 0
+        local resolvedWid = ResolveRosterIconAttachWorldId(member.name, liveWid)
+        if resolvedWid ~= icon.worldObjNum then
+            return true
+        end
+        return false
+    end
+
+    if inScenario then
+        if s.showParty then
+            local data = (type(PartyUtils) == "table" and type(PartyUtils.GetPartyData) == "function") and PartyUtils.GetPartyData() or GetGroupData()
+            if type(data) == "table" then
+                for m = 1, c_MAX_MEMBERS do
+                    local member = GetPartySlotMember(m, data)
+                    if checkMember(1, m, member) then
+                        return true
+                    end
+                end
+            end
+        end
+    elseif IsWarBandActive() then
+        local showAll = s.showWarband == true
+        local showParty1 = s.showParty == true
+        local parties = GetBattlegroupMemberData()
+        if type(parties) == "table" then
+            for p = 1, c_MAX_PARTIES do
+                local party = parties[p]
+                for m = 1, c_MAX_MEMBERS do
+                    local member = party and party.players and party.players[m]
+                    if type(PartyUtils) == "table" and type(PartyUtils.GetWarbandMember) == "function" then
+                        local hydrated = PartyUtils.GetWarbandMember(p, m)
+                        if hydrated ~= nil then
+                            member = hydrated
+                        end
+                    end
+                    local shouldShow = showAll or (showParty1 and p == 1)
+                    if shouldShow then
+                        if checkMember(p, m, member) then
+                            return true
+                        end
+                    end
+                end
+            end
+        end
+    elseif s.showParty then
+        local data = (type(PartyUtils) == "table" and type(PartyUtils.GetPartyData) == "function") and PartyUtils.GetPartyData() or GetGroupData()
+        if type(data) == "table" then
+            for m = 1, c_MAX_MEMBERS do
+                local member = GetPartySlotMember(m, data)
+                if checkMember(1, m, member) then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+local function WarmRefreshRosterIfNeeded(dt)
     if m_postEnableWarmRefreshRemaining <= 0 then
         return
     end
-    local function activeWarbandNotScenario()
-        if type(IsWarBandActive) ~= "function" then
-            return false
-        end
-        return IsWarBandActive() == true and not IsScenarioContext()
-    end
-    if not activeWarbandNotScenario() or not WantRosterWorldMarkers() then
-        return
-    end
-    if AnyRosterWorldAttachedIcons() then
-        m_postEnableWarmRefreshRemaining = 0
-        m_postEnableWarmRefreshPoll = 0
+    if not WantRosterWorldMarkers() then
         return
     end
     m_postEnableWarmRefreshPoll = (m_postEnableWarmRefreshPoll or 0) + dt
@@ -1377,7 +1426,7 @@ function CustomUI.GroupIcons.OnUpdate(timePassed)
         end
         PruneTrackedOutsidersAgainstRoster()
     end
-    WarmRefreshWarbandIfNeeded(dt)
+    WarmRefreshRosterIfNeeded(dt)
 
     local needsWorldProbe = next(m_trackWidToSlot) ~= nil or AnyRosterWorldAttachedIcons()
     if needsWorldProbe then
@@ -1400,6 +1449,9 @@ function CustomUI.GroupIcons.OnUpdate(timePassed)
     if m_rosterValidateElapsed >= c_ROSTER_WID_VALIDATE_INTERVAL then
         m_rosterValidateElapsed = 0
         ValidateRosterIconWorldObjects()
+        if CheckRosterWorldObjChanges() then
+            m_needsRefreshAll = true
+        end
     end
 end
 

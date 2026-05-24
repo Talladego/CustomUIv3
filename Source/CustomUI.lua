@@ -847,7 +847,46 @@ local ROOT_WINDOW_NAMES = {
     "CustomUIGroupIconsDriver",
     -- Stock vignette overlay (EA_ScreenFlashWindow); CreateWindow is often omitted from the stock mod on RoR.
     "ScreenFlashWindow",
+    "CustomUIGlobalUpdateDriver",
 }
+
+local originalUpdateFromClient = nil
+
+function CustomUI.OnGlobalUpdate(timePassed)
+    CustomUI.TargetUpdateFlag = false
+    if type(CustomUI.TargetPresence) == "table"
+        and type(CustomUI.TargetPresence.OnGlobalUpdate) == "function" then
+        CustomUI.TargetPresence.OnGlobalUpdate(timePassed)
+    end
+end
+
+local function HookTargetInfo()
+    if type(TargetInfo) ~= "table" or type(TargetInfo.UpdateFromClient) ~= "function" or originalUpdateFromClient then
+        return
+    end
+
+    originalUpdateFromClient = TargetInfo.UpdateFromClient
+    TargetInfo.UpdateFromClient = function(self)
+        if CustomUI.TargetUpdateFlag then
+            return
+        end
+
+        local targets = GetUpdatedTargets()
+        if targets ~= nil then
+            for unitId, targetData in pairs(targets) do
+                TargetInfo:SetUnitInfo(unitId, targetData)
+            end
+            if type(CustomUI.TargetPresence) == "table"
+                and type(CustomUI.TargetPresence.OnCacheBatch) == "function" then
+                CustomUI.TargetPresence.OnCacheBatch(targets)
+            end
+        end
+        -- Do not ClearUnits() when GetUpdatedTargets() is nil (batch already consumed).
+        -- A spurious second UpdateFromClient() was wiping the cache and flickering target UI.
+
+        CustomUI.TargetUpdateFlag = true
+    end
+end
 
 local function EnsureRootWindowInstances()
     if type(CreateWindow) ~= "function" then
@@ -857,7 +896,7 @@ local function EnsureRootWindowInstances()
     for i = 1, #ROOT_WINDOW_NAMES do
         local w = ROOT_WINDOW_NAMES[i]
         if type(DoesWindowExist) ~= "function" or not DoesWindowExist(w) then
-            CreateWindow(w, false)
+            CreateWindow(w, w == "CustomUIGlobalUpdateDriver")
         end
     end
 end
@@ -867,6 +906,7 @@ function CustomUI.Initialize()
         return
     end
 
+    HookTargetInfo()
     EnsureRootWindowInstances()
 
     CustomUI.State.initialized = true

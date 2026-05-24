@@ -11,5 +11,18 @@
             </Size>
         </Window>
 
+        <!-- Driver: OnUpdate tick for global frame updates (e.g. rate-limiting TargetInfo:UpdateFromClient) -->
+        <Window name="CustomUIGlobalUpdateDriver" handleinput="false" layer="background" parent="Root" movable="false">
+            <Size>
+                <AbsPoint x="1" y="1" />
+            </Size>
+            <Anchors>
+                <Anchor point="topleft" relativePoint="topleft" relativeTo="Root" />
+            </Anchors>
+            <EventHandlers>
+                <EventHandler event="OnUpdate" function="CustomUI.OnGlobalUpdate" />
+            </EventHandlers>
+        </Window>
+
     </Windows>
 </Interface>

@@ -40,6 +40,7 @@
             <File name="Source/Shared/BuffTracker/BuffGroups.lua" />
             <File name="Source/Shared/BuffTracker/BuffLists.lua" />
             <File name="Source/Shared/BuffTracker/BuffFilterDefaults.lua" />
+            <File name="Source/Shared/TargetPresence.lua" />
             <File name="Source/Shared/UnitFrame/TargetFrame.lua" />
             <File name="Source/Components/PlayerStatusWindow/Controller/PlayerStatusWindowController.lua" />
             <File name="Source/Components/PlayerStatusWindow/View/PlayerStatusWindow.xml" />

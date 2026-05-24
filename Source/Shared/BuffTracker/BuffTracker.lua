@@ -78,6 +78,31 @@
 -- Local helpers
 ----------------------------------------------------------------
 
+local function WStringToStringSafe( ws )
+    if ws == nil then return "" end
+    if type(ws) == "wstring" and type(WStringToString) == "function" then
+        return WStringToString( ws )
+    end
+    return tostring( ws )
+end
+
+local c_REMOVE_GRACE_PERIOD = 0.25
+
+local function BuffsMatch( a, b )
+    if not a or not b then return false end
+    local aidA = tonumber( a.abilityId )
+    local aidB = tonumber( b.abilityId )
+    if aidA and aidB and aidA > 0 and aidB > 0 then
+        return aidA == aidB
+    end
+    local nameA = a.name and WStringToStringSafe( a.name ) or ""
+    local nameB = b.name and WStringToStringSafe( b.name ) or ""
+    if nameA ~= "" and nameB ~= "" then
+        return nameA == nameB
+    end
+    return false
+end
+
 -- Re-declared here because IsValidBuff is local-scoped in bufftracker.lua.
 local function IsValidBuff( buffData )
     return ( buffData ~= nil
@@ -85,6 +110,8 @@ local function IsValidBuff( buffData )
          and buffData.iconNum     ~= nil
          and buffData.iconNum     >  0 )
 end
+
+
 
 -- Stable iteration for hash-like buff maps (Low #14): deterministic merge paths / debugging.
 -- OBSOLETE: Use tracker:_GetSortedKeys( t ) which uses a scratch table to avoid allocations.
@@ -111,11 +138,41 @@ local function GetBuffCategory( buffData )
 end
 
 -- Returns "short", "long", or "permanent" based on duration.
-local function GetDurationCategory( buffData, threshold )
+local function GetDurationCategory( buffData, threshold, prevCat, prevDur )
     if buffData == nil then return "permanent" end
-    if   buffData.permanentUntilDispelled then return "permanent"
-    elseif buffData.duration < threshold  then return "short"
-    else                                       return "long" end
+    if buffData.permanentUntilDispelled then return "permanent" end
+
+    local duration = buffData.duration or 0
+
+    if prevCat == nil or prevDur == nil then
+        if duration < threshold then
+            return "short"
+        else
+            return "long"
+        end
+    end
+
+    if prevCat == "short" then
+        local isRecast = (duration - prevDur) > 3.0
+        local goesSignificantlyAbove = duration >= (threshold + 3.0)
+        if isRecast or goesSignificantlyAbove then
+            return "long"
+        else
+            return "short"
+        end
+    elseif prevCat == "long" then
+        if duration < threshold then
+            return "short"
+        else
+            return "long"
+        end
+    else
+        if duration < threshold then
+            return "short"
+        else
+            return "long"
+        end
+    end
 end
 
 -- Priority tables indexed by SortMode integer value. Higher value = sorted first.
@@ -239,11 +296,16 @@ function CustomUI.BuffFrame:SetBuff( buffData )
 
     -- Sort-mode trackers call OnBuffsChanged ~10 Hz; re-applying the same effect reset alpha/tints every tick and
     -- restarts stock fade animation → visible flicker. Same-effect refresh: timer only (duration lives on buffData).
-    if isValidBuff and IsValidBuff( prev )
-       and prev.effectIndex == buffData.effectIndex
-       and prev.iconNum == buffData.iconNum
-       and ( prev.stackCount or 1 ) == ( buffData.stackCount or 1 )
+    local isSameVisual = false
+    if isValidBuff and prev ~= nil
+       and self.m_displayedEffectIndex == buffData.effectIndex
+       and self.m_displayedIconNum == buffData.iconNum
+       and self.m_displayedStackCount == ( buffData.stackCount or 1 )
     then
+        isSameVisual = true
+    end
+
+    if isSameVisual then
         self.m_buffData = buffData
         self:Update( true )
         self:Show( self.m_IsTrackerShowing )
@@ -253,6 +315,10 @@ function CustomUI.BuffFrame:SetBuff( buffData )
     self.m_buffData = buffData
 
     if isValidBuff then
+        self.m_displayedEffectIndex = buffData.effectIndex
+        self.m_displayedIconNum     = buffData.iconNum
+        self.m_displayedStackCount  = buffData.stackCount or 1
+
         local windowName       = self:GetName()
         local texture, x, y   = GetIconData( buffData.iconNum )
 
@@ -284,6 +350,10 @@ function CustomUI.BuffFrame:SetBuff( buffData )
         end
 
         self:Update( true )
+    else
+        self.m_displayedEffectIndex = nil
+        self.m_displayedIconNum     = nil
+        self.m_displayedStackCount  = nil
     end
 
     self:Show( isValidBuff and self.m_IsTrackerShowing )
@@ -399,6 +469,21 @@ end
 CustomUI.BuffTracker         = {}
 CustomUI.BuffTracker.__index = CustomUI.BuffTracker
 setmetatable( CustomUI.BuffTracker, { __index = BuffTracker } )
+
+function CustomUI.BuffTracker:DebugLog( msg )
+    if CustomUI.DebugLogging == true then
+        local nameStr = tostring(self.m_containerName or "?")
+        local wmsg = towstring("[" .. nameStr .. "] " .. tostring(msg))
+        local dfn = rawget(_G, "d")
+        if type(dfn) == "function" then
+            dfn(wmsg)
+        elseif CustomUI.PrintMessage then
+            CustomUI.PrintMessage(wmsg)
+        else
+            TextLogAddEntry("Chat", 0, L"[CustomUI] " .. wmsg)
+        end
+    end
+end
 
 -- Sort mode constants.
 CustomUI.BuffTracker.SortMode = {
@@ -782,8 +867,8 @@ function CustomUI.BuffTracker:_RebuildSortFunc()
             end
         end
 
-        local catA = a._sortDurCat or GetDurationCategory( a, threshold )
-        local catB = b._sortDurCat or GetDurationCategory( b, threshold )
+        local catA = a._sortDurCat or GetDurationCategory( a, threshold, a._sortDurCat, a._sortDur )
+        local catB = b._sortDurCat or GetDurationCategory( b, threshold, b._sortDurCat, b._sortDur )
         local priA = priority[ catA ]
         local priB = priority[ catB ]
 
@@ -792,8 +877,8 @@ function CustomUI.BuffTracker:_RebuildSortFunc()
         end
 
         if catA == "permanent" then
-            local nameA = tostring( a.name or "" )
-            local nameB = tostring( b.name or "" )
+            local nameA = WStringToStringSafe( a.name )
+            local nameB = WStringToStringSafe( b.name )
             if nameA ~= nameB then return nameA < nameB end
 
             local abilityA = tonumber( a.abilityId ) or -1
@@ -823,7 +908,7 @@ function CustomUI.BuffTracker:_RebuildSortFunc()
         local effectB = tonumber( b.effectIndex ) or -1
         if effectA ~= effectB then return effectA < effectB end
 
-        return tostring( a.name or "" ) < tostring( b.name or "" )
+        return WStringToStringSafe( a.name ) < WStringToStringSafe( b.name )
     end
 end
 
@@ -836,7 +921,7 @@ function CustomUI.BuffTracker:_PassesFilter( buffData )
     if buffCat == "debuff"  and not cfg.showDebuffs then return false end
     if buffCat == "neutral" and not cfg.showNeutral then return false end
 
-    local durCat = GetDurationCategory( buffData, self.m_durationThreshold )
+    local durCat = GetDurationCategory( buffData, self.m_durationThreshold, buffData._layoutDurCat, buffData._layoutDur )
     if durCat == "short"     and not cfg.showShort     then return false end
     if durCat == "long"      and not cfg.showLong      then return false end
     if durCat == "permanent" and not cfg.showPermanent then return false end
@@ -1054,18 +1139,46 @@ function CustomUI.BuffTracker:Update( elapsedTime )
     self.m_sortResortElapsed = (self.m_sortResortElapsed or 0) + elapsedTime
     self.m_timeSinceLastRefresh = (self.m_timeSinceLastRefresh or 0) + elapsedTime
 
-    -- Tick durations and prune expired buffs in a single pass.
+    -- Tick durations and prune expired/pending removal buffs in a single pass.
     -- Removing an existing key during pairs() is safe in Lua 5.1.
     local pruned = false
     for bk, buffData in pairs( self.m_buffData ) do
-        if IsValidBuff( buffData ) and not buffData.permanentUntilDispelled then
-            local d = ( buffData.duration or 0 ) - elapsedTime
-            if d <= 0 then
-                self:_ReleaseTableToPool( buffData )
-                self.m_buffData[ bk ] = nil
-                pruned = true
-            else
-                buffData.duration = d
+        if IsValidBuff( buffData ) then
+            if buffData._pendingRemovalTime then
+                local t = buffData._pendingRemovalTime - elapsedTime
+                if t <= 0 then
+                    self:_ReleaseTableToPool( buffData )
+                    self.m_buffData[ bk ] = nil
+                    pruned = true
+                else
+                    buffData._pendingRemovalTime = t
+                    if not buffData.permanentUntilDispelled then
+                        local d = ( buffData.duration or 0 ) - elapsedTime
+                        if d < 0 then d = 0 end
+                        buffData.duration = d
+                        if buffData._layoutDur then
+                            buffData._layoutDur = math.max(0, buffData._layoutDur - elapsedTime)
+                        end
+                        if buffData._sortDur then
+                            buffData._sortDur = math.max(0, buffData._sortDur - elapsedTime)
+                        end
+                    end
+                end
+            elseif not buffData.permanentUntilDispelled then
+                local d = ( buffData.duration or 0 ) - elapsedTime
+                if d <= 0 then
+                    self:_ReleaseTableToPool( buffData )
+                    self.m_buffData[ bk ] = nil
+                    pruned = true
+                else
+                    buffData.duration = d
+                    if buffData._layoutDur then
+                        buffData._layoutDur = buffData._layoutDur - elapsedTime
+                    end
+                    if buffData._sortDur then
+                        buffData._sortDur = buffData._sortDur - elapsedTime
+                    end
+                end
             end
         end
     end
@@ -1095,7 +1208,7 @@ function CustomUI.BuffTracker:Update( elapsedTime )
         local threshold = self.m_durationThreshold
         for _, buffData in pairs( self.m_buffData ) do
             if IsValidBuff( buffData ) and not buffData.permanentUntilDispelled then
-                local catNow = GetDurationCategory( buffData, threshold )
+                local catNow = GetDurationCategory( buffData, threshold, buffData._layoutDurCat, buffData._layoutDur )
                 local prev   = buffData._layoutDurCat
                 if prev ~= nil and catNow ~= prev then
                     durCatChanged = true
@@ -1130,7 +1243,9 @@ end
 
 local function AssignBuffData( dst, src )
     for k in pairs( dst ) do
-        dst[k] = nil
+        if type(k) ~= "string" or k:sub(1,1) ~= "_" then
+            dst[k] = nil
+        end
     end
     for k, v in pairs( src ) do
         dst[k] = v
@@ -1152,8 +1267,19 @@ function CustomUI.BuffTracker:Refresh( force )
 
     if allBuffs then
         for id, buffEntry in pairs( allBuffs ) do
+            -- Purge any matching pending removal buffs first (excluding same id to prevent corrupting table pool)
+            for oldId, oldBuff in pairs( buffData ) do
+                if oldId ~= id and oldBuff._pendingRemovalTime and BuffsMatch( oldBuff, buffEntry ) then
+                    self:_ReleaseTableToPool( oldBuff )
+                    buffData[oldId] = nil
+                end
+            end
+
             local existing = buffData[id]
             if existing then
+                if existing._pendingRemovalTime then
+                    existing._pendingRemovalTime = nil
+                end
                 AssignBuffData( existing, buffEntry )
             else
                 buffData[id] = self:_GetTableFromPool( buffEntry )
@@ -1163,8 +1289,9 @@ function CustomUI.BuffTracker:Refresh( force )
     end
     for id, existing in pairs( buffData ) do
         if not seen[id] then
-            self:_ReleaseTableToPool( existing )
-            buffData[id] = nil
+            if not existing._pendingRemovalTime then
+                existing._pendingRemovalTime = c_REMOVE_GRACE_PERIOD
+            end
         end
     end
     self:_RequestRebuild( force == true )
@@ -1180,8 +1307,19 @@ function CustomUI.BuffTracker:UpdateBuffs( updatedBuffsTable, isFullList )
 
         for buffId, buffData in pairs( updatedBuffsTable ) do
             if IsValidBuff( buffData ) then
+                -- Purge any matching pending removal buffs first (excluding same id to prevent corrupting table pool)
+                for oldId, oldBuff in pairs( self.m_buffData ) do
+                    if oldId ~= buffId and oldBuff._pendingRemovalTime and BuffsMatch( oldBuff, buffData ) then
+                        self:_ReleaseTableToPool( oldBuff )
+                        self.m_buffData[oldId] = nil
+                    end
+                end
+
                 local existing = self.m_buffData[buffId]
                 if existing then
+                    if existing._pendingRemovalTime then
+                        existing._pendingRemovalTime = nil
+                    end
                     AssignBuffData( existing, buffData )
                 else
                     self.m_buffData[buffId] = self:_GetTableFromPool( buffData )
@@ -1191,23 +1329,37 @@ function CustomUI.BuffTracker:UpdateBuffs( updatedBuffsTable, isFullList )
         end
         for id, existing in pairs( self.m_buffData ) do
             if not seen[id] then
-                self:_ReleaseTableToPool( existing )
-                self.m_buffData[id] = nil
+                if not existing._pendingRemovalTime then
+                    existing._pendingRemovalTime = c_REMOVE_GRACE_PERIOD
+                end
             end
         end
     else
         for buffId, buffData in pairs( updatedBuffsTable ) do
+            local existing = self.m_buffData[buffId]
+
             if IsValidBuff( buffData ) then
-                local existing = self.m_buffData[buffId]
+                -- Purge any matching pending removal buffs first (excluding same id to prevent corrupting table pool)
+                for oldId, oldBuff in pairs( self.m_buffData ) do
+                    if oldId ~= buffId and oldBuff._pendingRemovalTime and BuffsMatch( oldBuff, buffData ) then
+                        self:_ReleaseTableToPool( oldBuff )
+                        self.m_buffData[oldId] = nil
+                    end
+                end
+
                 if existing then
+                    if existing._pendingRemovalTime then
+                        existing._pendingRemovalTime = nil
+                    end
                     AssignBuffData( existing, buffData )
                 else
                     self.m_buffData[buffId] = self:_GetTableFromPool( buffData )
                 end
             else
-                if self.m_buffData[buffId] then
-                    self:_ReleaseTableToPool( self.m_buffData[buffId] )
-                    self.m_buffData[buffId] = nil
+                if existing then
+                    if not existing._pendingRemovalTime then
+                        existing._pendingRemovalTime = c_REMOVE_GRACE_PERIOD
+                    end
                 end
             end
         end
@@ -1299,7 +1451,8 @@ function CustomUI.BuffTracker:OnBuffsChanged()
             for i = 1, #finalData do
                 local b = finalData[i]
                 if b then
-                    b._sortDurCat = GetDurationCategory( b, threshold )
+                    b._sortDurCat = GetDurationCategory( b, threshold, b._sortDurCat, b._sortDur )
+                    b._sortDur = b.duration
                 end
             end
         end
@@ -1309,7 +1462,8 @@ function CustomUI.BuffTracker:OnBuffsChanged()
     local maxBuffIndex = #finalData
     for buffSlot, buffFrame in ipairs( self.m_buffFrames ) do
         if buffSlot <= maxBuffIndex then
-            buffFrame:SetBuff( finalData[ buffSlot ] )
+            local bd = finalData[ buffSlot ]
+            buffFrame:SetBuff( bd )
         else
             buffFrame:SetBuff( nil )
         end
@@ -1347,7 +1501,8 @@ function CustomUI.BuffTracker:OnBuffsChanged()
         local threshold = self.m_durationThreshold
         for _, buffData in pairs( self.m_buffData ) do
             if IsValidBuff( buffData ) then
-                buffData._layoutDurCat = GetDurationCategory( buffData, threshold )
+                buffData._layoutDurCat = GetDurationCategory( buffData, threshold, buffData._layoutDurCat, buffData._layoutDur )
+                buffData._layoutDur = buffData.duration
             end
         end
     end

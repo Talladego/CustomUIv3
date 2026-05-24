@@ -162,13 +162,26 @@ local function SetTargetFrameBuffTrackerShowing(frame, showing)
 end
 
 local function RefreshWindowVisibility()
-    -- WindowGetShowing reads the window's own flag without inheriting parent
-    -- visibility, so it correctly reflects whether the sub-frame has a target
-    -- even when the container window is currently hidden.
-    local hostileVisible = m_enabled and m_hostileFrame
-        and WindowGetShowing(m_hostileFrame:GetName())
-    local friendlyVisible = m_enabled and m_friendlyFrame
-        and WindowGetShowing(m_friendlyFrame:GetName())
+    local hostileVisible = false
+    local friendlyVisible = false
+
+    if m_enabled and m_hostileFrame then
+        if type(CustomUI.TargetPresence) == "table"
+            and type(CustomUI.TargetPresence.ShouldShow) == "function" then
+            hostileVisible = CustomUI.TargetPresence.ShouldShow(c_HOSTILE_UNIT_ID)
+        else
+            hostileVisible = WindowGetShowing(m_hostileFrame:GetName())
+        end
+    end
+
+    if m_enabled and m_friendlyFrame then
+        if type(CustomUI.TargetPresence) == "table"
+            and type(CustomUI.TargetPresence.ShouldShow) == "function" then
+            friendlyVisible = CustomUI.TargetPresence.ShouldShow(c_FRIENDLY_UNIT_ID)
+        else
+            friendlyVisible = WindowGetShowing(m_friendlyFrame:GetName())
+        end
+    end
 
     if hostileVisible then
         SafeLayoutShow(c_HOSTILE_WINDOW_NAME)
@@ -188,11 +201,25 @@ end
 -- Count CustomUI target frames currently visible (mirrors stock TargetWindow.NumberOfTargetWindowsShowing intent).
 local function CountShowingTargetFrames()
     local n = 0
-    if m_hostileFrame and WindowGetShowing(m_hostileFrame:GetName()) then
-        n = n + 1
+    if m_hostileFrame then
+        if type(CustomUI.TargetPresence) == "table"
+            and type(CustomUI.TargetPresence.ShouldShow) == "function" then
+            if CustomUI.TargetPresence.ShouldShow(c_HOSTILE_UNIT_ID) then
+                n = n + 1
+            end
+        elseif WindowGetShowing(m_hostileFrame:GetName()) then
+            n = n + 1
+        end
     end
-    if m_friendlyFrame and WindowGetShowing(m_friendlyFrame:GetName()) then
-        n = n + 1
+    if m_friendlyFrame then
+        if type(CustomUI.TargetPresence) == "table"
+            and type(CustomUI.TargetPresence.ShouldShow) == "function" then
+            if CustomUI.TargetPresence.ShouldShow(c_FRIENDLY_UNIT_ID) then
+                n = n + 1
+            end
+        elseif WindowGetShowing(m_friendlyFrame:GetName()) then
+            n = n + 1
+        end
     end
     return n
 end
@@ -285,7 +312,7 @@ end
 -- Must call TargetInfo:UpdateFromClient() at most once per PLAYER_TARGET_UPDATED — GetUpdatedTargets()
 -- is consumed until the next event (see easystem_targetinfo/targetinfo.lua). Stock ea_targetwindow
 -- uses a single handler; two handlers each calling UpdateFromClient breaks the other slot after reload.
-local function RefreshBothTargetsFromClient(targetClassification)
+local function RefreshBothTargetsFromClient(targetClassification, targetId, targetType)
     if targetClassification ~= nil
         and targetClassification ~= TargetInfo.HOSTILE_TARGET
         and targetClassification ~= TargetInfo.FRIENDLY_TARGET
@@ -302,10 +329,32 @@ local function RefreshBothTargetsFromClient(targetClassification)
     local oldHostileEntityId = TargetInfo:UnitEntityId(c_HOSTILE_UNIT_ID)
     local oldFriendlyEntityId = TargetInfo:UnitEntityId(c_FRIENDLY_UNIT_ID)
 
+    if type(CustomUI.TargetPresence) == "table"
+        and type(CustomUI.TargetPresence.NoteTargetEvent) == "function" then
+        CustomUI.TargetPresence.NoteTargetEvent(targetClassification, targetId)
+    end
+
     TargetInfo:UpdateFromClient()
+
+    if type(CustomUI.TargetPresence) == "table"
+        and type(CustomUI.TargetPresence.OnTargetRefreshComplete) == "function" then
+        CustomUI.TargetPresence.OnTargetRefreshComplete(targetClassification)
+    end
+
+    if type(CustomUI.TargetPresence) == "table"
+        and type(CustomUI.TargetPresence.InjectCacheIfHeld) == "function" then
+        CustomUI.TargetPresence.InjectCacheIfHeld(c_HOSTILE_UNIT_ID)
+        CustomUI.TargetPresence.InjectCacheIfHeld(c_FRIENDLY_UNIT_ID)
+    end
 
     m_hostileFrame:UpdateUnit()
     m_friendlyFrame:UpdateUnit()
+
+    if type(CustomUI.TargetPresence) == "table"
+        and type(CustomUI.TargetPresence.StabilizeFrame) == "function" then
+        CustomUI.TargetPresence.StabilizeFrame(m_hostileFrame, c_HOSTILE_UNIT_ID)
+        CustomUI.TargetPresence.StabilizeFrame(m_friendlyFrame, c_FRIENDLY_UNIT_ID)
+    end
 
     local targetHasChanged = false
 
@@ -338,15 +387,33 @@ end
 
 -- Re-bind unit frames to whatever TargetInfo already holds (e.g. after Disable left stock UI
 -- updating TargetInfo, or on Enable with no new PLAYER_TARGET_UPDATED). Do NOT call
--- TargetInfo:UpdateFromClient() here: without a pending batch, GetUpdatedTargets() is nil and
--- TargetInfo:ClearUnits() wipes current targets (easystem_targetinfo/targetinfo.lua).
+-- TargetInfo:UpdateFromClient() here: without a pending batch, GetUpdatedTargets() is nil;
+-- CustomUI's hooked UpdateFromClient preserves the existing cache (see TargetPresence.lua).
 local function ApplyTargetsFromCachedTargetInfo()
     if not m_hostileFrame or not m_friendlyFrame then
         return
     end
 
+    if type(CustomUI.TargetPresence) == "table"
+        and type(CustomUI.TargetPresence.SyncFromTargetInfo) == "function" then
+        CustomUI.TargetPresence.SyncFromTargetInfo(c_HOSTILE_UNIT_ID)
+        CustomUI.TargetPresence.SyncFromTargetInfo(c_FRIENDLY_UNIT_ID)
+    end
+
+    if type(CustomUI.TargetPresence) == "table"
+        and type(CustomUI.TargetPresence.InjectCacheIfHeld) == "function" then
+        CustomUI.TargetPresence.InjectCacheIfHeld(c_HOSTILE_UNIT_ID)
+        CustomUI.TargetPresence.InjectCacheIfHeld(c_FRIENDLY_UNIT_ID)
+    end
+
     m_hostileFrame:UpdateUnit()
     m_friendlyFrame:UpdateUnit()
+
+    if type(CustomUI.TargetPresence) == "table"
+        and type(CustomUI.TargetPresence.StabilizeFrame) == "function" then
+        CustomUI.TargetPresence.StabilizeFrame(m_hostileFrame, c_HOSTILE_UNIT_ID)
+        CustomUI.TargetPresence.StabilizeFrame(m_friendlyFrame, c_FRIENDLY_UNIT_ID)
+    end
 
     m_hostileFrame.m_BuffTracker:Refresh( true )
     m_friendlyFrame.m_BuffTracker:Refresh( true )
@@ -445,6 +512,10 @@ function CustomUI.TargetWindow.Initialize()
 end
 
 function CustomUI.TargetWindow.Shutdown()
+    if type(CustomUI.TargetPresence) == "table"
+        and type(CustomUI.TargetPresence.Reset) == "function" then
+        CustomUI.TargetPresence.Reset()
+    end
     UnregisterHandlers()
     if m_hostileFrame then
         m_hostileFrame.m_BuffTracker:Shutdown()
@@ -519,8 +590,8 @@ function CustomUI.TargetWindow.OnFriendlyEffectsUpdated(updateType, updatedEffec
     end
 end
 
-function CustomUI.TargetWindow.OnPlayerTargetUpdated(targetClassification)
-    RefreshBothTargetsFromClient(targetClassification)
+function CustomUI.TargetWindow.OnPlayerTargetUpdated(targetClassification, targetId, targetType)
+    RefreshBothTargetsFromClient(targetClassification, targetId, targetType)
 end
 
 ----------------------------------------------------------------
@@ -562,6 +633,10 @@ end
 
 function TargetWindowComponent:Disable()
     m_enabled = false
+    if type(CustomUI.TargetPresence) == "table"
+        and type(CustomUI.TargetPresence.Reset) == "function" then
+        CustomUI.TargetPresence.Reset()
+    end
     UnregisterHandlers()
     -- Clear CustomUI trackers before handing back to stock to avoid stale state across rapid toggles.
     if m_hostileFrame and m_hostileFrame.m_BuffTracker and type(m_hostileFrame.m_BuffTracker.Clear) == "function" then

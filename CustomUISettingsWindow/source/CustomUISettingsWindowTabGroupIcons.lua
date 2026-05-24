@@ -13,7 +13,7 @@ local function EnsureGroupIconsSettings()
     local s = CustomUI.Settings.GroupIcons
     if s.showParty == nil then s.showParty = true end
     if s.showWarband == nil then s.showWarband = true end
-    if s.archetypeColors == nil then s.archetypeColors = true end
+    if s.archetypeColors == nil then s.archetypeColors = false end
     if s.showFriendly == nil then s.showFriendly = true end
     if s.showHostile == nil then s.showHostile = true end
     return s

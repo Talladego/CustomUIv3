@@ -110,13 +110,27 @@ local function UnregisterHandlers()
     m_handlersRegistered = false
 end
 
--- Drives all HUD visuals from TargetInfo **without** calling UpdateFromClient().
+-- Drives HUD visuals from TargetInfo + CustomUI.TargetPresence (no UpdateFromClient here).
 -- Returns the new attachedId (0 = no target).
 local function RefreshHUDFromCache(hud, windowName)
-    local entityId  = TargetInfo:UnitEntityId(hud.unitId)
-    local hasTarget = entityId ~= nil and entityId ~= 0
+    if type(CustomUI.TargetPresence) == "table"
+        and type(CustomUI.TargetPresence.SyncFromTargetInfo) == "function" then
+        CustomUI.TargetPresence.SyncFromTargetInfo(hud.unitId)
+    end
 
-    if not m_enabled or not hasTarget then
+    local hasTarget = false
+    local entityId = 0
+    if type(CustomUI.TargetPresence) == "table"
+        and type(CustomUI.TargetPresence.ShouldShow) == "function"
+        and type(CustomUI.TargetPresence.GetEntityId) == "function" then
+        hasTarget = CustomUI.TargetPresence.ShouldShow(hud.unitId)
+        entityId = CustomUI.TargetPresence.GetEntityId(hud.unitId)
+    else
+        entityId = TargetInfo:UnitEntityId(hud.unitId)
+        hasTarget = entityId ~= nil and entityId ~= 0
+    end
+
+    if not m_enabled or not hasTarget or entityId == 0 then
         if hud.attachedId ~= 0 then
             DetachHUD(windowName, hud)
         end
@@ -230,6 +244,10 @@ function CustomUI.TargetHUD.OnShutdown()
 end
 
 function CustomUI.TargetHUD.Shutdown()
+    if type(CustomUI.TargetPresence) == "table"
+        and type(CustomUI.TargetPresence.Reset) == "function" then
+        CustomUI.TargetPresence.Reset()
+    end
     UnregisterHandlers()
     if m_hostile.buffTracker  then m_hostile.buffTracker:Shutdown();  m_hostile.buffTracker  = nil end
     if m_friendly.buffTracker then m_friendly.buffTracker:Shutdown(); m_friendly.buffTracker = nil end
@@ -319,14 +337,22 @@ end
 -- Event Handlers
 ----------------------------------------------------------------
 
-function CustomUI.TargetHUD.OnPlayerTargetUpdated(targetClassification)
+function CustomUI.TargetHUD.OnPlayerTargetUpdated(targetClassification, targetId, targetType)
     if targetClassification ~= nil
         and targetClassification ~= TargetInfo.HOSTILE_TARGET
         and targetClassification ~= TargetInfo.FRIENDLY_TARGET
     then
         return
     end
+    if type(CustomUI.TargetPresence) == "table"
+        and type(CustomUI.TargetPresence.NoteTargetEvent) == "function" then
+        CustomUI.TargetPresence.NoteTargetEvent(targetClassification, targetId)
+    end
     TargetInfo:UpdateFromClient()
+    if type(CustomUI.TargetPresence) == "table"
+        and type(CustomUI.TargetPresence.OnTargetRefreshComplete) == "function" then
+        CustomUI.TargetPresence.OnTargetRefreshComplete(targetClassification)
+    end
     RefreshBothHUDsFromCache()
 end
 
@@ -401,6 +427,10 @@ end
 
 function TargetHUDComponent:Disable()
     m_enabled = false
+    if type(CustomUI.TargetPresence) == "table"
+        and type(CustomUI.TargetPresence.Reset) == "function" then
+        CustomUI.TargetPresence.Reset()
+    end
     UnregisterHandlers()
     DetachHUD(c_HOSTILE_WINDOW_NAME,  m_hostile)
     DetachHUD(c_FRIENDLY_WINDOW_NAME, m_friendly)

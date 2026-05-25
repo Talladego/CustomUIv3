@@ -67,53 +67,14 @@ local c_UF_TARGETHUD_HP_MISSING_R, c_UF_TARGETHUD_HP_MISSING_G, c_UF_TARGETHUD_H
 
 -- Career ring archetype palette (UnitFrames-only setting; matches GroupIcons roster colors when enabled).
 local c_UF_RING_GREY_R, c_UF_RING_GREY_G, c_UF_RING_GREY_B = 160, 160, 160
-local c_UF_RING_ARCHETYPE_TANK = 1
-local c_UF_RING_ARCHETYPE_DPS = 2
-local c_UF_RING_ARCHETYPE_HEAL = 3
-local c_UF_RING_ARCHETYPE_RGB = {
-    [c_UF_RING_ARCHETYPE_TANK] = { 140, 178, 255 }, -- keep in sync with GroupIcons c_ARCHETYPE_RGB
-    [c_UF_RING_ARCHETYPE_DPS] = { 255, 176, 82 },
-    [c_UF_RING_ARCHETYPE_HEAL] = { 175, 255, 90 },
-}
 -- RoRGroupScoreboard / ScenarioSummary archetype index mapping (ArchTypeIcons = {165,106,157,160}).
 -- Collapse 4-way stock archetypes into UnitFrames 3-way palette by mapping both DPS variants to DPS.
 local c_UF_SCOREBOARD_ARCHETYPE_TO_RING = {
-    [1] = c_UF_RING_ARCHETYPE_TANK,
-    [2] = c_UF_RING_ARCHETYPE_DPS,
-    [3] = c_UF_RING_ARCHETYPE_DPS,
-    [4] = c_UF_RING_ARCHETYPE_HEAL,
+    [1] = CustomUI.Archetypes.TANK,
+    [2] = CustomUI.Archetypes.DPS,
+    [3] = CustomUI.Archetypes.DPS,
+    [4] = CustomUI.Archetypes.HEAL,
 }
-local c_UF_RING_CAREER_ARCHETYPE = {
-    [GameData.CareerLine.IRON_BREAKER] = c_UF_RING_ARCHETYPE_TANK,
-    [GameData.CareerLine.SWORDMASTER] = c_UF_RING_ARCHETYPE_TANK,
-    [GameData.CareerLine.CHOSEN] = c_UF_RING_ARCHETYPE_TANK,
-    [GameData.CareerLine.BLACK_ORC] = c_UF_RING_ARCHETYPE_TANK,
-    [GameData.CareerLine.KNIGHT] = c_UF_RING_ARCHETYPE_TANK,
-    [GameData.CareerLine.BLACKGUARD] = c_UF_RING_ARCHETYPE_TANK,
-    [GameData.CareerLine.WITCH_HUNTER] = c_UF_RING_ARCHETYPE_DPS,
-    [GameData.CareerLine.WHITE_LION] = c_UF_RING_ARCHETYPE_DPS,
-    [GameData.CareerLine.MARAUDER] = c_UF_RING_ARCHETYPE_DPS,
-    [GameData.CareerLine.WITCH_ELF] = c_UF_RING_ARCHETYPE_DPS,
-    [GameData.CareerLine.BRIGHT_WIZARD] = c_UF_RING_ARCHETYPE_DPS,
-    [GameData.CareerLine.MAGUS] = c_UF_RING_ARCHETYPE_DPS,
-    [GameData.CareerLine.SORCERER] = c_UF_RING_ARCHETYPE_DPS,
-    [GameData.CareerLine.ENGINEER] = c_UF_RING_ARCHETYPE_DPS,
-    [GameData.CareerLine.SHADOW_WARRIOR] = c_UF_RING_ARCHETYPE_DPS,
-    [GameData.CareerLine.SQUIG_HERDER] = c_UF_RING_ARCHETYPE_DPS,
-    [GameData.CareerLine.CHOPPA] = c_UF_RING_ARCHETYPE_DPS,
-    [GameData.CareerLine.WARRIOR_PRIEST] = c_UF_RING_ARCHETYPE_HEAL,
-    [GameData.CareerLine.DISCIPLE] = c_UF_RING_ARCHETYPE_HEAL,
-    [GameData.CareerLine.ARCHMAGE] = c_UF_RING_ARCHETYPE_HEAL,
-    [GameData.CareerLine.SHAMAN] = c_UF_RING_ARCHETYPE_HEAL,
-    [GameData.CareerLine.RUNE_PRIEST] = c_UF_RING_ARCHETYPE_HEAL,
-    [GameData.CareerLine.ZEALOT] = c_UF_RING_ARCHETYPE_HEAL,
-}
-if GameData.CareerLine.SLAYER then
-    c_UF_RING_CAREER_ARCHETYPE[GameData.CareerLine.SLAYER] = c_UF_RING_ARCHETYPE_DPS
-end
-if GameData.CareerLine.HAMMERER then
-    c_UF_RING_CAREER_ARCHETYPE[GameData.CareerLine.HAMMERER] = c_UF_RING_ARCHETYPE_DPS
-end
 
 local IsScenarioModeActive
 
@@ -157,8 +118,8 @@ end
 
 --- Archetype RGB for HP bar when Target HUD tintable style is on (same palette as career ring / GroupIcons).
 local function UnitFramesHpBarArchetypeRgbForCareerLine(careerLine)
-    local arch = careerLine and c_UF_RING_CAREER_ARCHETYPE[careerLine]
-    local rgb = arch and c_UF_RING_ARCHETYPE_RGB[arch]
+    local arch = CustomUI.Archetypes.GetArchetypeForCareerLine(careerLine)
+    local rgb = arch and CustomUI.Archetypes.RGB[arch]
     if rgb then
         return rgb[1], rgb[2], rgb[3]
     end
@@ -177,8 +138,8 @@ local function UnitFramesCareerRingRgbForCareerLine(careerLine)
     if not ShouldColorUnitFramesCareerRingByArchetype() then
         return c_UF_RING_GREY_R, c_UF_RING_GREY_G, c_UF_RING_GREY_B
     end
-    local arch = careerLine and c_UF_RING_CAREER_ARCHETYPE[careerLine]
-    local rgb = arch and c_UF_RING_ARCHETYPE_RGB[arch]
+    local arch = CustomUI.Archetypes.GetArchetypeForCareerLine(careerLine)
+    local rgb = arch and CustomUI.Archetypes.RGB[arch]
     if rgb then
         return rgb[1], rgb[2], rgb[3]
     end
@@ -239,12 +200,12 @@ local function UnitFramesHpBarArchetypeRgbForPlayer(playerName, careerLine)
                         if pdata.archtype and pdata.archtype > 0 then
                             local effectiveArch = c_UF_SCOREBOARD_ARCHETYPE_TO_RING[tonumber(pdata.archtype)]
                             if effectiveArch == nil then
-                                effectiveArch = careerLine and c_UF_RING_CAREER_ARCHETYPE[careerLine]
-                                if effectiveArch == c_UF_RING_ARCHETYPE_HEAL then
-                                    effectiveArch = c_UF_RING_ARCHETYPE_DPS
+                                effectiveArch = CustomUI.Archetypes.GetArchetypeForCareerLine(careerLine)
+                                if effectiveArch == CustomUI.Archetypes.HEAL then
+                                    effectiveArch = CustomUI.Archetypes.DPS
                                 end
                             end
-                            local rgb = effectiveArch and c_UF_RING_ARCHETYPE_RGB[effectiveArch]
+                            local rgb = effectiveArch and CustomUI.Archetypes.RGB[effectiveArch]
                             if rgb then
                                 return rgb[1], rgb[2], rgb[3]
                             end
@@ -271,12 +232,12 @@ local function UnitFramesHpBarArchetypeRgbForPlayer(playerName, careerLine)
                             if archtypeIndex and archtypeIndex > 0 then
                                 local effectiveArch = c_UF_SCOREBOARD_ARCHETYPE_TO_RING[archtypeIndex]
                                 if effectiveArch == nil then
-                                    effectiveArch = careerLine and c_UF_RING_CAREER_ARCHETYPE[careerLine]
-                                    if effectiveArch == c_UF_RING_ARCHETYPE_HEAL then
-                                        effectiveArch = c_UF_RING_ARCHETYPE_DPS
+                                    effectiveArch = CustomUI.Archetypes.GetArchetypeForCareerLine(careerLine)
+                                    if effectiveArch == CustomUI.Archetypes.HEAL then
+                                        effectiveArch = CustomUI.Archetypes.DPS
                                     end
                                 end
-                                local rgb = effectiveArch and c_UF_RING_ARCHETYPE_RGB[effectiveArch]
+                                local rgb = effectiveArch and CustomUI.Archetypes.RGB[effectiveArch]
                                 if rgb then
                                     return rgb[1], rgb[2], rgb[3]
                                 end
@@ -312,12 +273,12 @@ local function UnitFramesCareerRingRgbForPlayer(playerName, careerLine)
                         if pdata.archtype and pdata.archtype > 0 then
                             local effectiveArch = c_UF_SCOREBOARD_ARCHETYPE_TO_RING[tonumber(pdata.archtype)]
                             if effectiveArch == nil then
-                                effectiveArch = careerLine and c_UF_RING_CAREER_ARCHETYPE[careerLine]
-                                if effectiveArch == c_UF_RING_ARCHETYPE_HEAL then
-                                    effectiveArch = c_UF_RING_ARCHETYPE_DPS
+                                effectiveArch = CustomUI.Archetypes.GetArchetypeForCareerLine(careerLine)
+                                if effectiveArch == CustomUI.Archetypes.HEAL then
+                                    effectiveArch = CustomUI.Archetypes.DPS
                                 end
                             end
-                            local rgb = effectiveArch and c_UF_RING_ARCHETYPE_RGB[effectiveArch]
+                            local rgb = effectiveArch and CustomUI.Archetypes.RGB[effectiveArch]
                             if rgb then
                                 return rgb[1], rgb[2], rgb[3]
                             end
@@ -344,12 +305,12 @@ local function UnitFramesCareerRingRgbForPlayer(playerName, careerLine)
                             if archtypeIndex and archtypeIndex > 0 then
                                 local effectiveArch = c_UF_SCOREBOARD_ARCHETYPE_TO_RING[archtypeIndex]
                                 if effectiveArch == nil then
-                                    effectiveArch = careerLine and c_UF_RING_CAREER_ARCHETYPE[careerLine]
-                                    if effectiveArch == c_UF_RING_ARCHETYPE_HEAL then
-                                        effectiveArch = c_UF_RING_ARCHETYPE_DPS
+                                    effectiveArch = CustomUI.Archetypes.GetArchetypeForCareerLine(careerLine)
+                                    if effectiveArch == CustomUI.Archetypes.HEAL then
+                                        effectiveArch = CustomUI.Archetypes.DPS
                                     end
                                 end
-                                local rgb = effectiveArch and c_UF_RING_ARCHETYPE_RGB[effectiveArch]
+                                local rgb = effectiveArch and CustomUI.Archetypes.RGB[effectiveArch]
                                 if rgb then
                                     return rgb[1], rgb[2], rgb[3]
                                 end

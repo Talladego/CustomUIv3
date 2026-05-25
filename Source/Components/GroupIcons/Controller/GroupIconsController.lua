@@ -34,47 +34,7 @@ local c_FRAME_SIZE   = 48   -- Content square and outer window width; vertical b
 local c_ICON_DRAW    = 34   -- career icon display size (inside ring)
 local c_RING_SIZE    = 48   -- ring overlay size (scale up so band clears icon corners)
 
--- Archetype ring colors (all warband/party rows use the same full palette).
-local c_ARCHETYPE_TANK  = 1
-local c_ARCHETYPE_DPS   = 2
-local c_ARCHETYPE_HEAL  = 3
-local c_ARCHETYPE_RGB = {
-    [c_ARCHETYPE_TANK] = { 140, 178, 255 },
-    [c_ARCHETYPE_DPS]  = { 255, 176, 82 },
-    [c_ARCHETYPE_HEAL] = { 175, 255, 90 },
-}
 -- Same career → archetype mapping as Enemy.careerArchetypes (Code/Core/Groups/Groups.lua).
-local c_CAREER_ARCHETYPE = {
-    [GameData.CareerLine.IRON_BREAKER]  = c_ARCHETYPE_TANK,
-    [GameData.CareerLine.SWORDMASTER]   = c_ARCHETYPE_TANK,
-    [GameData.CareerLine.CHOSEN]        = c_ARCHETYPE_TANK,
-    [GameData.CareerLine.BLACK_ORC]     = c_ARCHETYPE_TANK,
-    [GameData.CareerLine.KNIGHT]        = c_ARCHETYPE_TANK,
-    [GameData.CareerLine.BLACKGUARD]    = c_ARCHETYPE_TANK,
-    [GameData.CareerLine.WITCH_HUNTER]  = c_ARCHETYPE_DPS,
-    [GameData.CareerLine.WHITE_LION]    = c_ARCHETYPE_DPS,
-    [GameData.CareerLine.MARAUDER]      = c_ARCHETYPE_DPS,
-    [GameData.CareerLine.WITCH_ELF]     = c_ARCHETYPE_DPS,
-    [GameData.CareerLine.BRIGHT_WIZARD] = c_ARCHETYPE_DPS,
-    [GameData.CareerLine.MAGUS]         = c_ARCHETYPE_DPS,
-    [GameData.CareerLine.SORCERER]      = c_ARCHETYPE_DPS,
-    [GameData.CareerLine.ENGINEER]      = c_ARCHETYPE_DPS,
-    [GameData.CareerLine.SHADOW_WARRIOR]= c_ARCHETYPE_DPS,
-    [GameData.CareerLine.SQUIG_HERDER]  = c_ARCHETYPE_DPS,
-    [GameData.CareerLine.CHOPPA]        = c_ARCHETYPE_DPS,
-    [GameData.CareerLine.WARRIOR_PRIEST]= c_ARCHETYPE_HEAL,
-    [GameData.CareerLine.DISCIPLE]      = c_ARCHETYPE_HEAL,
-    [GameData.CareerLine.ARCHMAGE]      = c_ARCHETYPE_HEAL,
-    [GameData.CareerLine.SHAMAN]         = c_ARCHETYPE_HEAL,
-    [GameData.CareerLine.RUNE_PRIEST]    = c_ARCHETYPE_HEAL,
-    [GameData.CareerLine.ZEALOT]         = c_ARCHETYPE_HEAL,
-}
-if GameData.CareerLine.SLAYER then
-    c_CAREER_ARCHETYPE[GameData.CareerLine.SLAYER] = c_ARCHETYPE_DPS
-end
-if GameData.CareerLine.HAMMERER then
-    c_CAREER_ARCHETYPE[GameData.CareerLine.HAMMERER] = c_ARCHETYPE_DPS
-end
 
 -- Career → realm for outsider ring tint (Order blue / Destruction red).
 local c_CAREER_REALM = {
@@ -188,10 +148,9 @@ local function GroupRingRgbForCareerLine(careerLine)
     if not s.archetypeColors then
         return c_RING_CYAN[1], c_RING_CYAN[2], c_RING_CYAN[3], "cyan"
     end
-    local arch = careerLine and c_CAREER_ARCHETYPE[careerLine]
-    local rgb = arch and c_ARCHETYPE_RGB[arch]
-    if rgb then
-        return rgb[1], rgb[2], rgb[3], "archetype"
+    local r, g, b = CustomUI.Archetypes.GetColorForCareerLine(careerLine)
+    if r and g and b then
+        return r, g, b, "archetype"
     end
     return 160, 160, 160, "archetype"
 end

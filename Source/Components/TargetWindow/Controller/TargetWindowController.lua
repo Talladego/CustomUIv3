@@ -360,11 +360,13 @@ local function RefreshBothTargetsFromClient(targetClassification, targetId, targ
 
     if TargetInfo:UnitEntityId(c_HOSTILE_UNIT_ID) ~= oldHostileEntityId then
         m_hostileFrame:StopInterpolatingStatus()
+        m_hostileFrame.m_BuffTracker:Clear()
         m_hostileFrame.m_BuffTracker:Refresh( true )
         targetHasChanged = true
     end
     if TargetInfo:UnitEntityId(c_FRIENDLY_UNIT_ID) ~= oldFriendlyEntityId then
         m_friendlyFrame:StopInterpolatingStatus()
+        m_friendlyFrame.m_BuffTracker:Clear()
         m_friendlyFrame.m_BuffTracker:Refresh( true )
         targetHasChanged = true
     end

@@ -169,6 +169,8 @@ local function RefreshHUDFromCache(hud, windowName)
         if hud.buffTracker and entityId ~= hud.attachedId then
             -- Show the buff container now that the owner HUD is visible.
             SyncBuffContainerVisibility(hud)
+            -- Clear old buffs entirely so they don't persist through the removal grace period.
+            hud.buffTracker:Clear()
             -- Full refresh from engine buff cache; then force immediate rebuild.
             hud.buffTracker:Refresh(true)
             if hud.buffTracker.m_rebuildPending then

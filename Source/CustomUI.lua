@@ -557,7 +557,13 @@ function CustomUI.HandleSlashCommand(input)
     end
 
     if trimmedInput == "" then
-		WindowUtils.ToggleShowing( "CustomUISettingsWindowTabbed" )
+        if type(CustomUI.ShowSettings) == "function" then
+            CustomUI.ShowSettings()
+        else
+            if CustomUI.PrintMessage then
+                CustomUI.PrintMessage(L"Settings module not installed.")
+            end
+        end
         return
     end
 

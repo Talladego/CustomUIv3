@@ -26,6 +26,10 @@
             <Dependency name="EA_ScreenFlashWindow" />
             <!-- GroupWindow component: ensures stock group window assets are loaded so member rows render correctly. -->
             <Dependency name="EA_GroupWindow" />
+            <!-- TargetWindow component: overrides target window hooks and layout. -->
+            <Dependency name="EA_TargetWindow" />
+            <!-- TargetWindow component: relies on TargetInfo batch logic from stock targetinfo. -->
+            <Dependency name="EASystem_TargetInfo" />
             <!-- Common optional: slash command registration for /customui and /cui control commands. -->
             <Dependency name="LibSlash" optional="true" />
             <Dependency name="EA_CareerResourcesWindow" />
@@ -36,6 +40,7 @@
             <File name="Source/CustomUI.lua" />
             <!-- Shared: loaded before any component that depends on them -->
             <File name="Source/Shared/Shared.xml" />
+            <File name="Source/Shared/Archetypes.lua" />
             <File name="Source/Shared/BuffTracker/BuffTracker.lua" />
             <File name="Source/Shared/BuffTracker/BuffGroups.lua" />
             <File name="Source/Shared/BuffTracker/BuffLists.lua" />

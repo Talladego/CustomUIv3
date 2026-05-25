@@ -755,6 +755,9 @@ end
 -- Clears all displayed buffs and triggers a layout refresh.
 -- Use on target change or when the tracked unit becomes invalid.
 function CustomUI.BuffTracker:Clear()
+    for _, buffData in pairs( self.m_buffData ) do
+        self:_ReleaseTableToPool( buffData )
+    end
     self.m_buffData = {}
     self:_RequestRebuild()
 end

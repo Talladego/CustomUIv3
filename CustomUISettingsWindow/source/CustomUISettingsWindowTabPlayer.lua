@@ -40,7 +40,7 @@ function CustomUISettingsWindowTabPlayer.Initialize()
     -- Appearance
     local ap = CustomUISettingsWindowTabPlayer.contentsName.."Appearance"
     LabelSetText(ap.."Title", L"Appearance")
-    LabelSetText(ap.."MinimalAppearanceLabel", L"Minimal Appearance")
+    LabelSetText(ap.."MinimalAppearanceLabel", L"Minimal Appearance (DEPRECATED)")
     ButtonSetCheckButtonFlag(ap.."MinimalAppearanceButton", true)
     LabelSetText(ap.."MinimalShowApBarLabel", L"Show AP bar (minimal)")
     ButtonSetCheckButtonFlag(ap.."MinimalShowApBarButton", true)

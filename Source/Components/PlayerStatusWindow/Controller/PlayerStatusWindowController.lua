@@ -336,45 +336,6 @@ local c_MIN_GROUP_LEADER_CROWN_WINDOW = c_MIN_CONTAINER .. "GroupLeaderCrown"
 local c_MIN_WARBAND_LEADER_CROWN_WINDOW = c_MIN_CONTAINER .. "WarbandLeaderCrown"
 -- Archetype tint palette for minimal HP (CastBar) + career ring — keep in sync with UnitFramesController c_UF_RING_* / GroupIcons.
 local c_PS_RING_GREY_R, c_PS_RING_GREY_G, c_PS_RING_GREY_B = 160, 160, 160
-local c_PS_ARCHETYPE_TANK = 1
-local c_PS_ARCHETYPE_DPS = 2
-local c_PS_ARCHETYPE_HEAL = 3
-local c_PS_ARCHETYPE_RGB = {
-    [c_PS_ARCHETYPE_TANK] = { 140, 178, 255 },
-    [c_PS_ARCHETYPE_DPS]  = { 255, 176, 82 },
-    [c_PS_ARCHETYPE_HEAL] = { 175, 255, 90 },
-}
-local c_PS_CAREER_ARCHETYPE = {
-    [GameData.CareerLine.IRON_BREAKER]  = c_PS_ARCHETYPE_TANK,
-    [GameData.CareerLine.SWORDMASTER]   = c_PS_ARCHETYPE_TANK,
-    [GameData.CareerLine.CHOSEN]        = c_PS_ARCHETYPE_TANK,
-    [GameData.CareerLine.BLACK_ORC]     = c_PS_ARCHETYPE_TANK,
-    [GameData.CareerLine.KNIGHT]        = c_PS_ARCHETYPE_TANK,
-    [GameData.CareerLine.BLACKGUARD]    = c_PS_ARCHETYPE_TANK,
-    [GameData.CareerLine.WITCH_HUNTER]  = c_PS_ARCHETYPE_DPS,
-    [GameData.CareerLine.WHITE_LION]    = c_PS_ARCHETYPE_DPS,
-    [GameData.CareerLine.MARAUDER]      = c_PS_ARCHETYPE_DPS,
-    [GameData.CareerLine.WITCH_ELF]     = c_PS_ARCHETYPE_DPS,
-    [GameData.CareerLine.BRIGHT_WIZARD] = c_PS_ARCHETYPE_DPS,
-    [GameData.CareerLine.MAGUS]         = c_PS_ARCHETYPE_DPS,
-    [GameData.CareerLine.SORCERER]      = c_PS_ARCHETYPE_DPS,
-    [GameData.CareerLine.ENGINEER]      = c_PS_ARCHETYPE_DPS,
-    [GameData.CareerLine.SHADOW_WARRIOR]= c_PS_ARCHETYPE_DPS,
-    [GameData.CareerLine.SQUIG_HERDER]  = c_PS_ARCHETYPE_DPS,
-    [GameData.CareerLine.CHOPPA]        = c_PS_ARCHETYPE_DPS,
-    [GameData.CareerLine.WARRIOR_PRIEST]= c_PS_ARCHETYPE_HEAL,
-    [GameData.CareerLine.DISCIPLE]      = c_PS_ARCHETYPE_HEAL,
-    [GameData.CareerLine.ARCHMAGE]      = c_PS_ARCHETYPE_HEAL,
-    [GameData.CareerLine.SHAMAN]        = c_PS_ARCHETYPE_HEAL,
-    [GameData.CareerLine.RUNE_PRIEST]   = c_PS_ARCHETYPE_HEAL,
-    [GameData.CareerLine.ZEALOT]        = c_PS_ARCHETYPE_HEAL,
-}
-if GameData.CareerLine.SLAYER then
-    c_PS_CAREER_ARCHETYPE[GameData.CareerLine.SLAYER] = c_PS_ARCHETYPE_DPS
-end
-if GameData.CareerLine.HAMMERER then
-    c_PS_CAREER_ARCHETYPE[GameData.CareerLine.HAMMERER] = c_PS_ARCHETYPE_DPS
-end
 
 -- Hide default-frame chrome via per-window alpha in minimal mode (never touch root alpha —
 -- BuffTracker lives under CustomUIPlayerStatusWindow and would inherit invisible state).
@@ -416,6 +377,7 @@ local c_GI_CROWN_ANCHOR_TOUCH_OFFSET_Y = 5 -- sync GroupIconsController c_CROWN_
 ----------------------------------------------------------------
 
 local function IsMinimalAppearanceEnabled()
+    -- DEPRECATED: Minimal PlayerStatusWindow is deprecated and will be removed in a future release.
     local s = CustomUI.PlayerStatusWindow.GetSettings and CustomUI.PlayerStatusWindow.GetSettings()
     return s ~= nil and s.appearance == "minimal"
 end
@@ -510,10 +472,12 @@ local function ArchetypeRgbForPlayerCareer()
     end
     local career = GameData.Player.career
     local careerLine = career and tonumber(career.line)
-    local arch = careerLine and c_PS_CAREER_ARCHETYPE[careerLine]
-    local rgb = arch and c_PS_ARCHETYPE_RGB[arch]
-    if rgb then
-        return rgb[1], rgb[2], rgb[3]
+    if not careerLine then
+        return c_PS_RING_GREY_R, c_PS_RING_GREY_G, c_PS_RING_GREY_B
+    end
+    local r, g, b = CustomUI.Archetypes.GetColorForCareerLine(careerLine)
+    if r and g and b then
+        return r, g, b
     end
     return c_PS_RING_GREY_R, c_PS_RING_GREY_G, c_PS_RING_GREY_B
 end

@@ -43,6 +43,12 @@ end
 -- OnInitialize Handler()
 function CustomUISettingsWindowTabbed.Initialize()
 
+    if CustomUI and type(CustomUI.ShowSettings) ~= "function" then
+        CustomUI.ShowSettings = function()
+            WindowUtils.ToggleShowing("CustomUISettingsWindowTabbed")
+        end
+    end
+
     LabelSetText( "CustomUISettingsWindowTabbedTitleBarText", L"CustomUI Settings" )
     
     CustomUISettingsWindowTabbed.SetTabLabels()

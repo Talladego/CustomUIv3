@@ -4,13 +4,12 @@ CustomUI is a modular Return of Reckoning addon that replaces and enhances stock
 
 ## Documentation
 
-**This README is the architecture and conventions reference.** Backlog and audits live in [TODO.md](TODO.md); the focused controller decomposition plan lives in [REFACTOR_PLAN.md](REFACTOR_PLAN.md). Settings-window XML/layout pitfalls live in [CustomUISettingsWindow/README.md](CustomUISettingsWindow/README.md); settings backlog in [CustomUISettingsWindow/TODO.md](CustomUISettingsWindow/TODO.md).
+**This README is the architecture and conventions reference.** Runtime backlog and validation checklists live in [TODO.md](TODO.md). Settings-window XML/layout pitfalls live in [CustomUISettingsWindow/README.md](CustomUISettingsWindow/README.md); settings-specific backlog in [CustomUISettingsWindow/TODO.md](CustomUISettingsWindow/TODO.md).
 
 | Document | Purpose |
 |----------|---------|
 | [README.md](README.md) | Architecture, components, conventions, runtime usage |
-| [TODO.md](TODO.md) | Open issues, reviews, plans, validation checklists |
-| [REFACTOR_PLAN.md](REFACTOR_PLAN.md) | Phased plan for splitting oversized controllers/shared modules |
+| [TODO.md](TODO.md) | Open issues, in-game validation, optional follow-ups |
 | [guard_whitelist.csv](guard_whitelist.csv) | Guard / Save Da Runts ability IDs (ingested into `DefaultWhitelistAbility`) |
 | [CustomUISettingsWindow/README.md](CustomUISettingsWindow/README.md) | Settings UI — tab layout, XML pitfalls, diagnostics |
 | [CustomUISettingsWindow/TODO.md](CustomUISettingsWindow/TODO.md) | Settings addon backlog |
@@ -44,7 +43,7 @@ All registered components default to **disabled** except `GroupIcons`, which cur
 
 ### GroupIcons (world markers)
 
-Controller helpers live in `Controller/GroupIconsController.lua`, `GroupIconsSpatialProbe.lua`, `GroupIconsOutsiderTracker.lua`, and `GroupIconsRoster.lua`; `View/GroupIcons.xml` defines the `CustomUIGroupIcon` template plus **`CustomUIGroupIconsDriver`** (hosts `OnUpdate`, parent `Root`, 1×1) and **`CustomUIGroupIconsWorldProbe`** (position probe for outsider validation).
+Controller helpers live in `GroupIconsController.lua` (lifecycle/event hub), `GroupIconsSpatialProbe.lua`, `GroupIconsOutsiderTracker.lua`, `GroupIconsRoster.lua`, and `GroupIconsWarbandLeaders.lua` (friendly warband-leader name cache for crown sizing); `View/GroupIcons.xml` defines the `CustomUIGroupIcon` template plus **`CustomUIGroupIconsDriver`** (hosts `OnUpdate`, parent `Root`, 1×1) and **`CustomUIGroupIconsWorldProbe`** (position probe for outsider validation).
 
 - **Roster grid**: up to 6 parties × 6 members (`CustomUIGroupIcon_<party>_<member>`). Scenario mode with the scenario toggle ON fills slots from `GameData.GetScenarioPlayerGroups()` (`sgroupindex` / `sgroupslotnum`). Open-world warband uses `GetBattlegroupMemberData` with optional `PartyUtils.GetWarbandMember` hydration. Party-only uses row 1 via `PartyUtils.GetPartyMember` when available.
 - **Live `worldObjNum` rule**: an icon attaches only when the current refresh yields a non-zero entity id from party/warband/scenario row data. Cached ids refresh `LearnKnown` / sticky maps but are **not** used alone for attach (invalid ids tend to snap UI to the screen origin).
@@ -77,10 +76,12 @@ The footer **Apply / Reset / Cancel** handlers in `CustomUISettingsWindowTabbed`
 into the selected tab class (`UpdateSettings`, `ApplyCurrent`, `ResetSettings`, etc.)
 where implemented.
 
+Component settings persist in **`CustomUI.Settings`** (declared in `CustomUI.mod` → `SavedVariables.lua` under the active UI profile). After changing settings, keep CustomUI **enabled** through **`/reloadui` or logout** so the profile file is written; disabling the whole mod before reload can leave an empty or missing save file.
+
 Tab layout, `SWTab<Name>Contents*` naming, and the XML section-stacking rules are in
-[CustomUISettingsWindow/README.md](CustomUISettingsWindow/README.md). Open work and phased
-history are in [TODO.md](TODO.md). The old in-addon `RegisterTab` broker was removed; do not
-reintroduce it.
+[CustomUISettingsWindow/README.md](CustomUISettingsWindow/README.md). Open work is in
+[TODO.md](TODO.md) and [CustomUISettingsWindow/TODO.md](CustomUISettingsWindow/TODO.md).
+The old in-addon `RegisterTab` broker was removed; do not reintroduce it.
 
 
 ## Shared subsystems
@@ -201,6 +202,7 @@ CustomUI/
 			GroupIcons/
 				Controller/
 					GroupIconsSpatialProbe.lua
+					GroupIconsWarbandLeaders.lua
 					GroupIconsOutsiderTracker.lua
 					GroupIconsRoster.lua
 					GroupIconsController.lua
@@ -288,8 +290,13 @@ The old in-addon `CustomUI.SettingsWindow` / `MiniSettingsWindow` shells and per
 ### Code Hygiene
 - Remove dead code, commented-out blocks, and dev/test harnesses from release builds.
 
+### Controller extraction (completed)
+
+Large controllers were split into helper modules loaded **before** their coordinator in `CustomUI.mod` (GroupIcons, UnitFrames, BuffTracker, SCT). When adding helpers: preserve public names used by XML, settings tabs, and hooks; keep behavior-preserving moves separate from behavior changes; smoke enable/disable and `/reloadui` after each slice. Extraction history and remaining validation items are in [TODO.md](TODO.md).
+
 ---
 
+## Adding a new component
 
 1. Create a namespaced table under `CustomUI` (e.g. `CustomUI.ExampleComponent`).
 2. Put mutable state and runtime logic in `Controller/`.

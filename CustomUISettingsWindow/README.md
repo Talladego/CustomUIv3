@@ -6,7 +6,7 @@ shell is created on initialize (`CreateWindow` for `CustomUISettingsWindowTabbed
 players open it with **`/cui`** or **`/customui`** (registered by CustomUI).
 
 **Backlog:** [TODO.md](TODO.md) — open issues, validation, new-tab checklist.  
-**Parent addon:** [../README.md](../README.md) (architecture), [../TODO.md](../TODO.md) (runtime/component work).
+**Parent addon:** [../README.md](../README.md) (architecture), [../TODO.md](../TODO.md) (runtime validation and component work).
 
 This README is **layout and diagnostics only**; do not duplicate parent backlog here except settings-specific items.
 

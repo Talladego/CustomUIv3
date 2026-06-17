@@ -1,87 +1,210 @@
-# CustomUI Codebase Refactoring Plan
+# CustomUI Refactor Plan
 
-## Overview
-This document outlines the strategy for modularizing the largest monolithic files in the CustomUI codebase. The goal is to separate concerns (Data, View, and Controller logic), improve maintainability, reduce file sizes, and make future enhancements easier.
+## Goal
 
----
+Reduce the largest controller/shared files without changing runtime behavior, saved settings, slash commands, XML event targets, or component lifecycle semantics. Each refactor should be small enough to smoke in-game before the next slice.
 
-## 1. UnitFrames Refactoring
-**Current File:** `Source\Components\UnitFrames\Controller\UnitFramesController.lua` (~3,000 lines)
-**Issue:** Handles everything from engine event hooking and data hydration (party, warband, scenario) to complex sorting, overhead map distance scanning, and UI rendering.
+This plan is subordinate to the architecture rules in `README.md` and `.cursor/rules/customui.mdc`: controllers own lifecycle, hooks, and `RegisterComponent`; view helpers stay presentation-only; settings UI remains in the separate `CustomUISettingsWindow` addon.
 
-**New Structure:**
-*   **`UnitFramesData.lua`**
-    *   *Responsibilities:* Data retrieval and hydration.
-    *   *Contents:* Fetching data from `PartyUtils`, `GetBattlegroupMemberData()`, and `GameData.GetScenarioPlayerGroups()`. Contains the complex scenario hits merging and overhead map distance calculations.
-*   **`UnitFramesSort.lua`**
-    *   *Responsibilities:* Array sorting algorithms.
-    *   *Contents:* The specific role-based sorting logic (`SortMembersForUnitFramesDisplay`, `UnitFramesGetEffectiveArchetypeForPlayer`).
-*   **`UnitFramesView.lua`**
-    *   *Responsibilities:* UI manipulation.
-    *   *Contents:* UI rendering helpers (e.g., `SetMemberHpBarValues`, `ApplyStatusSettings`, `SetCareerIcon`, layouts for crowns and rings).
-*   **`UnitFramesController.lua`**
-    *   *Responsibilities:* Orchestration.
-    *   *Contents:* Hooks into `SystemData.Events`, listens to settings changes, asks `UnitFramesData` for the state, passes state to `UnitFramesSort`, and instructs `UnitFramesView` to render.
+## Status
 
----
+As of 2026-05-26, the code-moving slices in this plan are implemented in the shipped repo:
 
-## 2. Scrolling Combat Text (SCT) Overrides
-**Current File:** `Source\Components\SCT\Controller\SCTOverrides.lua` (~1,600 lines)
-**Issue:** Combines the logic for parsing and applying combat event overrides with massive, hardcoded configuration tables for specific abilities and formatting rules.
+- Phase 1 complete: `GroupIconsSpatialProbe.lua`, `GroupIconsOutsiderTracker.lua`, and `GroupIconsRoster.lua` are in `CustomUI.mod`, with `GroupIconsController.lua` acting as lifecycle/event coordinator.
+- Phase 2 complete: `UnitFramesArchetypes.lua`, `UnitFramesSort.lua`, `UnitFramesRoster.lua`, `UnitFramesScenario.lua`, and `UnitFramesWarband.lua` now own the extracted data/sort paths; the controller stays focused on visibility, routing, and window updates.
+- Phase 3 complete: `BuffTrackerLayout.lua`, `BuffTrackerRules.lua`, and `BuffTrackerGrouping.lua` are shipped and wired before `BuffTracker.lua`.
+- Phase 4 complete: `SCTAbilityIconResolver.lua`, `SCTEventEntry.lua`, and `SCTEventTracker.lua` are shipped; `SCTOverrides.lua` now keeps only shared scaffold/constants/anchor helpers.
 
-**New Structure:**
-*   **`SCTOverrideData.lua`**
-    *   *Responsibilities:* Pure data storage.
-    *   *Contents:* Large tables mapping ability IDs to custom text, icons, colors, or formatting instructions.
-*   **`SCTOverrides.lua`**
-    *   *Responsibilities:* Logic and application.
-    *   *Contents:* Functions that intercept `SCT` events, look up entries in `SCTOverrideData`, and apply the necessary transformations to the combat text payload before rendering.
+Remaining work is no longer large-slice controller decomposition. Any follow-up work is narrow and optional, or requires runtime validation, and is tracked in `TODO.md`.
 
----
+## Refactor Rules
 
-## 3. Group Icons Refactoring
-**Current File:** `Source\Components\GroupIcons\Controller\GroupIconsController.lua` (~1,550 lines)
-**Issue:** Tightly couples three different concerns: rendering icons for your group, tracking outsiders (hostiles/friendlies) via an LRU/FIFO pool, and performing a spatial probe for screen attachment.
+1. Keep behavior-preserving moves separate from behavior changes.
+2. Preserve public names already called by XML, settings tabs, slash commands, hooks, or other components.
+3. Load helper modules before the controller that consumes them in `CustomUI.mod`.
+4. Prefer local module tables under the owning namespace, for example `CustomUI.GroupIcons.SpatialProbe`, over new globals.
+5. Do not expose controller internals just to make extraction easier. If a helper needs many mutable controller locals, split a smaller concern first.
+6. After each slice, smoke enable/disable, `/reloadui`, relevant target/group events, and the settings tab that touches the feature.
 
-**New Structure:**
-*   **`GroupIconsSpatialProbe.lua`**
-    *   *Responsibilities:* Screen projection and validation.
-    *   *Contents:* The AutoMark-style coordinate calibration (`CalibrateGroupIconsWorldProbeAnchors`) and `WorldObjectSpatialProbeIsGone` logic used to detect if a world object is off-screen or dead.
-*   **`GroupIconsOutsiderTracker.lua`**
-    *   *Responsibilities:* Tracking non-group members.
-    *   *Contents:* The TargetInfo FIFO pool (`c_MAX_TRACKED_OUTSIDERS`), eviction logic, and ring rendering for enemies or friendly outsiders.
-*   **`GroupIconsRoster.lua`**
-    *   *Responsibilities:* Group member icons.
-    *   *Contents:* Logic for attaching icons to your own Party/Warband/Scenario members, handling crowns, and archetype tints.
-*   **`GroupIconsController.lua`**
-    *   *Responsibilities:* Initialization and Event Routing.
-    *   *Contents:* Core event loop (`OnUpdate`), routing `TargetInfo` updates to the `OutsiderTracker`, and party updates to the `Roster`.
+## Phase 1: GroupIcons (Completed)
 
----
+**Current file:** `Source/Components/GroupIcons/Controller/GroupIconsController.lua`
 
-## 4. Buff Tracker Refactoring
-**Current File:** `Source\Shared\BuffTracker\BuffTracker.lua` (~1,500 lines)
-**Issue:** Manages buff cache retrieval, sorting, an internal memory pooling system to reduce garbage collection, and raw UI widget anchoring/rendering.
+This is the best first target because the current responsibilities are already distinct: roster markers, outsider tracking, and the world-object probe. Keep `GroupIconsController.lua` as the event/lifecycle coordinator.
 
-**New Structure:**
-*   **`BuffTrackerMemory.lua`**
-    *   *Responsibilities:* Memory allocation and GC avoidance.
-    *   *Contents:* The `_GetTableFromPool` and `_ReleaseTableToPool` logic.
-*   **`BuffTrackerLayout.lua`**
-    *   *Responsibilities:* Visual arrangement of buffs.
-    *   *Contents:* Icon grid math, `WindowAddAnchor`, dimensions scaling, tooltip hooking, and visual duration formatting.
-*   **`BuffTracker.lua`**
-    *   *Responsibilities:* Core tracker logic.
-    *   *Contents:* Cache polling (`Refresh`), buff filtering, and triggering the layout engine when the duration buckets change.
+### 1A. Extract Spatial Probe
 
----
+Create `Source/Components/GroupIcons/Controller/GroupIconsSpatialProbe.lua`.
 
-## Implementation Checklist
+Owns:
+- `CalibrateGroupIconsWorldProbeAnchors`
+- `GetWorldProbeCalibration`
+- `WorldObjectSpatialProbeIsGone`
+- probe-window movement and anchor interpretation
 
-For each module being refactored, follow these steps strictly to ensure nothing breaks:
+API shape:
+- `CustomUI.GroupIcons.SpatialProbe.GetCalibration()`
+- `CustomUI.GroupIcons.SpatialProbe.IsGone(worldObjNum, calibration)`
 
-1.  **Extract Data/Views:** Move tables and pure functions to the new files.
-2.  **Expose via Namespace:** Assign the extracted functions and tables to the shared global namespace (e.g., `CustomUI.UnitFrames.Data.GetRoster()`) so the core controller can reach them.
-3.  **Update Manifest:** Add the new `.lua` files to `CustomUI.mod` (and optionally `CustomUISettingsWindow.mod` if shared there) in the correct loading order. **Data/Helpers must load before Controllers.**
-4.  **Wire Up Controller:** Replace the old local implementations in the Controller with calls to the new namespaced modules.
-5.  **Test:** Run the specific feature in-game, verifying no nil-reference errors occur during `OnUpdate` or initialization loops.
+Validation:
+- Roster icons hide when world objects unload.
+- Outsider rings untrack dead/off-screen entities.
+- No per-frame movement is introduced for icon windows.
+
+### 1B. Extract Outsider Tracker
+
+Create `Source/Components/GroupIcons/Controller/GroupIconsOutsiderTracker.lua`.
+
+Owns:
+- tracked outsider map and FIFO order
+- protected target eviction guard
+- `TryTrackOutsider`, `UntrackOutsiderWid`, `UntrackAllOutsiders`
+- target classification queue consumption
+
+Leave ring drawing through the existing `GroupIcon` object until a later pass. The first extraction should not redesign rendering.
+
+Validation:
+- Hostile and friendly outsiders attach after target updates.
+- Current hostile/friendly targets are not evicted before lower-priority outsiders.
+- Group members are pruned from outsider tracking.
+
+### 1C. Extract Roster Refresh
+
+Create `Source/Components/GroupIcons/Controller/GroupIconsRoster.lua`.
+
+Owns:
+- party/warband/scenario roster refresh
+- group membership cache
+- sticky/live world object ID handling
+- `RefreshParty`, `RefreshWarband`, and scenario roster helpers
+
+Controller keeps:
+- `Initialize`, `Enable`, `Disable`, `Shutdown`
+- engine event handlers
+- `OnUpdate` pacing and routing
+- settings change entrypoint
+
+Validation:
+- Party-only, warband, and scenario toggles still select the right roster path.
+- Self is never shown.
+- Sticky IDs are learned but not used alone for attachment.
+
+## Phase 2: UnitFrames (Completed)
+
+**Current file:** `Source/Components/UnitFrames/Controller/UnitFramesController.lua`
+
+Do not split data, sort, and rendering in one pass. The controller mixes event lifecycle, stock-window parity, scenario data merging, and UI writes; a broad extraction would be hard to verify.
+
+### 2A. Consolidate Effective Archetype Logic
+
+Create `Source/Components/UnitFrames/Controller/UnitFramesArchetypes.lua` only if the helpers cannot reasonably live in `Source/Shared/Archetypes.lua`.
+
+Owns:
+- normalized name lookup used for scoreboard/scenario archetype overrides
+- scoreboard archetype index mapping
+- effective archetype resolution used by HP tint, career ring tint, and role sorting
+
+Keep the base career mapping and RGB palette in `CustomUI.Archetypes`.
+
+Validation:
+- Career ring tint, HP bar tint, and role sort agree for the same player.
+- Scenario `experiencebonus` archetype override still works.
+- Warband `RoRGroupScoreboard.playersDataRaw` override still works.
+
+### 2B. Extract Sorting
+
+Create `Source/Components/UnitFrames/Controller/UnitFramesSort.lua`.
+
+Owns:
+- `SortMembersForUnitFramesDisplay`
+- bucket ranking and alphabetical/rank tie-breaks
+- no direct window calls
+
+API shape:
+- `CustomUI.UnitFrames.Sort.MembersForDisplay(members)`
+
+Validation:
+- Party role sorting on/off preserves current display order behavior.
+- Nil/unknown career rows still sort deterministically.
+
+### 2C. Split Scenario and Warband Data Paths
+
+Only after 2A and 2B are stable, consider:
+- `UnitFramesScenario.lua` for `GameData.GetScenarioPlayerGroups`, scenario hit merging, self row, and map distance cache.
+- `UnitFramesWarband.lua` for `PartyUtils`, `GetBattlegroupMemberData`, party-only rows, and warband party index resolution.
+
+Controller keeps stock visibility handoff, tick-window visibility, layout registration, hooks, and event routing.
+
+Validation:
+- Idle mode restores stock windows.
+- Scenario groups and open-world warband do not leak stale rows across mode changes.
+- Distance cache clears keys not seen in the current scan.
+
+## Phase 3: BuffTracker (Completed)
+
+**Current file:** `Source/Shared/BuffTracker/BuffTracker.lua`
+
+Avoid extracting memory pooling by itself. The pool is an implementation detail and should stay close to the code that owns table lifetimes unless a larger internal module can preserve that ownership cleanly.
+
+Preferred slices:
+- `BuffTrackerRules.lua`: category/duration filtering, whitelist/blacklist checks, group lookup, compression helpers.
+- `BuffTrackerLayout.lua`: container dimensions, alignment, slot anchoring, scale, visibility, hit area.
+- Keep `BuffFrame` widget behavior and tracker lifecycle in `BuffTracker.lua` until the rule/layout split is stable.
+
+Validation:
+- PlayerStatus, TargetWindow, TargetHUD, and GroupWindow trackers all render.
+- Compression sums stacks across casters.
+- Removal grace period still prevents stack flicker.
+- Blacklist/whitelist/default filter behavior is unchanged.
+
+## Phase 4: SCT (Completed)
+
+**Current file:** `Source/Components/SCT/Controller/SCTOverrides.lua`
+
+The current file is not just hardcoded override data. It includes anchor management, ability icon resolution, event entry classes, point-gain entries, and event trackers. Split by runtime responsibility, not by a presumed data/logic boundary.
+
+Preferred slices:
+- `SCTAbilityIconResolver.lua`: buff-list icon scan, equipment proc fallback, ability-data probing, and resolve logging. It should continue to use `SCTAbilityIconCache.lua`.
+- `SCTEventEntry.lua`: `CustomUI.SCT.EventEntry` and `PointGainEntry` creation, setup, update, destroy, icon/suffix positioning.
+- `SCTEventTracker.lua`: tracker creation, animation data initialization, update, expiry, and destroy.
+- Leave global hook/override installation in `SCTOverrides.lua` or `SCTHandlers.lua` depending on ownership.
+
+Validation:
+- Incoming/outgoing damage and heals still render at the right anchors.
+- Ability icons resolve from cache, buffs, player domains, and equipment fallbacks.
+- Event trackers expire cleanly and destroy windows without leaks.
+- Stock SCT handlers are restored on disable/shutdown.
+
+## Manifest Order
+
+When adding files, keep shared dependencies before components and helper files before consuming controllers. Example order for the first phase:
+
+```xml
+<File name="Source/Components/GroupIcons/Controller/GroupIconsSpatialProbe.lua" />
+<File name="Source/Components/GroupIcons/Controller/GroupIconsOutsiderTracker.lua" />
+<File name="Source/Components/GroupIcons/Controller/GroupIconsRoster.lua" />
+<File name="Source/Components/GroupIcons/Controller/GroupIconsController.lua" />
+<File name="Source/Components/GroupIcons/View/GroupIcons.xml" />
+```
+
+Do not add `<CreateWindow>` entries to `CustomUI.mod`, and do not re-include controller scripts from XML.
+
+## Remaining Follow-ups
+
+The remaining open items after this plan are intentionally narrower than the original phases:
+
+- runtime validation for PlayerStatus minimal mode, shared target takeover, SCT tracker expiry, and broader component enable/disable handoff
+- optional cleanup such as further shrinking `GroupIconsController.lua` / `CustomUI.lua`
+- optional UnitFrames incremental improvements (for example, narrower scenario-row refreshes instead of whole-mode refreshes)
+
+See `TODO.md` for the current backlog and validation checklist.
+
+## Done Criteria
+
+For each phase:
+
+1. `CustomUI.mod` load order is updated.
+2. Existing public entrypoints and XML handlers still exist.
+3. No new settings UI is added inside CustomUI.
+4. In-game smoke notes are added to `TODO.md` or the relevant issue section.
+5. Any behavior change discovered during extraction is split into its own follow-up change.

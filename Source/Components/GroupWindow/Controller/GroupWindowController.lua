@@ -401,61 +401,10 @@ local function TryGetRawMemberStatus(index)
     return GetGroupMemberStatusData(index)
 end
 
-local function IsHarnessActive()
-    local harness = CustomUI.GroupWindowTestHarness
-    return harness ~= nil
-        and type(harness.IsEnabled) == "function"
-        and harness.IsEnabled()
-end
-
-local function CopyBuffTable(sourceBuffs)
-    local copied = {}
-    if sourceBuffs == nil then
-        return copied
-    end
-
-    for buffId, buffData in pairs(sourceBuffs) do
-        if buffData ~= nil then
-            local cloned = {}
-            for key, value in pairs(buffData) do
-                cloned[key] = value
-            end
-            copied[buffId] = cloned
-        end
-    end
-
-    return copied
-end
-
-local function BuildHarnessBuffUpdateTable()
-    if not IsHarnessActive() then
-        return nil
-    end
-
-    if type(GetBuffs) ~= "function"
-    or GameData == nil
-    or GameData.BuffTargetType == nil
-    or GameData.BuffTargetType.SELF == nil then
-        return {}
-    end
-
-    local selfBuffs = GetBuffs(GameData.BuffTargetType.SELF)
-    return CopyBuffTable(selfBuffs)
-end
-
 local function RefreshMemberStatus(index)
     local member = nil
     if m_groupData ~= nil then
         member = m_groupData[index]
-    end
-
-    if IsHarnessActive() then
-        m_memberStatusSource[index] = "harness"
-
-        local snapshot = BuildMemberStatusSnapshot(member)
-        local didChange = (m_memberStatusSnapshot[index] ~= snapshot)
-        m_memberStatusSnapshot[index] = snapshot
-        return didChange
     end
 
     if member == nil then
@@ -822,10 +771,6 @@ local function UpdateMemberRow(index)
     local tracker = EnsureMemberBuffTracker(index)
     if tracker ~= nil then
         tracker:Show(true)
-
-        if IsHarnessActive() then
-            tracker:UpdateBuffs(BuildHarnessBuffUpdateTable(), true)
-        end
     end
 
 end
@@ -864,16 +809,6 @@ local function EnsureStockGroupWindowRegistered()
 end
 
 RefreshGroupState = function()
-    local harness = CustomUI.GroupWindowTestHarness
-    if harness
-    and type(harness.IsEnabled) == "function"
-    and harness.IsEnabled()
-    and type(harness.GetGroupData) == "function" then
-        m_groupData = harness.GetGroupData() or {}
-        m_hasWorldGroup = IsMemberValid(1)
-        return
-    end
-
     m_groupData = PartyUtils.GetPartyData()
     m_hasWorldGroup = IsMemberValid(1)
 end

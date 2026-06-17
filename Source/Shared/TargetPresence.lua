@@ -1,7 +1,8 @@
 ----------------------------------------------------------------
 -- CustomUI.TargetPresence
 -- Stabilizes hostile/friendly target UI across transient TargetInfo gaps.
--- Does not call TargetInfo:UpdateFromClient() (see CustomUI HookTargetInfo).
+-- Owns the shared target-cache refresh path so target components do not each
+-- manage TargetInfo consumption/reset rules independently.
 ----------------------------------------------------------------
 
 if not CustomUI then
@@ -22,6 +23,7 @@ TP.m_slots = TP.m_slots or {
     [c_HOSTILE_UNIT_ID]  = { lastEntityId = 0, emptyStreak = 0, holdSeconds = 0, snapshot = nil },
     [c_FRIENDLY_UNIT_ID] = { lastEntityId = 0, emptyStreak = 0, holdSeconds = 0, snapshot = nil },
 }
+TP.m_consumers = TP.m_consumers or {}
 
 ----------------------------------------------------------------
 -- Local helpers
@@ -109,6 +111,17 @@ local function ForceClearSlot(unitId)
     TP.ClearTargetInfoSlot(unitId)
 end
 
+local function ForgetSlotState(unitId)
+    local slot = GetSlot(unitId)
+    if not slot then
+        return
+    end
+    slot.lastEntityId = 0
+    slot.emptyStreak = 0
+    slot.holdSeconds = 0
+    slot.snapshot = nil
+end
+
 local function ApplyGoodCache(slot, unitId)
     local entityId = ReadCacheEntityId(unitId)
     if entityId == 0 then
@@ -147,10 +160,38 @@ function TP.Reset()
     ForceClearSlot(c_FRIENDLY_UNIT_ID)
 end
 
+function TP.Acquire(ownerKey)
+    if type(ownerKey) ~= "string" or ownerKey == "" then
+        return
+    end
+    TP.m_consumers[ownerKey] = true
+end
+
+function TP.Release(ownerKey)
+    if type(ownerKey) ~= "string" or ownerKey == "" then
+        return
+    end
+    TP.m_consumers[ownerKey] = nil
+    if not next(TP.m_consumers) then
+        ForgetSlotState(c_HOSTILE_UNIT_ID)
+        ForgetSlotState(c_FRIENDLY_UNIT_ID)
+    end
+end
+
 function TP.ResetSlot(unitId)
     if IsKnownUnitId(unitId) then
         ForceClearSlot(unitId)
     end
+end
+
+function TP.RefreshFromEvent(targetClassification, targetId)
+    TP.NoteTargetEvent(targetClassification, targetId)
+
+    if type(TargetInfo) == "table" and type(TargetInfo.UpdateFromClient) == "function" then
+        TargetInfo:UpdateFromClient()
+    end
+
+    TP.OnTargetRefreshComplete(targetClassification)
 end
 
 --- Called from PLAYER_TARGET_UPDATED before TargetInfo:UpdateFromClient().
@@ -279,6 +320,24 @@ function TP.GetEntityId(unitId)
 
     local slot = GetSlot(unitId)
     return slot and slot.lastEntityId or 0
+end
+
+function TP.GetName(unitId)
+    local slot = GetSlot(unitId)
+    if not slot then
+        return L""
+    end
+
+    if CacheLooksPresent(unitId) then
+        ApplyGoodCache(slot, unitId)
+        return ReadCacheName(unitId)
+    end
+
+    if CanHoldTransient(slot) and slot.snapshot and slot.snapshot.name then
+        return slot.snapshot.name
+    end
+
+    return L""
 end
 
 function TP.StabilizeFrame(frame, unitId)

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ModuleFile xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
     <UiMod name="CustomUI" version="1.0" date="13/04/2026">
-        <Author name="" email="" />
-        <Description text="Boilerplate addon scaffold for CustomUI." />
+        <Author name="Talladego" email="" />
+        <Description text="Modular Return of Reckoning UI replacement addon with component toggles and shared systems." />
         <Dependencies>
             <!-- Common core: shared utility helpers used throughout the default UI code. -->
             <Dependency name="EASystem_Utils" />
@@ -41,6 +41,9 @@
             <!-- Shared: loaded before any component that depends on them -->
             <File name="Source/Shared/Shared.xml" />
             <File name="Source/Shared/Archetypes.lua" />
+            <File name="Source/Shared/BuffTracker/BuffTrackerLayout.lua" />
+            <File name="Source/Shared/BuffTracker/BuffTrackerGrouping.lua" />
+            <File name="Source/Shared/BuffTracker/BuffTrackerRules.lua" />
             <File name="Source/Shared/BuffTracker/BuffTracker.lua" />
             <File name="Source/Shared/BuffTracker/BuffGroups.lua" />
             <File name="Source/Shared/BuffTracker/BuffLists.lua" />
@@ -57,11 +60,19 @@
             <File name="Source/Components/TargetHUD/Controller/TargetHUDController.lua" />
             <File name="Source/Components/TargetHUD/View/TargetHUD.xml" />
             <File name="Source/Components/GroupWindow/Controller/GroupWindowController.lua" />
-            <File name="Source/Components/GroupWindow/Controller/GroupWindowTestHarness.lua" />
             <File name="Source/Components/GroupWindow/View/GroupWindow.xml" />
             <File name="Source/Components/UnitFrames/Controller/UnitFramesEvents.lua" />
+            <File name="Source/Components/UnitFrames/Controller/UnitFramesArchetypes.lua" />
+            <File name="Source/Components/UnitFrames/Controller/UnitFramesSort.lua" />
+            <File name="Source/Components/UnitFrames/Controller/UnitFramesRoster.lua" />
+            <File name="Source/Components/UnitFrames/Controller/UnitFramesScenario.lua" />
+            <File name="Source/Components/UnitFrames/Controller/UnitFramesWarband.lua" />
             <File name="Source/Components/UnitFrames/Controller/UnitFramesController.lua" />
             <File name="Source/Components/UnitFrames/View/UnitFrames.xml" />
+            <File name="Source/Components/GroupIcons/Controller/GroupIconsSpatialProbe.lua" />
+            <File name="Source/Components/GroupIcons/Controller/GroupIconsWarbandLeaders.lua" />
+            <File name="Source/Components/GroupIcons/Controller/GroupIconsOutsiderTracker.lua" />
+            <File name="Source/Components/GroupIcons/Controller/GroupIconsRoster.lua" />
             <File name="Source/Components/GroupIcons/Controller/GroupIconsController.lua" />
             <File name="Source/Components/GroupIcons/View/GroupIcons.xml" />
             <!-- SCT component (v2 load order) -->
@@ -72,6 +83,9 @@
             <File name="Source/Components/SCT/View/SCTAbilityIcon.xml" />
             <File name="Source/Components/SCT/Controller/SCTAnim.lua" />
             <File name="Source/Components/SCT/Controller/SCTOverrides.lua" />
+            <File name="Source/Components/SCT/Controller/SCTAbilityIconResolver.lua" />
+            <File name="Source/Components/SCT/Controller/SCTEventEntry.lua" />
+            <File name="Source/Components/SCT/Controller/SCTEventTracker.lua" />
             <File name="Source/Components/SCT/Controller/SCTHandlers.lua" />
             <File name="Source/Components/SCT/Controller/SCTController.lua" />
             <File name="Source/Components/SCT/View/SCT.xml" />

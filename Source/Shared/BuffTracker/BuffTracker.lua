@@ -78,6 +78,10 @@
 -- Local helpers
 ----------------------------------------------------------------
 
+local BuffTrackerRules = type( CustomUI ) == "table" and CustomUI.BuffTrackerRules or {}
+local BuffTrackerLayout = type( CustomUI ) == "table" and CustomUI.BuffTrackerLayout or {}
+local BuffTrackerGrouping = type( CustomUI ) == "table" and CustomUI.BuffTrackerGrouping or {}
+
 local function WStringToStringSafe( ws )
     if ws == nil then return "" end
     if type(ws) == "wstring" and type(WStringToString) == "function" then
@@ -131,6 +135,9 @@ end
 
 -- Returns "buff", "debuff", or "neutral" for a given buff entry.
 local function GetBuffCategory( buffData )
+    if type( BuffTrackerRules.GetBuffCategory ) == "function" then
+        return BuffTrackerRules.GetBuffCategory( buffData )
+    end
     local slice = DataUtils.GetAbilityTypeTextureAndColor( buffData )
     if     slice == "Buff-Frame"   then return "buff"
     elseif slice == "Debuff-Frame" then return "debuff"
@@ -139,6 +146,9 @@ end
 
 -- Returns "short", "long", or "permanent" based on duration.
 local function GetDurationCategory( buffData, threshold, prevCat, prevDur )
+    if type( BuffTrackerRules.GetDurationCategory ) == "function" then
+        return BuffTrackerRules.GetDurationCategory( buffData, threshold, prevCat, prevDur )
+    end
     if buffData == nil then return "permanent" end
     if buffData.permanentUntilDispelled then return "permanent" end
 
@@ -199,6 +209,9 @@ local c_REFRESH_THROTTLE_INTERVAL = 0.5
 -- the same debuff/buff from two different players. Fallback preserves behaviour when
 -- abilityId is absent.
 local function GetCompressionGroupKey( buffData )
+    if type( BuffTrackerGrouping.GetCompressionGroupKey ) == "function" then
+        return BuffTrackerGrouping.GetCompressionGroupKey( buffData )
+    end
     local aid = tonumber( buffData.abilityId )
     if aid and aid > 0 then
         return aid
@@ -214,6 +227,16 @@ end
 -- The entry with the longest remaining duration is used as the base; permanent beats timed.
 -- stackCount is set to the sum of member stackCount (same as multi-row merge).
 local function CompressBuffData( self, rawBuffData, scratch )
+    if type( BuffTrackerGrouping.Compress ) == "function" then
+        return BuffTrackerGrouping.Compress( rawBuffData, scratch, {
+            acquireSynthetic = function( src )
+                return self:_GetTableFromPool( src )
+            end,
+            releaseSynthetic = function( entry )
+                self:_ReleaseTableToPool( entry )
+            end,
+        } )
+    end
     scratch = scratch or {}
     local groups = scratch.groups or {}
     local order  = scratch.order  or {}
@@ -287,6 +310,10 @@ end
 ----------------------------------------------------------------
 
 if not CustomUI then CustomUI = {} end
+
+BuffTrackerRules = CustomUI.BuffTrackerRules or {}
+BuffTrackerLayout = CustomUI.BuffTrackerLayout or {}
+BuffTrackerGrouping = CustomUI.BuffTrackerGrouping or {}
 
 CustomUI.BuffFrame = BuffFrame:Subclass( "BuffIcon" )
 
@@ -710,11 +737,15 @@ end
 
 function CustomUI.BuffTracker:SetBuffGroups( groups )
     self.m_buffGroups  = (groups and #groups > 0) and groups or nil
-    self.m_groupLookup = {}
-    if self.m_buffGroups then
-        for idx, grp in ipairs( self.m_buffGroups ) do
-            for _, abilityId in ipairs( grp.abilityIds ) do
-                self.m_groupLookup[ abilityId ] = idx
+    if type( BuffTrackerGrouping.BuildGroupLookup ) == "function" then
+        self.m_groupLookup = BuffTrackerGrouping.BuildGroupLookup( self.m_buffGroups )
+    else
+        self.m_groupLookup = {}
+        if self.m_buffGroups then
+            for idx, grp in ipairs( self.m_buffGroups ) do
+                for _, abilityId in ipairs( grp.abilityIds ) do
+                    self.m_groupLookup[ abilityId ] = idx
+                end
             end
         end
     end
@@ -916,6 +947,10 @@ function CustomUI.BuffTracker:_RebuildSortFunc()
 end
 
 function CustomUI.BuffTracker:_PassesFilter( buffData )
+    if type( BuffTrackerRules.PassesFilter ) == "function" then
+        return BuffTrackerRules.PassesFilter( self, buffData )
+    end
+
     local cfg = self.m_filterConfig
     if cfg == nil then return true end
 
@@ -935,6 +970,22 @@ function CustomUI.BuffTracker:_PassesFilter( buffData )
 end
 
 function CustomUI.BuffTracker:_ApplyBuffGroups( sourceData )
+    if type( BuffTrackerGrouping.ApplyGroups ) == "function" then
+        return BuffTrackerGrouping.ApplyGroups(
+            sourceData,
+            self.m_buffGroups,
+            self.m_groupLookup,
+            self.m_scratchGroups,
+            {
+                acquireSynthetic = function( src )
+                    return self:_GetTableFromPool( src )
+                end,
+                releaseSynthetic = function( entry )
+                    self:_ReleaseTableToPool( entry )
+                end,
+            }
+        )
+    end
     local scratch      = self.m_scratchGroups
     local groupBuckets = scratch.groupBuckets or {}
     local result       = scratch.result       or {}
@@ -1069,32 +1120,44 @@ function CustomUI.BuffTracker:_IsOwnerShowing()
 end
 
 function CustomUI.BuffTracker:_ApplyContainerVisibility()
-    if self.m_containerName and DoesWindowExist( self.m_containerName ) then
-        WindowSetShowing( self.m_containerName,
-            self.m_requestedShow == true and self:_IsOwnerShowing() )
+    if type(BuffTrackerLayout.ApplyContainerVisibility) ~= "function" then
+        if self.m_containerName and DoesWindowExist( self.m_containerName ) then
+            WindowSetShowing( self.m_containerName,
+                self.m_requestedShow == true and self:_IsOwnerShowing() )
+        end
+        return
     end
+    BuffTrackerLayout.ApplyContainerVisibility( self, self:_IsOwnerShowing() )
 end
 
 function CustomUI.BuffTracker:_ApplyContainerScale()
-    if not ( self.m_containerName and DoesWindowExist( self.m_containerName ) ) then
+    if type(BuffTrackerLayout.ApplyContainerScale) ~= "function" then
+        if not ( self.m_containerName and DoesWindowExist( self.m_containerName ) ) then
+            return
+        end
+
+        local ownerScale = 1.0
+        if self.m_ownerName and DoesWindowExist( self.m_ownerName ) then
+            ownerScale = tonumber( WindowGetScale( self.m_ownerName ) ) or 1.0
+        end
+
+        WindowSetScale( self.m_containerName, ownerScale * ( self.m_relativeScale or 1.0 ) )
         return
     end
-
-    local ownerScale = 1.0
-    if self.m_ownerName and DoesWindowExist( self.m_ownerName ) then
-        ownerScale = tonumber( WindowGetScale( self.m_ownerName ) ) or 1.0
-    end
-
-    WindowSetScale( self.m_containerName, ownerScale * ( self.m_relativeScale or 1.0 ) )
+    BuffTrackerLayout.ApplyContainerScale( self )
 end
 
 function CustomUI.BuffTracker:_ApplyContainerHitArea()
-    if self.m_containerName
-       and self.m_containerW
-       and self.m_containerH
-       and DoesWindowExist( self.m_containerName ) then
-        WindowSetDimensions( self.m_containerName, self.m_containerW, self.m_containerH )
+    if type(BuffTrackerLayout.ApplyContainerHitArea) ~= "function" then
+        if self.m_containerName
+           and self.m_containerW
+           and self.m_containerH
+           and DoesWindowExist( self.m_containerName ) then
+            WindowSetDimensions( self.m_containerName, self.m_containerW, self.m_containerH )
+        end
+        return
     end
+    BuffTrackerLayout.ApplyContainerHitArea( self )
 end
 
 -- Resizes the container to exactly fit the visible slots and re-anchors them
@@ -1103,27 +1166,31 @@ end
 -- automatically centers it over that anchor target — no offset math needed.
 -- Hidden slots are parked at topleft (0,0) so stale anchors can't influence layout.
 function CustomUI.BuffTracker:_ApplyCenterAlignment( visibleSlots )
-    local container = self.m_containerName
-    local count     = #visibleSlots
-    local rowW      = count > 0 and (count * c_ICON_SIZE + (count - 1) * c_ICON_GAP) or 1
-    local rowH      = count > 0 and c_ICON_SIZE or 1
+    if type(BuffTrackerLayout.ApplyCenterAlignment) ~= "function" then
+        local container = self.m_containerName
+        local count     = #visibleSlots
+        local rowW      = count > 0 and (count * c_ICON_SIZE + (count - 1) * c_ICON_GAP) or 1
+        local rowH      = count > 0 and c_ICON_SIZE or 1
 
-    WindowSetDimensions( container, rowW, rowH )
+        WindowSetDimensions( container, rowW, rowH )
 
-    -- Park hidden frames at topleft so they don't influence layout.
-    for _, frame in ipairs( self.m_buffFrames ) do
-        local name = frame:GetName()
-        WindowClearAnchors( name )
-        WindowAddAnchor( name, "topleft", container, "topleft", 0, 0 )
+        -- Park hidden frames at topleft so they don't influence layout.
+        for _, frame in ipairs( self.m_buffFrames ) do
+            local name = frame:GetName()
+            WindowClearAnchors( name )
+            WindowAddAnchor( name, "topleft", container, "topleft", 0, 0 )
+        end
+
+        -- Place visible frames left-to-right from the container's topleft.
+        for i, frame in ipairs( visibleSlots ) do
+            local name = frame:GetName()
+            local xOff = (i - 1) * c_SLOT_W
+            WindowClearAnchors( name )
+            WindowAddAnchor( name, "topleft", container, "topleft", xOff, 0 )
+        end
+        return
     end
-
-    -- Place visible frames left-to-right from the container's topleft.
-    for i, frame in ipairs( visibleSlots ) do
-        local name = frame:GetName()
-        local xOff = (i - 1) * c_SLOT_W
-        WindowClearAnchors( name )
-        WindowAddAnchor( name, "topleft", container, "topleft", xOff, 0 )
-    end
+    BuffTrackerLayout.ApplyCenterAlignment( self, visibleSlots, c_ICON_SIZE, c_ICON_GAP, c_SLOT_W )
 end
 
 ----------------------------------------------------------------

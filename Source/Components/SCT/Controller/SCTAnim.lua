@@ -3,9 +3,10 @@
 -- Only Shake, Pulse, and ColorFlash survive from v1.  The unified-pipeline
 -- machinery (m_BaseAnim, m_Effects array, LaneMove, Grow) is gone; stock's
 -- :Update handles base float.  These effects are applied on top of stock's
--- positional update in EventEntry:Update (SCTOverrides.lua).
+-- positional update in EventEntry:Update (SCTEventEntry.lua).
 --
--- Load order: SCTSettings → SCTAnim → SCTOverrides → SCTHandlers → SCTController → SCT.xml
+-- Load order: SCTSettings → SCTAnim → SCTOverrides → SCTAbilityIconResolver
+--   → SCTEventEntry → SCTEventTracker → SCTHandlers → SCTController → SCT.xml
 ----------------------------------------------------------------
 if not CustomUI.SCT then CustomUI.SCT = {} end
 

@@ -4,7 +4,8 @@
 -- If the component is enabled, CustomUI owns SCT runtime even when every
 -- setting is stock-equivalent. Disable the component to restore stock SCT.
 --
--- Load order: SCTSettings → SCTAnim → SCTOverrides → SCTHandlers → SCTController → SCT.xml
+-- Load order: SCTSettings → SCTAnim → SCTOverrides → SCTAbilityIconResolver
+--   → SCTEventEntry → SCTEventTracker → SCTHandlers → this file → SCT.xml
 ----------------------------------------------------------------
 if not CustomUI.SCT then CustomUI.SCT = {} end
 

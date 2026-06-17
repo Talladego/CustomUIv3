@@ -8,6 +8,8 @@
 --   • Roster (party row 1, open-world warband 4×6): career icon + ring on member worldObjNum.
 --     Scenario with Scenario checkbox ON: roster grid only for *your* scenario party (sgroupindex match); other scenario parties use outsider tracking with Friendly/Hostile gates — rings match roster style when Scenario enabled else realm blue/red.
 --     Self is skipped. Crown on group leader (party row or warband grid; scenario roster omits crown); leader slot drawn at 1.5× scale.
+--     Outsider friendly warband leaders (open-party LFG + own warband when applicable): 1.5× scale + Group-Leader-Crown.
+--     Hostile outsiders never use leader visuals (names unavailable). Requires showFriendly.
 --     Rings use full archetype (or all-green) tint for every roster member.
 --   • Roster attach requires a live worldObjNum this refresh (party slot / scenario roster optional scenarioWorldObjNum).
 --     Cached ids refine LearnKnown when live wid is 0 (distant / unloaded row); zone change clears caches.
@@ -22,6 +24,11 @@
 if not CustomUI.GroupIcons then
     CustomUI.GroupIcons = {}
 end
+
+local OutsiderTracker = CustomUI.GroupIcons.OutsiderTracker or {}
+local Roster = CustomUI.GroupIcons.Roster or {}
+local SpatialProbe = CustomUI.GroupIcons.SpatialProbe or {}
+local WarbandLeaders = CustomUI.GroupIcons.WarbandLeaders or {}
 
 ----------------------------------------------------------------
 -- Constants
@@ -80,12 +87,15 @@ local c_MOUSEOVER_TARGET  = "mouseovertarget"
 local c_MAX_TRACKED_OUTSIDERS = 48
 -- World-attach probe tick: outsiders (untrack) + roster (Enemy-style hide if spatial “gone”).
 local c_OUTSIDER_PROBE_INTERVAL = 0.2
+-- Poll open-party warband leaders while friendly outsiders are enabled (new LFG / leader transfers).
+local c_FRIENDLY_LEADER_POLL_INTERVAL = 30
 -- Roster: if fallback entity id was recycled to another player, GetNameForObject shows wrong non-empty name — recheck slowly.
 local c_ROSTER_WID_VALIDATE_INTERVAL = 1.5
+-- After /reloadui, PartyUtils/GetBattlegroupMemberData can lag several seconds before roster rows carry attachable worldObj ids.
+-- Keep nudging refreshes for a while so GroupIcons recovers without requiring a manual disable/enable toggle.
+local c_WARM_REFRESH_INTERVAL = 0.35
+local c_WARM_REFRESH_ATTEMPTS = 30
 local c_GROUPICONS_DRIVER = "CustomUIGroupIconsDriver"
--- Minimal window: MoveWindowToWorldObject + screen position — detects dead wid without GetNameForObject timers (see AutoMark addon).
-local c_GROUPICONS_WORLD_PROBE = "CustomUIGroupIconsWorldProbe"
-local c_WORLD_PROBE_ATTACH_Z = 1.0
 -- Roster spatial hide only after this many consecutive probe intervals (~0.2s each) reporting “gone” — avoids flicker when projection flickers at boundaries.
 local c_ROSTER_SPATIAL_GONE_STREAK = 4
 
@@ -148,11 +158,8 @@ local function GroupRingRgbForCareerLine(careerLine)
     if not s.archetypeColors then
         return c_RING_CYAN[1], c_RING_CYAN[2], c_RING_CYAN[3], "cyan"
     end
-    local r, g, b = CustomUI.Archetypes.GetColorForCareerLine(careerLine)
-    if r and g and b then
-        return r, g, b, "archetype"
-    end
-    return 160, 160, 160, "archetype"
+    local r, g, b = CustomUI.Archetypes.GetColorForCareerLineOrDefault(careerLine, 160, 160, 160)
+    return r, g, b, "archetype"
 end
 -- GetIconData atlas cell size in texture pixels for career icons.
 -- Stock uses TexDims 32 (see EA_Image_CareerIcon template); using the wrong value can tile/repeat.
@@ -162,12 +169,13 @@ local c_RING_TEXTURE = "EA_HUD_01"
 local c_RING_TEX_X   = 295
 local c_RING_TEX_Y   = 475
 local c_RING_TEX_DIM = 38
--- WarbandLeaderCrown — templates_unitframes.xml / defaultskintextures Warband-Leader-Crown
+-- Leader crowns on EA_HUD_01 (defaultskintextures.xml / templates_unitframes.xml).
 local c_CROWN_TEXTURE = "EA_HUD_01"
 local c_CROWN_TEX_X   = 162
-local c_CROWN_TEX_Y   = 138
 local c_CROWN_TEX_W   = 25
 local c_CROWN_TEX_H   = 16
+local c_WARBAND_LEADER_CROWN_TEX_Y = 138 -- slice Warband-Leader-Crown — roster party/warband leaders
+local c_GROUP_LEADER_CROWN_TEX_Y   = 122 -- slice Group-Leader-Crown — friendly outsider warband leaders
 -- Roster ring uses geometric center (top↔bottom); no atlas X nudge — −2px (PlayerStatus/UnitFrames) reads left here at 48× ring scale.
 local c_CROWN_ANCHOR_OPTICAL_OFFSET_X = 0
 -- Base vertical tuck (matches UnitFrames crown vs atlas height budget); GroupIcons applies ring scale below.
@@ -179,8 +187,8 @@ local c_OFFSET_Y     = 50   -- gap below the frame toward world attach; outer he
 local c_LEADER_VISUAL_SCALE = 1.5
 
 --- @return framePx, iconPx, ringPx, crownW, crownH, outerH
-local function GroupIconLayoutPixels( showWarbandCrown )
-    local scale = ( showWarbandCrown == true ) and c_LEADER_VISUAL_SCALE or 1.0
+local function GroupIconLayoutPixels( useLeaderScale )
+    local scale = ( useLeaderScale == true ) and c_LEADER_VISUAL_SCALE or 1.0
     local framePx = math.max( 1, math.floor( c_FRAME_SIZE * scale + 0.5 ) )
     local iconPx  = math.max( 1, math.floor( c_ICON_DRAW * scale + 0.5 ) )
     local ringPx  = math.max( 1, math.floor( c_RING_SIZE * scale + 0.5 ) )
@@ -208,6 +216,8 @@ function GroupIcon.New(partyIndex, memberIndex)
     self.lastCareerLine = nil
     self.lastCareerNamesId = nil -- Icons careers table id (scenario roster); nil = use careerLine → atlas only
     self.lastWarbandCrown = nil
+    self.lastGroupLeaderCrown = nil
+    self.lastLeaderScale = nil
     self.lastRingTintKey = nil -- "archetype" | "realm:r,g,b"
     -- Roster slots only (partyIndex 1..6): hide stuck world-attached UI without Destroy (Enemy ObjectWindows pattern).
     self.rosterSpatialHidden = false
@@ -220,10 +230,15 @@ function GroupIcon:_windowName()
     return "CustomUIGroupIcon_" .. self.partyIndex .. "_" .. self.memberIndex
 end
 
-function GroupIcon:Attach(name, worldObjNum, careerLine, showWarbandCrown, useRealmRingTint, careerNamesId)
+function GroupIcon:Attach(name, worldObjNum, careerLine, showWarbandCrown, useRealmRingTint, careerNamesId, useLeaderScale, showGroupLeaderCrown)
     self:_detach()
 
     showWarbandCrown = showWarbandCrown == true
+    showGroupLeaderCrown = showGroupLeaderCrown == true
+    if useLeaderScale == nil then
+        useLeaderScale = showWarbandCrown or showGroupLeaderCrown
+    end
+    useLeaderScale = useLeaderScale == true
     useRealmRingTint = useRealmRingTint == true
     careerNamesId = tonumber(careerNamesId)
 
@@ -241,7 +256,7 @@ function GroupIcon:Attach(name, worldObjNum, careerLine, showWarbandCrown, useRe
     local iconWin = content .. "Icon"
     local ringWin = content .. "Ring"
     local crownWin = content .. "WarbandCrown"
-    local framePx, iconPx, ringPx, crownW, crownH, outerH = GroupIconLayoutPixels( showWarbandCrown )
+    local framePx, iconPx, ringPx, crownW, crownH, outerH = GroupIconLayoutPixels( useLeaderScale )
     if WindowSetDimensions and DoesWindowExist( base ) then
         WindowSetDimensions( base, framePx, outerH )
         WindowSetDimensions( content, framePx, framePx )
@@ -291,13 +306,19 @@ function GroupIcon:Attach(name, worldObjNum, careerLine, showWarbandCrown, useRe
 
     WindowClearAnchors(crownWin)
     WindowSetDimensions(crownWin, crownW, crownH)
-    DynamicImageSetTexture(crownWin, c_CROWN_TEXTURE, c_CROWN_TEX_X, c_CROWN_TEX_Y)
+    local crownTexY = c_WARBAND_LEADER_CROWN_TEX_Y
+    if showGroupLeaderCrown then
+        crownTexY = c_GROUP_LEADER_CROWN_TEX_Y
+    end
+    DynamicImageSetTexture(crownWin, c_CROWN_TEXTURE, c_CROWN_TEX_X, crownTexY)
     DynamicImageSetTextureDimensions(crownWin, c_CROWN_TEX_W, c_CROWN_TEX_H)
     -- README §Notes: Point on target (ring), RelativePoint on anchored crown → ring.top meets crown.bottom.
     local crownTouchY = math.max(1, math.floor(c_CROWN_ANCHOR_TOUCH_OFFSET_Y * ringPx / c_UF_RING_OUTER_REF + 0.5))
     WindowAddAnchor(crownWin, "top", ringWin, "bottom", c_CROWN_ANCHOR_OPTICAL_OFFSET_X, crownTouchY)
-    WindowSetShowing(crownWin, showWarbandCrown)
+    WindowSetShowing(crownWin, showWarbandCrown or showGroupLeaderCrown)
     self.lastWarbandCrown = showWarbandCrown
+    self.lastGroupLeaderCrown = showGroupLeaderCrown
+    self.lastLeaderScale = useLeaderScale
 
     WindowSetShowing(base, true)
     self.rosterSpatialHidden = false
@@ -365,15 +386,22 @@ function GroupIcon:_detach()
     self.lastCareerLine = nil
     self.lastCareerNamesId = nil
     self.lastWarbandCrown = nil
+    self.lastGroupLeaderCrown = nil
+    self.lastLeaderScale = nil
     self.lastRingTintKey = nil
     self.rosterSpatialHidden = false
     self.rosterSavedWorldAttachScale = nil
     self.rosterSpatialGoneStreak = 0
 end
 
-function GroupIcon:Update(name, worldObjNum, careerLine, showWarbandCrown, useRealmRingTint, careerNamesId)
+function GroupIcon:Update(name, worldObjNum, careerLine, showWarbandCrown, useRealmRingTint, careerNamesId, useLeaderScale, showGroupLeaderCrown)
     if not self.isEnabled then return end
     showWarbandCrown = showWarbandCrown == true
+    showGroupLeaderCrown = showGroupLeaderCrown == true
+    if useLeaderScale == nil then
+        useLeaderScale = showWarbandCrown or showGroupLeaderCrown
+    end
+    useLeaderScale = useLeaderScale == true
     useRealmRingTint = useRealmRingTint == true
     careerNamesId = tonumber(careerNamesId)
     local wantRingKey = "archetype"
@@ -388,16 +416,18 @@ function GroupIcon:Update(name, worldObjNum, careerLine, showWarbandCrown, useRe
         self:_detach()
         return
     end
-    -- Re-attach if the player, world object, career (ring / icon), warband crown, or ring tint mode changed.
+    -- Re-attach if the player, world object, career (ring / icon), leader scale, crown kind, or ring tint mode changed.
     if not self.windowName
         or self.playerName   ~= name
         or self.worldObjNum  ~= worldObjNum
         or self.lastCareerLine ~= careerLine
         or self.lastCareerNamesId ~= careerNamesId
+        or self.lastLeaderScale ~= useLeaderScale
         or self.lastWarbandCrown ~= showWarbandCrown
+        or self.lastGroupLeaderCrown ~= showGroupLeaderCrown
         or self.lastRingTintKey ~= wantRingKey
     then
-        self:Attach(name, worldObjNum, careerLine, showWarbandCrown, useRealmRingTint, careerNamesId)
+        self:Attach(name, worldObjNum, careerLine, showWarbandCrown, useRealmRingTint, careerNamesId, useLeaderScale, showGroupLeaderCrown)
     end
 end
 
@@ -418,11 +448,12 @@ local m_icons = {}      -- m_icons[partyIndex][memberIndex] = GroupIcon
 local m_outsiderPool = {}       -- [1..c_MAX_TRACKED_OUTSIDERS] = GroupIcon
 local m_slotOccupantWid = {}    -- [slotIndex] = worldObjNum | nil
 local m_trackWidToSlot = {}     -- [worldObjNum] = slotIndex
-local m_trackMeta = {}          -- [worldObjNum] = { name = WString } (outsiders)
+local m_trackMeta = {}          -- [worldObjNum] = { name = WString, isFriendly = bool } (outsiders)
 local m_trackFIFOOrder = {}     -- array of worldObjNum; index 1 = oldest (evicted first when full)
 local m_pendingOutsiderClassifications = {} -- TargetInfo classifications to apply next OnUpdate (avoid UpdateFromClient + handler order)
 local m_outsiderProbeElapsed = 0
 local m_rosterValidateElapsed = 0
+local m_friendlyLeaderPollElapsed = 0
 local m_groupWorldObjs = {}    -- [worldObjNum] = true for roster (party/warband)
 local m_groupNames = {}        -- [playerName] = true (fast path when exact match works)
 local m_groupNameList = {}     -- { WString, ... } robust compare via WStringsCompareIgnoreGrammer
@@ -435,10 +466,6 @@ local m_needsRefreshAll = false
 local m_postEnableWarmRefreshPoll = 0
 local m_postEnableWarmRefreshRemaining = 0
 
--- Cached probe calibration; can be nil briefly during load or resolution transitions.
-local m_worldProbeCalibration = nil
-local m_worldProbeResolutionKey = nil
-
 -- Known player worldObj ids by normalized name key (learned from PartyUtils + TargetInfo).
 -- { [key] = { wid = number, careerLine = number|nil, t = number|nil } }
 local m_knownByNameKey = {}
@@ -448,6 +475,27 @@ local m_knownByNameKey = {}
 local m_stickyRosterWidByKey = {}
 
 local m_debugLastSig = nil
+
+local function GetOutsiderTrackerState()
+    return {
+        outsiderPool = m_outsiderPool,
+        slotOccupantWid = m_slotOccupantWid,
+        trackWidToSlot = m_trackWidToSlot,
+        trackMeta = m_trackMeta,
+        trackFIFOOrder = m_trackFIFOOrder,
+    }
+end
+
+local function GetRosterState()
+    return {
+        icons = m_icons,
+        groupWorldObjs = m_groupWorldObjs,
+        groupNames = m_groupNames,
+        groupNameList = m_groupNameList,
+        stickyRosterWidByKey = m_stickyRosterWidByKey,
+        knownByNameKey = m_knownByNameKey,
+    }
+end
 
 
 local function DebugLog(msg)
@@ -505,6 +553,10 @@ local function NormalizeNameKey(name)
 end
 
 local function InvalidatePartyAndWarbandCaches()
+    if type(Roster.InvalidatePartyAndWarbandCaches) == "function" then
+        Roster.InvalidatePartyAndWarbandCaches()
+        return
+    end
     if GameData and GameData.Party then
         GameData.Party.partyDirty = true
         GameData.Party.warbandDirty = true
@@ -530,12 +582,22 @@ local function SafeWStringEquals(a, b)
 end
 
 local function ClearGroupMembershipCache()
+    if type(Roster.ClearGroupMembershipCache) == "function" then
+        Roster.ClearGroupMembershipCache(GetRosterState())
+        return
+    end
     m_groupWorldObjs = {}
     m_groupNames = {}
     m_groupNameList = {}
 end
 
 local function RegisterGroupMember(member)
+    if type(Roster.RegisterGroupMember) == "function" then
+        Roster.RegisterGroupMember(GetRosterState(), member, {
+            toWString = ToWString,
+        })
+        return
+    end
     if not member or not member.name then
         return
     end
@@ -559,6 +621,11 @@ end
 --- status not merged yet, or joined warband while distant), fall back to last known entity id from
 --- targeting (`m_knownByNameKey`) or an earlier refresh (`m_stickyRosterWidByKey`). Live non-zero always wins.
 local function ResolveRosterIconAttachWorldId(nameW, liveWidFromData)
+    if type(Roster.ResolveAttachWorldId) == "function" then
+        return Roster.ResolveAttachWorldId(GetRosterState(), nameW, liveWidFromData, {
+            normalizeNameKey = NormalizeNameKey,
+        })
+    end
     local w = tonumber(liveWidFromData) or 0
     if w ~= 0 then
         RememberStickyRosterWid(nameW, w)
@@ -627,6 +694,14 @@ local function ClearStickyAndKnownWidForEntity(key, badWid)
 end
 
 local function ValidateRosterIconWorldObjects()
+    if type(Roster.ValidateIconWorldObjects) == "function" then
+        Roster.ValidateIconWorldObjects(GetRosterState(), {
+            normalizeNameKey = NormalizeNameKey,
+            toWString = ToWString,
+            safeWStringEquals = SafeWStringEquals,
+        })
+        return
+    end
     for p = 1, c_MAX_PARTIES do
         for m = 1, c_MAX_MEMBERS do
             local icon = m_icons[p][m]
@@ -643,6 +718,12 @@ local function ValidateRosterIconWorldObjects()
 end
 
 local function LearnKnownWorldObject(name, wid, careerLine)
+    if type(Roster.LearnKnownWorldObject) == "function" then
+        return Roster.LearnKnownWorldObject(GetRosterState(), name, wid, careerLine, {
+            normalizeNameKey = NormalizeNameKey,
+            debugLog = DebugLog,
+        })
+    end
     local key = NormalizeNameKey(name)
     local w = tonumber(wid) or 0
     if key == nil or w == 0 then
@@ -775,6 +856,10 @@ local function PickOutsiderFifoEvictionVictim(protected)
 end
 
 local function UntrackOutsiderWid(wid)
+    if type(OutsiderTracker.UntrackWid) == "function" then
+        OutsiderTracker.UntrackWid(GetOutsiderTrackerState(), wid)
+        return
+    end
     TrackFifoRemove(wid)
     local idx = m_trackWidToSlot[wid]
     if not idx then
@@ -790,6 +875,12 @@ local function UntrackOutsiderWid(wid)
 end
 
 local function UntrackAllOutsiders()
+    if type(OutsiderTracker.UntrackAll) == "function" then
+        OutsiderTracker.UntrackAll(GetOutsiderTrackerState())
+        m_outsiderProbeElapsed = 0
+        m_rosterValidateElapsed = 0
+        return
+    end
     local wids = {}
     for wid, _ in pairs(m_trackWidToSlot) do
         wids[#wids + 1] = wid
@@ -802,7 +893,79 @@ local function UntrackAllOutsiders()
     m_rosterValidateElapsed = 0
 end
 
-local function TryTrackOutsider(wid, pname, career)
+local function WantFriendlyOutsiderWarbandLeaders()
+    return EnsureSettings().showFriendly == true
+end
+
+local function RefreshWarbandLeaderCache()
+    if type(WarbandLeaders.Refresh) ~= "function" then
+        return false
+    end
+    return WarbandLeaders.Refresh({
+        normalizeNameKey = NormalizeNameKey,
+    }) == true
+end
+
+local function RequestWarbandLeaderData()
+    if not WantFriendlyOutsiderWarbandLeaders() then
+        return
+    end
+    if type(WarbandLeaders.RequestNearbyData) == "function" then
+        WarbandLeaders.RequestNearbyData({ enabled = true })
+    end
+end
+
+--- @return useLeaderScale boolean, showGroupLeaderCrown boolean
+local function ResolveOutsiderLeaderVisuals(playerName, isFriendly)
+    if isFriendly ~= true or not WantFriendlyOutsiderWarbandLeaders() then
+        return false, false
+    end
+    if type(WarbandLeaders.IsKnown) ~= "function" then
+        return false, false
+    end
+    if WarbandLeaders.IsKnown(playerName, NormalizeNameKey) ~= true then
+        return false, false
+    end
+    return true, true
+end
+
+local function RefreshTrackedOutsiderLeaderVisuals()
+    if not next(m_trackWidToSlot) then
+        return
+    end
+    for wid, idx in pairs(m_trackWidToSlot) do
+        local meta = m_trackMeta[wid]
+        local nm = meta and meta.name
+        local icon = m_outsiderPool[idx]
+        if nm and icon and icon.isEnabled and icon.worldObjNum ~= 0 then
+            local useLeaderScale, showGroupLeaderCrown = ResolveOutsiderLeaderVisuals(nm, meta.isFriendly == true)
+            icon:Update(nm, wid, icon.lastCareerLine, false, true, icon.lastCareerNamesId, useLeaderScale, showGroupLeaderCrown)
+        end
+    end
+end
+
+local function OnWarbandLeaderListMaybeChanged()
+    local changed = RefreshWarbandLeaderCache()
+    if changed or next(m_trackWidToSlot) then
+        RefreshTrackedOutsiderLeaderVisuals()
+    end
+    return changed
+end
+
+local function TryTrackOutsider(wid, pname, career, isFriendly)
+    isFriendly = isFriendly == true
+    if type(OutsiderTracker.TryTrack) == "function" then
+        if OutsiderTracker.TryTrack(GetOutsiderTrackerState(), wid, pname, career, {
+            isFriendly = isFriendly,
+            maxTrackedOutsiders = c_MAX_TRACKED_OUTSIDERS,
+            isGroupWorldObject = function(trackWid) return m_groupWorldObjs[trackWid] == true end,
+            isGroupMemberName = IsGroupMemberName,
+            resolveOutsiderLeaderVisuals = ResolveOutsiderLeaderVisuals,
+        }) then
+            m_outsiderProbeElapsed = c_OUTSIDER_PROBE_INTERVAL
+        end
+        return
+    end
     if not wid or wid == 0 then
         return
     end
@@ -818,8 +981,9 @@ local function TryTrackOutsider(wid, pname, career)
         local idx = m_trackWidToSlot[wid]
         local icon = m_outsiderPool[idx]
         icon:Enable()
-        icon:Update(pname, wid, career, false, realmRing)
-        m_trackMeta[wid] = { name = pname }
+        local useLeaderScale, showGroupLeaderCrown = ResolveOutsiderLeaderVisuals(pname, isFriendly)
+        icon:Update(pname, wid, career, false, realmRing, nil, useLeaderScale, showGroupLeaderCrown)
+        m_trackMeta[wid] = { name = pname, isFriendly = isFriendly }
         m_outsiderProbeElapsed = c_OUTSIDER_PROBE_INTERVAL
         return
     end
@@ -852,17 +1016,27 @@ local function TryTrackOutsider(wid, pname, career)
 
     m_slotOccupantWid[freeIdx] = wid
     m_trackWidToSlot[wid] = freeIdx
-    m_trackMeta[wid] = { name = pname }
+    m_trackMeta[wid] = { name = pname, isFriendly = isFriendly }
     table.insert(m_trackFIFOOrder, wid)
     local icon = m_outsiderPool[freeIdx]
     icon:Enable()
-    icon:Update(pname, wid, career, false, realmRing)
+    local useLeaderScale, showGroupLeaderCrown = ResolveOutsiderLeaderVisuals(pname, isFriendly)
+    icon:Update(pname, wid, career, false, realmRing, nil, useLeaderScale, showGroupLeaderCrown)
     m_outsiderProbeElapsed = c_OUTSIDER_PROBE_INTERVAL
 end
 
 --- Fill party/warband name + worldObj registry so outsider prune/TryTrack gates work even when roster *icons*
 --- are not refreshed (scenario + showParty off, etc.).
 local function RegisterAllPartyWarbandMembersForPruning()
+    if type(Roster.RegisterAllForPruning) == "function" then
+        Roster.RegisterAllForPruning(GetRosterState(), {
+            normalizeNameKey = NormalizeNameKey,
+            toWString = ToWString,
+            isWarBandActive = IsWarBandActive,
+            debugLog = DebugLog,
+        })
+        return
+    end
     InvalidatePartyAndWarbandCaches()
     ClearGroupMembershipCache()
     local data = nil
@@ -908,6 +1082,21 @@ end
 
 --- Reads TargetInfo after stock TargetWindow / MouseOverTargetWindow ran UpdateFromClient on PLAYER_TARGET_UPDATED.
 local function ConsiderClassificationForTracking(classification)
+    if type(OutsiderTracker.ConsiderClassification) == "function" then
+        if OutsiderTracker.ConsiderClassification(GetOutsiderTrackerState(), classification, {
+            ensureSettings = EnsureSettings,
+            toWString = ToWString,
+            isSelfMember = IsSelfMember,
+            learnKnownWorldObject = LearnKnownWorldObject,
+            maxTrackedOutsiders = c_MAX_TRACKED_OUTSIDERS,
+            isGroupWorldObject = function(trackWid) return m_groupWorldObjs[trackWid] == true end,
+            isGroupMemberName = IsGroupMemberName,
+            resolveOutsiderLeaderVisuals = ResolveOutsiderLeaderVisuals,
+        }) then
+            m_outsiderProbeElapsed = c_OUTSIDER_PROBE_INTERVAL
+        end
+        return
+    end
     local ut = TargetInfo:UnitType(classification)
     if ut ~= SystemData.TargetObjectType.ENEMY_PLAYER and ut ~= SystemData.TargetObjectType.ALLY_PLAYER then
         return
@@ -933,10 +1122,17 @@ local function ConsiderClassificationForTracking(classification)
     end
     local career = TargetInfo:UnitCareer(classification)
     LearnKnownWorldObject(pname, wid, career)
-    TryTrackOutsider(wid, pname, career)
+    TryTrackOutsider(wid, pname, career, ut == SystemData.TargetObjectType.ALLY_PLAYER)
 end
 
 local function PruneTrackedOutsidersAgainstRoster()
+    if type(OutsiderTracker.PruneAgainstRoster) == "function" then
+        OutsiderTracker.PruneAgainstRoster(GetOutsiderTrackerState(), {
+            isGroupWorldObject = function(trackWid) return m_groupWorldObjs[trackWid] == true end,
+            isGroupMemberName = IsGroupMemberName,
+        })
+        return
+    end
     local wids = {}
     for wid, _ in pairs(m_trackWidToSlot) do
         wids[#wids + 1] = wid
@@ -967,91 +1163,39 @@ local function OutsiderWorldObjectNameMismatchTracked(trackedNameW, wid)
     return not SafeWStringEquals(w, ToWString(trackedNameW))
 end
 
---- Anchor calibration for two probe points (same idea as AutoMark.OnUpdate).
-local function CalibrateGroupIconsWorldProbeAnchors()
-    local probe = c_GROUPICONS_WORLD_PROBE
-    if not DoesWindowExist(probe)
-        or type(MoveWindowToWorldObject) ~= "function"
-        or type(WindowGetScreenPosition) ~= "function"
-        or type(WindowClearAnchors) ~= "function"
-        or type(WindowAddAnchor) ~= "function"
-    then
-        return nil
-    end
-    local res = SystemData and SystemData.screenResolution
-    if not res or res.x == nil or res.y == nil then
-        return nil
-    end
-    WindowSetShowing(probe, true)
-    local ax = res.x / 2
-    local ay = res.y / 2
-    WindowClearAnchors(probe)
-    WindowAddAnchor(probe, "topleft", "Root", "topleft", ax, ay)
-    local r1x, r1y = WindowGetScreenPosition(probe)
-    local ax2 = ax + 10
-    local ay2 = ay + 10
-    WindowClearAnchors(probe)
-    WindowAddAnchor(probe, "topleft", "Root", "topleft", ax2, ay2)
-    local r2x, r2y = WindowGetScreenPosition(probe)
-    return {
-        ax = ax, ay = ay,
-        ax2 = ax2, ay2 = ay2,
-        r1x = r1x, r1y = r1y,
-        r2x = r2x, r2y = r2y,
-    }
-end
-
 local function GetWorldProbeCalibration()
-    local res = SystemData and SystemData.screenResolution
-    local key = res and res.x and res.y and (tostring(res.x) .. "x" .. tostring(res.y)) or nil
-    if key ~= nil and key == m_worldProbeResolutionKey and m_worldProbeCalibration ~= nil then
-        return m_worldProbeCalibration
+    if type(SpatialProbe.GetCalibration) ~= "function" then
+        return nil
     end
-    local cal = CalibrateGroupIconsWorldProbeAnchors()
-    if cal ~= nil then
-        m_worldProbeCalibration = cal
-        m_worldProbeResolutionKey = key
-    end
-    return cal
+    return SpatialProbe.GetCalibration()
 end
 
---- True if world object id no longer drives UI projection (static/stuck icon symptom). False if probe unavailable.
---- Hidden probe after move ⇒ entity exists off-screen (not gone). Two-anchor non-move ⇒ gone (AutoMark disambiguation).
 local function WorldObjectSpatialProbeIsGone(wid, cal)
-    if cal == nil or wid == nil or wid == 0 then
+    if type(SpatialProbe.IsGone) ~= "function" then
         return false
     end
-    local probe = c_GROUPICONS_WORLD_PROBE
-    if type(WindowGetShowing) ~= "function" then
-        return false
+    return SpatialProbe.IsGone(wid, cal)
+end
+
+local function ResetWorldProbeCalibration()
+    if type(SpatialProbe.ResetCalibration) == "function" then
+        SpatialProbe.ResetCalibration()
     end
-    WindowClearAnchors(probe)
-    WindowAddAnchor(probe, "topleft", "Root", "topleft", cal.ax, cal.ay)
-    MoveWindowToWorldObject(probe, wid, c_WORLD_PROBE_ATTACH_Z)
-    if WindowGetShowing(probe) == false then
-        WindowSetShowing(probe, true)
-        return false
-    end
-    local ox, oy = WindowGetScreenPosition(probe)
-    if cal.r1x ~= ox or cal.r1y ~= oy then
-        return false
-    end
-    WindowClearAnchors(probe)
-    WindowAddAnchor(probe, "topleft", "Root", "topleft", cal.ax2, cal.ay2)
-    MoveWindowToWorldObject(probe, wid, c_WORLD_PROBE_ATTACH_Z)
-    ox, oy = WindowGetScreenPosition(probe)
-    if cal.r2x ~= ox or cal.r2y ~= oy then
-        return false
-    end
-    return true
 end
 
 local function ValidateTrackedOutsiders(cal)
+    if type(OutsiderTracker.ValidateTracked) == "function" then
+        OutsiderTracker.ValidateTracked(GetOutsiderTrackerState(), cal, {
+            nameMismatch = OutsiderWorldObjectNameMismatchTracked,
+            isGone = WorldObjectSpatialProbeIsGone,
+        })
+        return
+    end
     if not next(m_trackWidToSlot) then
         return
     end
     if cal == nil then
-        cal = CalibrateGroupIconsWorldProbeAnchors()
+        cal = GetWorldProbeCalibration()
     end
     local toUntrack = {}
     for wid, idx in pairs(m_trackWidToSlot) do
@@ -1092,6 +1236,19 @@ end
 local function WantRosterWorldMarkers()
     local s = EnsureSettings()
     return s.showParty == true or s.showWarband == true
+end
+
+local function ScheduleWarmRefreshRosterPolling(minAttempts)
+    m_postEnableWarmRefreshPoll = 0
+    if not WantRosterWorldMarkers() then
+        m_postEnableWarmRefreshRemaining = 0
+        return
+    end
+    local attempts = tonumber(minAttempts) or c_WARM_REFRESH_ATTEMPTS
+    attempts = math.max(1, math.floor(attempts + 0.5))
+    if (tonumber(m_postEnableWarmRefreshRemaining) or 0) < attempts then
+        m_postEnableWarmRefreshRemaining = attempts
+    end
 end
 
 local function CheckRosterWorldObjChanges()
@@ -1166,10 +1323,17 @@ local function WarmRefreshRosterIfNeeded(dt)
         return
     end
     if not WantRosterWorldMarkers() then
+        m_postEnableWarmRefreshRemaining = 0
+        m_postEnableWarmRefreshPoll = 0
+        return
+    end
+    if AnyRosterWorldAttachedIcons() then
+        m_postEnableWarmRefreshRemaining = 0
+        m_postEnableWarmRefreshPoll = 0
         return
     end
     m_postEnableWarmRefreshPoll = (m_postEnableWarmRefreshPoll or 0) + dt
-    if m_postEnableWarmRefreshPoll >= 0.35 then
+    if m_postEnableWarmRefreshPoll >= c_WARM_REFRESH_INTERVAL then
         m_postEnableWarmRefreshPoll = 0
         m_postEnableWarmRefreshRemaining = m_postEnableWarmRefreshRemaining - 1
         m_needsRefreshAll = true
@@ -1238,6 +1402,15 @@ end
 
 -- Refresh from party data (group / solo).
 local function RefreshParty()
+    if type(Roster.RefreshParty) == "function" then
+        Roster.RefreshParty(GetRosterState(), {
+            normalizeNameKey = NormalizeNameKey,
+            toWString = ToWString,
+            isSelfMember = IsSelfMember,
+            debugLog = DebugLog,
+        })
+        return
+    end
     InvalidatePartyAndWarbandCaches()
     local data = nil
     if type(PartyUtils) == "table" and type(PartyUtils.GetPartyData) == "function" then
@@ -1290,6 +1463,15 @@ end
 -- (Other warband parties must not be RegisterGroupMember when hidden, or outsider realm icons never apply.)
 -- partiesOverride: when non-nil, use instead of GetBattlegroupMemberData().
 local function RefreshWarband(showAll, showParty1, partiesOverride)
+    if type(Roster.RefreshWarband) == "function" then
+        Roster.RefreshWarband(GetRosterState(), showAll, showParty1, partiesOverride, {
+            normalizeNameKey = NormalizeNameKey,
+            toWString = ToWString,
+            isSelfMember = IsSelfMember,
+            debugLog = DebugLog,
+        })
+        return
+    end
     InvalidatePartyAndWarbandCaches()
     local parties = partiesOverride or GetBattlegroupMemberData()
     if not parties then return end
@@ -1359,6 +1541,10 @@ RefreshAll = function()
     end
 
     PruneTrackedOutsidersAgainstRoster()
+    if WantFriendlyOutsiderWarbandLeaders() then
+        RequestWarbandLeaderData()
+        OnWarbandLeaderListMaybeChanged()
+    end
 end
 
 ----------------------------------------------------------------
@@ -1370,6 +1556,21 @@ function CustomUI.GroupIcons.OnUpdate(timePassed)
         return
     end
     local dt = tonumber(timePassed) or 0
+
+    if type(WarbandLeaders.TickRequestCooldown) == "function" then
+        WarbandLeaders.TickRequestCooldown(dt)
+    end
+
+    if WantFriendlyOutsiderWarbandLeaders() then
+        m_friendlyLeaderPollElapsed = m_friendlyLeaderPollElapsed + dt
+        if m_friendlyLeaderPollElapsed >= c_FRIENDLY_LEADER_POLL_INTERVAL then
+            m_friendlyLeaderPollElapsed = 0
+            RequestWarbandLeaderData()
+            OnWarbandLeaderListMaybeChanged()
+        end
+    else
+        m_friendlyLeaderPollElapsed = 0
+    end
 
     if m_needsRefreshAll then
         m_needsRefreshAll = false
@@ -1414,15 +1615,42 @@ function CustomUI.GroupIcons.OnUpdate(timePassed)
     end
 end
 
+function CustomUI.GroupIcons.OnOpenPartyUpdated()
+    ScheduleWarmRefreshRosterPolling()
+    OnWarbandLeaderListMaybeChanged()
+end
+
+function CustomUI.GroupIcons.OnPlayerChapterUpdated()
+    if WantFriendlyOutsiderWarbandLeaders()
+        and GameData and GameData.Player
+        and tonumber(GameData.Player.influenceID) ~= 0
+    then
+        RequestWarbandLeaderData()
+    end
+end
+
 function CustomUI.GroupIcons.OnGroupUpdated()
+    ScheduleWarmRefreshRosterPolling()
+    OnWarbandLeaderListMaybeChanged()
     m_needsRefreshAll = true
 end
 
 function CustomUI.GroupIcons.OnBattlegroupUpdated()
+    ScheduleWarmRefreshRosterPolling()
+    OnWarbandLeaderListMaybeChanged()
     m_needsRefreshAll = true
 end
 
 function CustomUI.GroupIcons.OnScenarioUpdated()
+    ScheduleWarmRefreshRosterPolling()
+    m_needsRefreshAll = true
+end
+
+function CustomUI.GroupIcons.OnInterfaceReady()
+    -- Stock UI commonly rebuilds windows from INTERFACE_RELOADED in addition to LOADING_END.
+    ScheduleWarmRefreshRosterPolling()
+    RequestWarbandLeaderData()
+    OnWarbandLeaderListMaybeChanged()
     m_needsRefreshAll = true
 end
 
@@ -1430,8 +1658,11 @@ function CustomUI.GroupIcons.OnZoneChanged()
     m_stickyRosterWidByKey = {}
     m_knownByNameKey = {}
     UntrackAllOutsiders()
-    m_worldProbeCalibration = nil
-    m_worldProbeResolutionKey = nil
+    ResetWorldProbeCalibration()
+    ScheduleWarmRefreshRosterPolling()
+    m_friendlyLeaderPollElapsed = 0
+    RequestWarbandLeaderData()
+    OnWarbandLeaderListMaybeChanged()
     m_needsRefreshAll = true
 end
 
@@ -1455,8 +1686,8 @@ function CustomUI.GroupIcons.OnSettingsChanged()
     end
     -- Hostile/friendly toggles can invalidate existing tracked outsiders; clear them.
     UntrackAllOutsiders()
-    m_worldProbeCalibration = nil
-    m_worldProbeResolutionKey = nil
+    ResetWorldProbeCalibration()
+    ScheduleWarmRefreshRosterPolling()
     m_needsRefreshAll = true
 end
 
@@ -1494,19 +1725,24 @@ function GroupIconsComponent:Enable()
     WindowRegisterEventHandler("Root", SystemData.Events.CITY_SCENARIO_END, "CustomUI.GroupIcons.OnScenarioUpdated")
     WindowRegisterEventHandler("Root", SystemData.Events.PLAYER_ZONE_CHANGED,     "CustomUI.GroupIcons.OnZoneChanged")
     WindowRegisterEventHandler("Root", SystemData.Events.PLAYER_TARGET_UPDATED,    "CustomUI.GroupIcons.OnPlayerTargetUpdated")
-    WindowRegisterEventHandler("Root", SystemData.Events.LOADING_END,             "CustomUI.GroupIcons.OnBattlegroupUpdated")
-    WindowRegisterEventHandler("Root", SystemData.Events.ENTER_WORLD,             "CustomUI.GroupIcons.OnBattlegroupUpdated")
+    WindowRegisterEventHandler("Root", SystemData.Events.LOADING_END,             "CustomUI.GroupIcons.OnInterfaceReady")
+    WindowRegisterEventHandler("Root", SystemData.Events.ENTER_WORLD,             "CustomUI.GroupIcons.OnInterfaceReady")
+    WindowRegisterEventHandler("Root", SystemData.Events.INTERFACE_RELOADED,      "CustomUI.GroupIcons.OnInterfaceReady")
+    WindowRegisterEventHandler("Root", SystemData.Events.ALL_MODULES_INITIALIZED, "CustomUI.GroupIcons.OnInterfaceReady")
+    WindowRegisterEventHandler("Root", SystemData.Events.GROUP_SETTINGS_PRIVACY_UPDATED, "CustomUI.GroupIcons.OnOpenPartyUpdated")
+    WindowRegisterEventHandler("Root", SystemData.Events.SOCIAL_OPENPARTYINTEREST_UPDATED, "CustomUI.GroupIcons.OnOpenPartyUpdated")
+    WindowRegisterEventHandler("Root", SystemData.Events.PLAYER_CHAPTER_UPDATED, "CustomUI.GroupIcons.OnPlayerChapterUpdated")
+    WindowRegisterEventHandler("Root", SystemData.Events.SOCIAL_OPENPARTY_UPDATED, "CustomUI.GroupIcons.OnOpenPartyUpdated")
+    WindowRegisterEventHandler("Root", SystemData.Events.SOCIAL_OPENPARTY_WORLD_UPDATED, "CustomUI.GroupIcons.OnOpenPartyUpdated")
+    WindowRegisterEventHandler("Root", SystemData.Events.SOCIAL_OPENPARTY_NOTIFY, "CustomUI.GroupIcons.OnOpenPartyUpdated")
     if DoesWindowExist(c_GROUPICONS_DRIVER) then
         WindowSetShowing(c_GROUPICONS_DRIVER, true)
     end
-    -- First tick after Enable re-runs roster attach (fixes warband stale wids right after /reloadui).
+    -- First ticks after Enable re-run roster attach until late roster worldObj ids arrive (common after /reloadui).
     m_needsRefreshAll = true
-    m_postEnableWarmRefreshPoll = 0
-    m_postEnableWarmRefreshRemaining = 0
-    if WantRosterWorldMarkers() then
-        -- Until at least one world-attached roster icon appears or attempts exhaust (~3s).
-        m_postEnableWarmRefreshRemaining = 9
-    end
+    ScheduleWarmRefreshRosterPolling()
+    RequestWarbandLeaderData()
+    OnWarbandLeaderListMaybeChanged()
     RefreshAll()
     return true
 end
@@ -1527,6 +1763,14 @@ function GroupIconsComponent:Disable()
     WindowUnregisterEventHandler("Root", SystemData.Events.PLAYER_TARGET_UPDATED)
     WindowUnregisterEventHandler("Root", SystemData.Events.LOADING_END)
     WindowUnregisterEventHandler("Root", SystemData.Events.ENTER_WORLD)
+    WindowUnregisterEventHandler("Root", SystemData.Events.INTERFACE_RELOADED)
+    WindowUnregisterEventHandler("Root", SystemData.Events.ALL_MODULES_INITIALIZED)
+    WindowUnregisterEventHandler("Root", SystemData.Events.GROUP_SETTINGS_PRIVACY_UPDATED)
+    WindowUnregisterEventHandler("Root", SystemData.Events.SOCIAL_OPENPARTYINTEREST_UPDATED)
+    WindowUnregisterEventHandler("Root", SystemData.Events.PLAYER_CHAPTER_UPDATED)
+    WindowUnregisterEventHandler("Root", SystemData.Events.SOCIAL_OPENPARTY_UPDATED)
+    WindowUnregisterEventHandler("Root", SystemData.Events.SOCIAL_OPENPARTY_WORLD_UPDATED)
+    WindowUnregisterEventHandler("Root", SystemData.Events.SOCIAL_OPENPARTY_NOTIFY)
     if DoesWindowExist(c_GROUPICONS_DRIVER) then
         WindowSetShowing(c_GROUPICONS_DRIVER, false)
     end

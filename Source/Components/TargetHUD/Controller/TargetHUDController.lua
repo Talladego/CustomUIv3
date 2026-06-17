@@ -19,6 +19,7 @@ local c_FRIENDLY_WINDOW_NAME = "CustomUIFriendlyTargetHUD"
 
 local c_HOSTILE_UNIT_ID  = "selfhostiletarget"
 local c_FRIENDLY_UNIT_ID = "selffriendlytarget"
+local c_TARGET_PRESENCE_CONSUMER = "TargetHUD"
 
 local c_MAX_BUFF_SLOTS = 10
 local c_BUFF_STRIDE    = 10   -- single row; center alignment handled by BuffTracker
@@ -39,6 +40,16 @@ local m_friendly = { unitId = c_FRIENDLY_UNIT_ID, attachedId = 0, buffTracker = 
 ----------------------------------------------------------------
 -- Local helpers
 ----------------------------------------------------------------
+
+local function DebugLog(message)
+    if CustomUI.DebugLogging ~= true then
+        return
+    end
+    local dfn = type(CustomUI.GetClientDebugLog) == "function" and CustomUI.GetClientDebugLog() or nil
+    if type(dfn) == "function" then
+        dfn(towstring("[CustomUI.TargetHUD] " .. tostring(message)))
+    end
+end
 
 local function CreateHUDBuffTracker(parentWindowName, buffTargetType)
     -- Runtime windows persist across /reloadui; destroy stale container before recreating.
@@ -90,7 +101,7 @@ end
 
 local function RegisterHandlers()
     if m_handlersRegistered then return end
-    d("[TargetHUD] RegisterHandlers")
+    DebugLog("RegisterHandlers")
     WindowRegisterEventHandler(c_HOSTILE_WINDOW_NAME, SystemData.Events.PLAYER_TARGET_UPDATED, "CustomUI.TargetHUD.OnPlayerTargetUpdated")
     WindowRegisterEventHandler(c_HOSTILE_WINDOW_NAME,  SystemData.Events.PLAYER_TARGET_STATE_UPDATED,   "CustomUI.TargetHUD.OnHostileStateUpdated")
     WindowRegisterEventHandler(c_FRIENDLY_WINDOW_NAME, SystemData.Events.PLAYER_TARGET_STATE_UPDATED,   "CustomUI.TargetHUD.OnFriendlyStateUpdated")
@@ -240,15 +251,13 @@ function CustomUI.TargetHUD.Initialize()
 end
 
 function CustomUI.TargetHUD.OnShutdown()
-    if SystemData.ActiveWindow.name == c_HOSTILE_WINDOW_NAME then
-        CustomUI.TargetHUD.Shutdown()
-    end
+    CustomUI.TargetHUD.Shutdown()
 end
 
 function CustomUI.TargetHUD.Shutdown()
     if type(CustomUI.TargetPresence) == "table"
-        and type(CustomUI.TargetPresence.Reset) == "function" then
-        CustomUI.TargetPresence.Reset()
+        and type(CustomUI.TargetPresence.Release) == "function" then
+        CustomUI.TargetPresence.Release(c_TARGET_PRESENCE_CONSUMER)
     end
     UnregisterHandlers()
     if m_hostile.buffTracker  then m_hostile.buffTracker:Shutdown();  m_hostile.buffTracker  = nil end
@@ -274,45 +283,8 @@ end
 function CustomUI.TargetHUD.GetSettings()
     CustomUI.Settings.TargetHUD = CustomUI.Settings.TargetHUD or {}
     local v = CustomUI.Settings.TargetHUD
-    local keys = CustomUI.BuffTracker.FilterSettingKeys
-    local defs = CustomUI.BuffTracker.FilterDefaults
-
-    if v.buffs then
-        v.buffsHostile = v.buffsHostile or {}
-        v.buffsFriendly = v.buffsFriendly or {}
-        for _, k in ipairs(keys) do
-            local val = v.buffs[k]
-            if v.buffsHostile[k] == nil then
-                v.buffsHostile[k] = val ~= nil and val or defs[k]
-            end
-            if v.buffsFriendly[k] == nil then
-                v.buffsFriendly[k] = val ~= nil and val or defs[k]
-            end
-        end
-        v.buffs = nil
-    end
-
-    if v.buffsHostile and not v.buffsFriendly then
-        v.buffsFriendly = {}
-        for _, k in ipairs(keys) do
-            v.buffsFriendly[k] = v.buffsHostile[k] ~= nil and v.buffsHostile[k] or defs[k]
-        end
-    elseif v.buffsFriendly and not v.buffsHostile then
-        v.buffsHostile = {}
-        for _, k in ipairs(keys) do
-            v.buffsHostile[k] = v.buffsFriendly[k] ~= nil and v.buffsFriendly[k] or defs[k]
-        end
-    end
-
-    v.buffsHostile = v.buffsHostile or {}
-    v.buffsFriendly = v.buffsFriendly or {}
-    for _, k in ipairs(keys) do
-        if v.buffsHostile[k] == nil then
-            v.buffsHostile[k] = defs[k]
-        end
-        if v.buffsFriendly[k] == nil then
-            v.buffsFriendly[k] = defs[k]
-        end
+    if type(CustomUI.BuffTracker.EnsurePairedFilterSettings) == "function" then
+        return CustomUI.BuffTracker.EnsurePairedFilterSettings(v)
     end
     return v
 end
@@ -327,6 +299,14 @@ end
 
 function CustomUI.TargetHUD.ApplyBuffSettings()
     local s = CustomUI.TargetHUD.GetSettings()
+    if type(CustomUI.BuffTracker.ApplyPairedFilters) == "function" then
+        CustomUI.BuffTracker.ApplyPairedFilters(
+            s,
+            m_hostile and m_hostile.buffTracker or nil,
+            m_friendly and m_friendly.buffTracker or nil
+        )
+        return
+    end
     if m_hostile and m_hostile.buffTracker then
         m_hostile.buffTracker:SetFilter(s.buffsHostile)
     end
@@ -347,13 +327,18 @@ function CustomUI.TargetHUD.OnPlayerTargetUpdated(targetClassification, targetId
         return
     end
     if type(CustomUI.TargetPresence) == "table"
-        and type(CustomUI.TargetPresence.NoteTargetEvent) == "function" then
-        CustomUI.TargetPresence.NoteTargetEvent(targetClassification, targetId)
-    end
-    TargetInfo:UpdateFromClient()
-    if type(CustomUI.TargetPresence) == "table"
-        and type(CustomUI.TargetPresence.OnTargetRefreshComplete) == "function" then
-        CustomUI.TargetPresence.OnTargetRefreshComplete(targetClassification)
+        and type(CustomUI.TargetPresence.RefreshFromEvent) == "function" then
+        CustomUI.TargetPresence.RefreshFromEvent(targetClassification, targetId)
+    else
+        if type(CustomUI.TargetPresence) == "table"
+            and type(CustomUI.TargetPresence.NoteTargetEvent) == "function" then
+            CustomUI.TargetPresence.NoteTargetEvent(targetClassification, targetId)
+        end
+        TargetInfo:UpdateFromClient()
+        if type(CustomUI.TargetPresence) == "table"
+            and type(CustomUI.TargetPresence.OnTargetRefreshComplete) == "function" then
+            CustomUI.TargetPresence.OnTargetRefreshComplete(targetClassification)
+        end
     end
     RefreshBothHUDsFromCache()
 end
@@ -422,6 +407,10 @@ function TargetHUDComponent:Enable()
     end
 
     m_enabled = true
+    if type(CustomUI.TargetPresence) == "table"
+        and type(CustomUI.TargetPresence.Acquire) == "function" then
+        CustomUI.TargetPresence.Acquire(c_TARGET_PRESENCE_CONSUMER)
+    end
     RegisterHandlers()
     RefreshBothHUDsFromCache()
     return true
@@ -430,8 +419,8 @@ end
 function TargetHUDComponent:Disable()
     m_enabled = false
     if type(CustomUI.TargetPresence) == "table"
-        and type(CustomUI.TargetPresence.Reset) == "function" then
-        CustomUI.TargetPresence.Reset()
+        and type(CustomUI.TargetPresence.Release) == "function" then
+        CustomUI.TargetPresence.Release(c_TARGET_PRESENCE_CONSUMER)
     end
     UnregisterHandlers()
     DetachHUD(c_HOSTILE_WINDOW_NAME,  m_hostile)

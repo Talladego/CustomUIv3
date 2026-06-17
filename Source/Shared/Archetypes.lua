@@ -54,11 +54,23 @@ function CustomUI.Archetypes.GetArchetypeForCareerLine(careerLine)
     return CustomUI.Archetypes.CareerMapping[careerLine]
 end
 
-function CustomUI.Archetypes.GetColorForCareerLine(careerLine)
-    local arch = CustomUI.Archetypes.GetArchetypeForCareerLine(careerLine)
-    local rgb = arch and CustomUI.Archetypes.RGB[arch]
+function CustomUI.Archetypes.GetColorForArchetype(archetype)
+    local rgb = archetype and CustomUI.Archetypes.RGB[archetype]
     if rgb then
         return rgb[1], rgb[2], rgb[3]
     end
     return nil, nil, nil
+end
+
+function CustomUI.Archetypes.GetColorForCareerLine(careerLine)
+    local arch = CustomUI.Archetypes.GetArchetypeForCareerLine(careerLine)
+    return CustomUI.Archetypes.GetColorForArchetype(arch)
+end
+
+function CustomUI.Archetypes.GetColorForCareerLineOrDefault(careerLine, defaultR, defaultG, defaultB)
+    local r, g, b = CustomUI.Archetypes.GetColorForCareerLine(careerLine)
+    if r and g and b then
+        return r, g, b
+    end
+    return defaultR, defaultG, defaultB
 end

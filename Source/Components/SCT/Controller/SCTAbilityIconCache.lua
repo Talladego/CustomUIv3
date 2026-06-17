@@ -11,7 +11,8 @@
 -- Entries with weaponFallback=true skip session/disk fast-path so GetBuffs can replace them
 -- once the debuff appears; only non-fallback rows use cached shortcuts.
 --
--- Load order: SCTSettings → **this file** → SCTAnim → SCTOverrides → …
+-- Load order: SCTSettings → **this file** → SCTAnim → SCTOverrides
+--   → SCTAbilityIconResolver → SCTEventEntry → SCTEventTracker → …
 ----------------------------------------------------------------
 if not CustomUI.SCT then CustomUI.SCT = {} end
 

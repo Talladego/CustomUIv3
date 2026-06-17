@@ -4,12 +4,13 @@ CustomUI is a modular Return of Reckoning addon that replaces and enhances stock
 
 ## Documentation
 
-**This README is the architecture and conventions reference.** Backlog, audits, and plans live in [TODO.md](TODO.md). Settings-window XML/layout pitfalls live in [CustomUISettingsWindow/README.md](CustomUISettingsWindow/README.md); settings backlog in [CustomUISettingsWindow/TODO.md](CustomUISettingsWindow/TODO.md).
+**This README is the architecture and conventions reference.** Backlog and audits live in [TODO.md](TODO.md); the focused controller decomposition plan lives in [REFACTOR_PLAN.md](REFACTOR_PLAN.md). Settings-window XML/layout pitfalls live in [CustomUISettingsWindow/README.md](CustomUISettingsWindow/README.md); settings backlog in [CustomUISettingsWindow/TODO.md](CustomUISettingsWindow/TODO.md).
 
 | Document | Purpose |
 |----------|---------|
 | [README.md](README.md) | Architecture, components, conventions, runtime usage |
 | [TODO.md](TODO.md) | Open issues, reviews, plans, validation checklists |
+| [REFACTOR_PLAN.md](REFACTOR_PLAN.md) | Phased plan for splitting oversized controllers/shared modules |
 | [guard_whitelist.csv](guard_whitelist.csv) | Guard / Save Da Runts ability IDs (ingested into `DefaultWhitelistAbility`) |
 | [CustomUISettingsWindow/README.md](CustomUISettingsWindow/README.md) | Settings UI — tab layout, XML pitfalls, diagnostics |
 | [CustomUISettingsWindow/TODO.md](CustomUISettingsWindow/TODO.md) | Settings addon backlog |
@@ -30,20 +31,20 @@ Place **CustomUI** and **CustomUISettingsWindow** under the game’s `Interface\
 
 | Component | Replaces | Status |
 |---|---|---|
-| `PlayerStatusWindow` | `ea_playerstatuswindow` | ✅ Enabled by default |
-| `TargetWindow` | `ea_targetwindow` (hostile + friendly slots) | ✅ Implemented |
-| `PlayerPetWindow` | `PetHealthWindow` in `ea_careerresourceswindow` | ✅ Implemented |
-| `GroupWindow` | `ea_groupwindow` | ✅ Implemented |
-| `TargetHUD` | — (new world-attached HUDs for hostile and friendly targets) | ✅ Implemented |
-| `UnitFrames` | BattlegroupHUD + FloatingScenarioGroup scenario roster frames | ✅ Implemented (`Model` / `Renderer` / `Adapters`: stubs for future refactor) |
-| `GroupIcons` | — (career icons on world objects for party / warband / scenario members) | ✅ Implemented |
-| `SCT` | `easystem_eventtext` combat/point-gain floating text | ✅ **Complete** (v2: handler swap + `SCTOverrides`; settings tab in CustomUISettingsWindow) |
+| `PlayerStatusWindow` | `ea_playerstatuswindow` | ✅ Implemented, `DefaultEnabled = false` |
+| `TargetWindow` | `ea_targetwindow` (hostile + friendly slots) | ✅ Implemented, `DefaultEnabled = false` |
+| `PlayerPetWindow` | `PetHealthWindow` in `ea_careerresourceswindow` | ✅ Implemented helper component, not registered separately in `/customui components` |
+| `GroupWindow` | `ea_groupwindow` | ✅ Implemented, `DefaultEnabled = false` |
+| `TargetHUD` | — (new world-attached HUDs for hostile and friendly targets) | ✅ Implemented, `DefaultEnabled = false` |
+| `UnitFrames` | BattlegroupHUD + FloatingScenarioGroup scenario roster frames | ✅ Implemented, `DefaultEnabled = false` |
+| `GroupIcons` | — (career icons on world objects for party / warband / scenario members) | ✅ Implemented, enabled by default on a fresh profile |
+| `SCT` | `easystem_eventtext` combat/point-gain floating text | ✅ Complete, `DefaultEnabled = false` |
 
-All components default to **disabled** except `PlayerStatusWindow`.
+All registered components default to **disabled** except `GroupIcons`, which currently omits `DefaultEnabled = false` and therefore comes up enabled on a fresh profile. `PlayerPetWindow` is shipped and has full lifecycle code, but it is still owned through `PlayerStatusWindow` rather than being registered as a separate top-level component.
 
 ### GroupIcons (world markers)
 
-Controller-only (`Controller/GroupIconsController.lua`); `View/GroupIcons.xml` defines the `CustomUIGroupIcon` template plus **`CustomUIGroupIconsDriver`** (hosts `OnUpdate`, parent `Root`, 1×1) and **`CustomUIGroupIconsWorldProbe`** (position probe for outsider validation).
+Controller helpers live in `Controller/GroupIconsController.lua`, `GroupIconsSpatialProbe.lua`, `GroupIconsOutsiderTracker.lua`, and `GroupIconsRoster.lua`; `View/GroupIcons.xml` defines the `CustomUIGroupIcon` template plus **`CustomUIGroupIconsDriver`** (hosts `OnUpdate`, parent `Root`, 1×1) and **`CustomUIGroupIconsWorldProbe`** (position probe for outsider validation).
 
 - **Roster grid**: up to 6 parties × 6 members (`CustomUIGroupIcon_<party>_<member>`). Scenario mode with the scenario toggle ON fills slots from `GameData.GetScenarioPlayerGroups()` (`sgroupindex` / `sgroupslotnum`). Open-world warband uses `GetBattlegroupMemberData` with optional `PartyUtils.GetWarbandMember` hydration. Party-only uses row 1 via `PartyUtils.GetPartyMember` when available.
 - **Live `worldObjNum` rule**: an icon attaches only when the current refresh yields a non-zero entity id from party/warband/scenario row data. Cached ids refresh `LearnKnown` / sticky maps but are **not** used alone for attach (invalid ids tend to snap UI to the screen origin).
@@ -53,7 +54,7 @@ Controller-only (`Controller/GroupIconsController.lua`); `View/GroupIcons.xml` d
 
 ### UnitFrames (party / warband / scenario rows)
 
-Controller-only Lua (`Controller/UnitFramesController.lua`); `View/UnitFrames.xml` defines **`CustomUIBGMember`** (HP/AP slices aligned with EA_BattlegroupHUD, black contour ring, target/mouseover highlights, distant **`Clock`** icon on `EA_HUD_01`).
+The controller is now split across `Controller/UnitFramesController.lua`, `UnitFramesEvents.lua`, `UnitFramesArchetypes.lua`, `UnitFramesSort.lua`, `UnitFramesRoster.lua`, `UnitFramesScenario.lua`, and `UnitFramesWarband.lua`; `View/UnitFrames.xml` defines **`CustomUIBGMember`** (HP/AP slices aligned with EA_BattlegroupHUD, black contour ring, target/mouseover highlights, distant **`Clock`** icon on `EA_HUD_01`).
 
 - **Dual-mode**: scenario roster path (`GameData.GetScenarioPlayerGroups`) vs open-world warband (`GetBattlegroupMemberData` / `PartyUtils`) vs idle — when idle, custom rows hide and stock **`BattlegroupHUD`** / **`FloatingScenarioGroup*`** windows are restored (`CustomUI.UnitFramesEvents` holds the window name lists).
 - **Tick root**: **`CustomUIUnitFramesRoot`** — `OnUpdate` plus engine handlers (distance scan, hover border sync); created in `EnsureRootWindowInstances` and shown only while the component is enabled so the client keeps ticking hidden roots.
@@ -97,9 +98,20 @@ A `BuffTracker` subclass that extends the stock frame with:
 - **Removal Grace Period** — Implements a `0.25` second removal grace period (`_pendingRemovalTime`) for lost buffs. If a duplicate buff with a new server-assigned ID/index arrives before expiration, it immediately purges the pending-removal instance, preventing visual icon flickering during stack transitions or refreshes.
 - **Accurate Stack Updates** — Compares incoming data against visual state tracked directly on the `BuffFrame` widget itself (`m_displayedEffectIndex`, `m_displayedIconNum`, and `m_displayedStackCount`) rather than comparing the tracker's buff data reference (which is mutated in-place), ensuring stack count increases and decreases are correctly rendered.
 
+Current helper split under `Source/Shared/BuffTracker/`:
+
+- `BuffTrackerLayout.lua` — container visibility, scaling, alignment, slot layout, hit area.
+- `BuffTrackerRules.lua` — category/duration classification plus filter evaluation.
+- `BuffTrackerGrouping.lua` — compression and explicit buff-group synthesis.
+- `BuffFilterDefaults.lua` — shared filter keys/defaults plus paired hostile/friendly filter normalization.
+
 ### CustomUI.TargetFrame
 
 A `TargetUnitFrame` subclass used by `TargetWindow` for both hostile and friendly targets. Inherits all stock health-bar, portrait, and `UpdateUnit` logic; adds a `CustomUI.BuffTracker` instance for per-target buff display.
+
+### CustomUI.TargetPresence
+
+Shared target cache ownership and transient-gap handling for `TargetWindow` and `TargetHUD`. It centralizes target refresh consumption, keeps short-lived snapshot holds during `TargetInfo` gaps, and reference-counts active target UI consumers so one component can disable without wiping the other component's shared state.
 
 ### BuffGroups.lua
 
@@ -129,7 +141,7 @@ Each component uses:
 
 **Load order (important):** `CustomUI.mod` lists each component’s `Controller/*.lua` **before** that component’s `View/*.xml` so the `CustomUI.<Name>.*` API exists when the template is parsed. **Do not** add a second `<Script file="...Controller/...">` in the same XML; that re-executes the controller. The one exception to “controller not in XML” is **PlayerStatusWindow**: `PlayerStatusWindow.xml` loads **only** `View/PlayerStatusWindow.lua` (no controller script) because the mod already included `PlayerStatusWindowController.lua` earlier.
 
-**File headers:** `Source/CustomUI.lua` and the top of each `*Controller.lua` / `View/*.lua` state what belongs in that file (state vs presentation, engine hooks vs tooltips, etc.). **SCT** uses `SCTSettings.lua`, `SCTOverrides.lua`, `SCTHandlers.lua`, `SCTAnim.lua`, and `SCTController.lua` under `Controller/` (no separate View lua); templates live under `View/` — the `/cui` settings grid is the **CustomUISettingsWindow** addon. Match those headers when you add new code.
+**File headers:** `Source/CustomUI.lua` and the top of each `*Controller.lua` / `View/*.lua` state what belongs in that file (state vs presentation, engine hooks vs tooltips, etc.). **SCT** now keeps shared scaffold in `SCTOverrides.lua`, icon resolution in `SCTAbilityIconResolver.lua`, entry classes in `SCTEventEntry.lua`, tracker runtime in `SCTEventTracker.lua`, handler swapping in `SCTHandlers.lua`, and component ownership in `SCTController.lua` (no separate View lua); templates live under `View/` — the `/cui` settings grid is the **CustomUISettingsWindow** addon. Match those headers when you add new code.
 
 ### Window visibility contract
 
@@ -151,11 +163,17 @@ CustomUI/
 	Source/
 		CustomUI.lua
 		Shared/
+			Archetypes.lua
 			Shared.xml
 			BuffTracker/
+				BuffFilterDefaults.lua
+				BuffTrackerGrouping.lua
+				BuffTrackerLayout.lua
 				BuffTracker.lua
 				BuffGroups.lua
 				BuffLists.lua
+				BuffTrackerRules.lua
+			TargetPresence.lua
 			UnitFrame/
 				TargetFrame.lua
 		Components/
@@ -178,11 +196,13 @@ CustomUI/
 			GroupWindow/
 				Controller/
 					GroupWindowController.lua
-					GroupWindowTestHarness.lua    ← dev test harness, gated at runtime
 				View/
 					GroupWindow.xml
 			GroupIcons/
 				Controller/
+					GroupIconsSpatialProbe.lua
+					GroupIconsOutsiderTracker.lua
+					GroupIconsRoster.lua
 					GroupIconsController.lua
 				View/
 					GroupIcons.xml
@@ -193,18 +213,26 @@ CustomUI/
 					TargetHUD.xml
 			UnitFrames/
 				Controller/
+					UnitFramesArchetypes.lua
 					UnitFramesController.lua
 					UnitFramesEvents.lua          ← stock vs CustomUI window names (used by controller)
+					UnitFramesRoster.lua
+					UnitFramesScenario.lua
+					UnitFramesSort.lua
+					UnitFramesWarband.lua
 				View/
 					UnitFrames.xml
 			SCT/
 				Controller/
-					SCTSettings.lua
 					SCTAbilityIconCache.lua
+					SCTAbilityIconResolver.lua
 					SCTAnim.lua
-					SCTOverrides.lua              ← stock EventEntry / PointGainEntry / EventTracker subclasses
-					SCTHandlers.lua               ← engine handler swap + dispatch
 					SCTController.lua             ← RegisterComponent adapter
+					SCTEventEntry.lua             ← entry classes + icon/suffix layout
+					SCTEventTracker.lua           ← tracker runtime + teardown
+					SCTHandlers.lua               ← engine handler swap + dispatch
+					SCTOverrides.lua              ← constants + anchor/key scaffold
+					SCTSettings.lua
 				View/
 					CustomUI_EventTextLabel.xml
 					CustomUI_SCTAbilityNameSuffix.xml
@@ -218,7 +246,9 @@ CustomUI/
 | Path | Status | Role |
 |------|--------|------|
 | `Shared.xml` | **Current** | Defines `CustomUIBuffContainerTemplate`; `BuffTracker` creates slot windows from it. |
-| `BuffTracker/` (`BuffTracker.lua`, `BuffGroups.lua`, `BuffLists.lua`) | **Current** | Core buff list behavior: trackers used by `PlayerStatusWindow`, `TargetWindow` (via `TargetFrame`), `GroupWindow`, `TargetHUD`. `BuffLists.lua` holds default blacklist/whitelist tables; BuffGroups is merge metadata. |
+| `Archetypes.lua` | **Current** | Shared career-to-archetype mapping and RGB helpers used by PlayerStatus, UnitFrames, and GroupIcons. |
+| `BuffTracker/` (`BuffTracker.lua`, `BuffTrackerLayout.lua`, `BuffTrackerRules.lua`, `BuffTrackerGrouping.lua`, `BuffFilterDefaults.lua`, `BuffGroups.lua`, `BuffLists.lua`) | **Current** | Core buff list behavior, helper splits, and shared filter defaults for trackers used by `PlayerStatusWindow`, `TargetWindow` (via `TargetFrame`), `GroupWindow`, and `TargetHUD`. |
+| `TargetPresence.lua` | **Current** | Shared target cache owner for `TargetWindow` + `TargetHUD`, including transient-gap holds and shared refresh coordination. |
 | `UnitFrame/TargetFrame.lua` | **Current** | Stock `TargetUnitFrame` subclass with `CustomUI.BuffTracker`; used only by **TargetWindow**. |
 
 All of the above are loaded from `CustomUI.mod` on the main path and are required for shipped components.
@@ -298,10 +328,11 @@ The SCT component cannot follow the standard window-visibility contract because 
 
 ### Architecture
 
-`SCTOverrides.lua` + `SCTHandlers.lua` implement CustomUI SCT by **subclassing stock `EA_System_*` entry/tracker classes** and **swapping engine event-handler registrations** on enable/disable (so stock and CustomUI SCT cannot both process the same engine events).
+`SCTOverrides.lua`, `SCTAbilityIconResolver.lua`, `SCTEventEntry.lua`, `SCTEventTracker.lua`, and `SCTHandlers.lua` implement CustomUI SCT by **subclassing stock `EA_System_*` entry/tracker classes** and **swapping engine event-handler registrations** on enable/disable (so stock and CustomUI SCT cannot both process the same engine events).
 
-- `CustomUI.SCT.EventEntry` and `CustomUI.SCT.PointGainEntry` subclass the stock entry classes (custom scale, color, and crit animation).
-- `CustomUI.SCT.EventTracker` is derived from the stock tracker but spawns CustomUI entries.
+- `SCTAbilityIconResolver.lua` owns cache, ability-table, buff-list, and equipment-proc icon resolution.
+- `CustomUI.SCT.EventEntry` and `CustomUI.SCT.PointGainEntry` (in `SCTEventEntry.lua`) subclass the stock entry classes and own icon/suffix window layout, custom scale/color, and crit animation hooks.
+- `CustomUI.SCT.EventTracker` (in `SCTEventTracker.lua`) is derived from the stock tracker but spawns CustomUI entries.
 - **`CustomUI.SCT.EventTrackers`** has a hard cap (`c_EVENT_TRACKERS_MAX` in `SCTHandlers.lua`); LRU-style eviction (touch sequence + quiescent-first) prevents unbounded growth when many distinct targets appear in one fight.
 - `CustomUI.SCT.InstallHandlers()` / `RestoreHandlers()` swap `RegisterEventHandler` bindings between stock `EA_System_EventText.*` handlers and `CustomUI.SCT.*` handlers.
 

@@ -1,9 +1,10 @@
 ----------------------------------------------------------------
 -- CustomUI.SCT — engine handler swap + six event handlers (v2)
 -- Handlers are thin: filter, create tracker if needed, AddEvent.
--- All rendering/animation delegates to SCTOverrides (EventTracker/EventEntry).
+-- Rendering/animation delegates to SCTEventTracker / SCTEventEntry / SCTAbilityIconResolver.
 --
--- Load order: SCTSettings → SCTAnim → SCTOverrides → SCTHandlers → SCTController → SCT.xml
+-- Load order: SCTSettings → SCTAnim → SCTOverrides → SCTAbilityIconResolver
+--   → SCTEventEntry → SCTEventTracker → this file → SCTController → SCT.xml
 ----------------------------------------------------------------
 if not CustomUI.SCT then CustomUI.SCT = {} end
 

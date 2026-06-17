@@ -22,6 +22,7 @@ local c_FRIENDLY_FRAME_NAME = "CustomUIFriendlyTargetFrame"
 
 local c_HOSTILE_UNIT_ID = "selfhostiletarget"
 local c_FRIENDLY_UNIT_ID = "selffriendlytarget"
+local c_TARGET_PRESENCE_CONSUMER = "TargetWindow"
 
 -- Stock ea_targetwindow layout roots (see interface/default/ea_targetwindow/source/targetwindow.lua)
 local c_STOCK_PRIMARY_TARGET_LAYOUT   = "PrimaryTargetLayoutWindow"
@@ -330,15 +331,20 @@ local function RefreshBothTargetsFromClient(targetClassification, targetId, targ
     local oldFriendlyEntityId = TargetInfo:UnitEntityId(c_FRIENDLY_UNIT_ID)
 
     if type(CustomUI.TargetPresence) == "table"
-        and type(CustomUI.TargetPresence.NoteTargetEvent) == "function" then
-        CustomUI.TargetPresence.NoteTargetEvent(targetClassification, targetId)
-    end
+        and type(CustomUI.TargetPresence.RefreshFromEvent) == "function" then
+        CustomUI.TargetPresence.RefreshFromEvent(targetClassification, targetId)
+    else
+        if type(CustomUI.TargetPresence) == "table"
+            and type(CustomUI.TargetPresence.NoteTargetEvent) == "function" then
+            CustomUI.TargetPresence.NoteTargetEvent(targetClassification, targetId)
+        end
 
-    TargetInfo:UpdateFromClient()
+        TargetInfo:UpdateFromClient()
 
-    if type(CustomUI.TargetPresence) == "table"
-        and type(CustomUI.TargetPresence.OnTargetRefreshComplete) == "function" then
-        CustomUI.TargetPresence.OnTargetRefreshComplete(targetClassification)
+        if type(CustomUI.TargetPresence) == "table"
+            and type(CustomUI.TargetPresence.OnTargetRefreshComplete) == "function" then
+            CustomUI.TargetPresence.OnTargetRefreshComplete(targetClassification)
+        end
     end
 
     if type(CustomUI.TargetPresence) == "table"
@@ -515,8 +521,8 @@ end
 
 function CustomUI.TargetWindow.Shutdown()
     if type(CustomUI.TargetPresence) == "table"
-        and type(CustomUI.TargetPresence.Reset) == "function" then
-        CustomUI.TargetPresence.Reset()
+        and type(CustomUI.TargetPresence.Release) == "function" then
+        CustomUI.TargetPresence.Release(c_TARGET_PRESENCE_CONSUMER)
     end
     UnregisterHandlers()
     if m_hostileFrame then
@@ -539,9 +545,7 @@ end
 ----------------------------------------------------------------
 
 function CustomUI.TargetWindow.OnShutdown()
-    if SystemData.ActiveWindow.name == c_HOSTILE_WINDOW_NAME then
-        CustomUI.TargetWindow.Shutdown()
-    end
+    CustomUI.TargetWindow.Shutdown()
 end
 
 function CustomUI.TargetWindow.OnUpdate(timePassed)
@@ -616,6 +620,10 @@ function TargetWindowComponent:Enable()
     end
 
     m_enabled = true
+    if type(CustomUI.TargetPresence) == "table"
+        and type(CustomUI.TargetPresence.Acquire) == "function" then
+        CustomUI.TargetPresence.Acquire(c_TARGET_PRESENCE_CONSUMER)
+    end
     RegisterHandlers()
     SafeUserShow(c_HOSTILE_WINDOW_NAME)
     SafeUserShow(c_FRIENDLY_WINDOW_NAME)
@@ -636,8 +644,8 @@ end
 function TargetWindowComponent:Disable()
     m_enabled = false
     if type(CustomUI.TargetPresence) == "table"
-        and type(CustomUI.TargetPresence.Reset) == "function" then
-        CustomUI.TargetPresence.Reset()
+        and type(CustomUI.TargetPresence.Release) == "function" then
+        CustomUI.TargetPresence.Release(c_TARGET_PRESENCE_CONSUMER)
     end
     UnregisterHandlers()
     -- Clear CustomUI trackers before handing back to stock to avoid stale state across rapid toggles.
@@ -701,45 +709,8 @@ CustomUI.RegisterComponent("TargetWindow", TargetWindowComponent)
 function CustomUI.TargetWindow.GetSettings()
     CustomUI.Settings.TargetWindow = CustomUI.Settings.TargetWindow or {}
     local v = CustomUI.Settings.TargetWindow
-    local keys = CustomUI.BuffTracker.FilterSettingKeys
-    local defs = CustomUI.BuffTracker.FilterDefaults
-
-    if v.buffs then
-        v.buffsHostile = v.buffsHostile or {}
-        v.buffsFriendly = v.buffsFriendly or {}
-        for _, k in ipairs(keys) do
-            local val = v.buffs[k]
-            if v.buffsHostile[k] == nil then
-                v.buffsHostile[k] = val ~= nil and val or defs[k]
-            end
-            if v.buffsFriendly[k] == nil then
-                v.buffsFriendly[k] = val ~= nil and val or defs[k]
-            end
-        end
-        v.buffs = nil
-    end
-
-    if v.buffsHostile and not v.buffsFriendly then
-        v.buffsFriendly = {}
-        for _, k in ipairs(keys) do
-            v.buffsFriendly[k] = v.buffsHostile[k] ~= nil and v.buffsHostile[k] or defs[k]
-        end
-    elseif v.buffsFriendly and not v.buffsHostile then
-        v.buffsHostile = {}
-        for _, k in ipairs(keys) do
-            v.buffsHostile[k] = v.buffsFriendly[k] ~= nil and v.buffsFriendly[k] or defs[k]
-        end
-    end
-
-    v.buffsHostile = v.buffsHostile or {}
-    v.buffsFriendly = v.buffsFriendly or {}
-    for _, k in ipairs(keys) do
-        if v.buffsHostile[k] == nil then
-            v.buffsHostile[k] = defs[k]
-        end
-        if v.buffsFriendly[k] == nil then
-            v.buffsFriendly[k] = defs[k]
-        end
+    if type(CustomUI.BuffTracker.EnsurePairedFilterSettings) == "function" then
+        return CustomUI.BuffTracker.EnsurePairedFilterSettings(v)
     end
     return v
 end
@@ -755,6 +726,14 @@ end
 
 function CustomUI.TargetWindow.ApplyBuffSettings()
     local s = CustomUI.TargetWindow.GetSettings()
+    if type(CustomUI.BuffTracker.ApplyPairedFilters) == "function" then
+        CustomUI.BuffTracker.ApplyPairedFilters(
+            s,
+            m_hostileFrame and m_hostileFrame.m_BuffTracker or nil,
+            m_friendlyFrame and m_friendlyFrame.m_BuffTracker or nil
+        )
+        return
+    end
     if m_hostileFrame and m_hostileFrame.m_BuffTracker then
         m_hostileFrame.m_BuffTracker:SetFilter(s.buffsHostile)
     end

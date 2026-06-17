@@ -396,14 +396,6 @@ local function ApplyFollowLeaderActionToMacroSlots(macroName, leaderName)
     end
 end
 
-local function GetCurrentFriendlyTargetName()
-    if type(TargetInfo) ~= "table" or type(TargetInfo.UpdateFromClient) ~= "function" or type(TargetInfo.UnitName) ~= "function" then
-        return L""
-    end
-    TargetInfo:UpdateFromClient()
-    return NormalizePlayerName(TargetInfo:UnitName("selffriendlytarget"))
-end
-
 local function ResolveCurrentLeaderName()
     local playerName = NormalizePlayerName(GameData and GameData.Player and GameData.Player.name)
 
@@ -548,12 +540,6 @@ function CustomUI.HandleSlashCommand(input)
             command = string.lower(parsedCommand or command)
             argument = parsedArgument
         end
-    end
-
-    if CustomUI.GroupWindowTestHarness
-    and type(CustomUI.GroupWindowTestHarness.HandleSlashCommand) == "function"
-    and CustomUI.GroupWindowTestHarness.HandleSlashCommand(trimmedInput) then
-        return
     end
 
     if trimmedInput == "" then

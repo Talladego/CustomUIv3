@@ -467,19 +467,13 @@ local function ApplyMinimalHpBarStyle()
 end
 
 local function ArchetypeRgbForPlayerCareer()
-    if not GameData or not GameData.Player then
-        return c_PS_RING_GREY_R, c_PS_RING_GREY_G, c_PS_RING_GREY_B
-    end
-    local career = GameData.Player.career
-    local careerLine = career and tonumber(career.line)
-    if not careerLine then
-        return c_PS_RING_GREY_R, c_PS_RING_GREY_G, c_PS_RING_GREY_B
-    end
-    local r, g, b = CustomUI.Archetypes.GetColorForCareerLine(careerLine)
-    if r and g and b then
-        return r, g, b
-    end
-    return c_PS_RING_GREY_R, c_PS_RING_GREY_G, c_PS_RING_GREY_B
+    local careerLine = GameData and GameData.Player and GameData.Player.career and tonumber(GameData.Player.career.line)
+    return CustomUI.Archetypes.GetColorForCareerLineOrDefault(
+        careerLine,
+        c_PS_RING_GREY_R,
+        c_PS_RING_GREY_G,
+        c_PS_RING_GREY_B
+    )
 end
 
 local function UpdateMinimalBarsAndLabels()

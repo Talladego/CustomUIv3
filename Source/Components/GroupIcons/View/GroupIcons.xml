@@ -39,7 +39,7 @@
                                 <Anchor point="center" relativePoint="center" />
                             </Anchors>
                         </DynamicImage>
-                        <!-- WarbandLeaderCrown: README §Notes — point on Ring (target), relativePoint on crown (bottom). Y bootstrap scaled vs UF ring; X=0 (centered at roster scale). -->
+                        <!-- Leader crown: Warband-Leader-Crown (roster) or Group-Leader-Crown (friendly outsider WB leader); UV set in Lua. -->
                         <DynamicImage name="$parentWarbandCrown" handleinput="false" layer="secondary" popable="false" textureScale="1.0" filtering="true">
                             <Size>
                                 <AbsPoint x="25" y="16" />

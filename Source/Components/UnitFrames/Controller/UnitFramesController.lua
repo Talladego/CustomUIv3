@@ -2,7 +2,7 @@
 -- CustomUI.UnitFrames — Controller
 --
 -- View: UnitFrames.xml (CustomUIBGMember row template, HP/AP art, borders). No View/*.lua.
--- Load order: CustomUI.mod loads UnitFramesEvents → this file → XML.
+-- Load order: CustomUI.mod loads UnitFramesEvents → UnitFramesArchetypes → UnitFramesSort → UnitFramesRoster → UnitFramesScenario → UnitFramesWarband → this file → XML.
 --
 -- Runtime behavior:
 --   • Layout: showActionPointsBar (default false); useTargetHudHpBarTexture (EA_StatusBar_DefaultTintable strip like TargetHUD — tint archetype); colorCareerIconRingByArchetype (career rings — archetype vs grey); sortPartyMembersByRole (default false — reorder party/warband/scenario rows; scenario keeps rosterSlot for hits/HP merge).
@@ -30,6 +30,11 @@ if not CustomUI.UnitFrames then
 end
 
 local UnitFrames = CustomUI.UnitFrames
+local UnitFramesArchetypes = UnitFrames.Archetypes or {}
+local UnitFramesRoster = UnitFrames.Roster or {}
+local UnitFramesScenario = UnitFrames.Scenario or {}
+local UnitFramesSort = UnitFrames.Sort or {}
+local UnitFramesWarband = UnitFrames.Warband or {}
 UnitFrames.WindowSettings = UnitFrames.WindowSettings or {}
 
 local c_ROOT_WINDOW_NAME = "CustomUIUnitFramesRoot"
@@ -67,14 +72,6 @@ local c_UF_TARGETHUD_HP_MISSING_R, c_UF_TARGETHUD_HP_MISSING_G, c_UF_TARGETHUD_H
 
 -- Career ring archetype palette (UnitFrames-only setting; matches GroupIcons roster colors when enabled).
 local c_UF_RING_GREY_R, c_UF_RING_GREY_G, c_UF_RING_GREY_B = 160, 160, 160
--- RoRGroupScoreboard / ScenarioSummary archetype index mapping (ArchTypeIcons = {165,106,157,160}).
--- Collapse 4-way stock archetypes into UnitFrames 3-way palette by mapping both DPS variants to DPS.
-local c_UF_SCOREBOARD_ARCHETYPE_TO_RING = {
-    [1] = CustomUI.Archetypes.TANK,
-    [2] = CustomUI.Archetypes.DPS,
-    [3] = CustomUI.Archetypes.DPS,
-    [4] = CustomUI.Archetypes.HEAL,
-}
 
 local IsScenarioModeActive
 
@@ -118,12 +115,12 @@ end
 
 --- Archetype RGB for HP bar when Target HUD tintable style is on (same palette as career ring / GroupIcons).
 local function UnitFramesHpBarArchetypeRgbForCareerLine(careerLine)
-    local arch = CustomUI.Archetypes.GetArchetypeForCareerLine(careerLine)
-    local rgb = arch and CustomUI.Archetypes.RGB[arch]
-    if rgb then
-        return rgb[1], rgb[2], rgb[3]
-    end
-    return c_UF_RING_GREY_R, c_UF_RING_GREY_G, c_UF_RING_GREY_B
+    return CustomUI.Archetypes.GetColorForCareerLineOrDefault(
+        careerLine,
+        c_UF_RING_GREY_R,
+        c_UF_RING_GREY_G,
+        c_UF_RING_GREY_B
+    )
 end
 
 local function ShouldSortPartyMembersByRole()
@@ -138,118 +135,31 @@ local function UnitFramesCareerRingRgbForCareerLine(careerLine)
     if not ShouldColorUnitFramesCareerRingByArchetype() then
         return c_UF_RING_GREY_R, c_UF_RING_GREY_G, c_UF_RING_GREY_B
     end
-    local arch = CustomUI.Archetypes.GetArchetypeForCareerLine(careerLine)
-    local rgb = arch and CustomUI.Archetypes.RGB[arch]
-    if rgb then
-        return rgb[1], rgb[2], rgb[3]
-    end
-    return c_UF_RING_GREY_R, c_UF_RING_GREY_G, c_UF_RING_GREY_B
+    return CustomUI.Archetypes.GetColorForCareerLineOrDefault(
+        careerLine,
+        c_UF_RING_GREY_R,
+        c_UF_RING_GREY_G,
+        c_UF_RING_GREY_B
+    )
 end
-
-local function NormalizeArchtypeLookupName(name)
-    local s = name
-    if s == nil then
-        return nil
-    end
-    if type(s) == "wstring" and type(WStringToString) == "function" then
-        s = WStringToString(s)
-    end
-    if type(s) ~= "string" then
-        s = tostring(s)
-    end
-    if s == nil or s == "" then
-        return nil
-    end
-
-    -- Scenario names can carry a trailing " ^" marker; trim only that explicit suffix.
-    if #s >= 2 and string.sub(s, -2) == " ^" then
-        s = string.sub(s, 1, -3)
-    end
-
-    -- Strip realm/name grammar segment suffix from first '^' onward.
-    local caret = string.find(s, "^", 1, true)
-    if caret then
-        s = string.sub(s, 1, caret - 1)
-    end
-
-    s = s:gsub("^%s+", ""):gsub("%s+$", "")
-    if s == "" then
-        return nil
-    end
-    return string.lower(s)
-end
-
 
 local function UnitFramesHpBarArchetypeRgbForPlayer(playerName, careerLine)
     if not playerName then
         return UnitFramesHpBarArchetypeRgbForCareerLine(careerLine)
     end
-    
-    local playerNameStr = NormalizeArchtypeLookupName(playerName)
-    if not playerNameStr or playerNameStr == "" then
+
+    if type(UnitFramesArchetypes.ResolvePaletteRgbForPlayer) ~= "function" then
         return UnitFramesHpBarArchetypeRgbForCareerLine(careerLine)
     end
-    
-    -- First, check if player has alt-spec archtype from GRP_STATS packet (warband/party mode)
-    if RoRGroupScoreboard and RoRGroupScoreboard.playersDataRaw then
-        for charId, pdata in pairs(RoRGroupScoreboard.playersDataRaw) do
-            if pdata and pdata.name then
-                local scoreboardNameStr = NormalizeArchtypeLookupName(pdata.name)
-                if scoreboardNameStr and scoreboardNameStr ~= "" then
-                    if playerNameStr == scoreboardNameStr or string.sub(playerNameStr, 2) == string.sub(scoreboardNameStr, 2) then
-                        if pdata.archtype and pdata.archtype > 0 then
-                            local effectiveArch = c_UF_SCOREBOARD_ARCHETYPE_TO_RING[tonumber(pdata.archtype)]
-                            if effectiveArch == nil then
-                                effectiveArch = CustomUI.Archetypes.GetArchetypeForCareerLine(careerLine)
-                                if effectiveArch == CustomUI.Archetypes.HEAL then
-                                    effectiveArch = CustomUI.Archetypes.DPS
-                                end
-                            end
-                            local rgb = effectiveArch and CustomUI.Archetypes.RGB[effectiveArch]
-                            if rgb then
-                                return rgb[1], rgb[2], rgb[3]
-                            end
-                        end
-                        return UnitFramesHpBarArchetypeRgbForCareerLine(careerLine)
-                    end
-                end
-            end
-        end
+
+    local r, g, b, matched = UnitFramesArchetypes.ResolvePaletteRgbForPlayer(playerName, careerLine)
+    if r and g and b then
+        return r, g, b
     end
-    
-    -- Second, check scenario roster via GameData.GetScenarioPlayers() (scenario mode)
-    if type(GameData.GetScenarioPlayers) == "function" then
-        local scenarioPlayers = GameData.GetScenarioPlayers()
-        if scenarioPlayers and type(scenarioPlayers) == "table" then
-            for _, player in ipairs(scenarioPlayers) do
-                if player and player.name then
-                    local scenarioNameStr = NormalizeArchtypeLookupName(player.name)
-                    if scenarioNameStr and scenarioNameStr ~= "" then
-                        if playerNameStr == scenarioNameStr or string.sub(playerNameStr, 2) == string.sub(scenarioNameStr, 2) then
-                            -- In scenarios, archtype is encoded in the last character of experiencebonus field
-                            local expBonus = player.experiencebonus
-                            local archtypeIndex = expBonus and type(expBonus) == "string" and tonumber(string.sub(expBonus, -1))
-                            if archtypeIndex and archtypeIndex > 0 then
-                                local effectiveArch = c_UF_SCOREBOARD_ARCHETYPE_TO_RING[archtypeIndex]
-                                if effectiveArch == nil then
-                                    effectiveArch = CustomUI.Archetypes.GetArchetypeForCareerLine(careerLine)
-                                    if effectiveArch == CustomUI.Archetypes.HEAL then
-                                        effectiveArch = CustomUI.Archetypes.DPS
-                                    end
-                                end
-                                local rgb = effectiveArch and CustomUI.Archetypes.RGB[effectiveArch]
-                                if rgb then
-                                    return rgb[1], rgb[2], rgb[3]
-                                end
-                            end
-                            return UnitFramesHpBarArchetypeRgbForCareerLine(careerLine)
-                        end
-                    end
-                end
-            end
-        end
+    if matched then
+        return UnitFramesHpBarArchetypeRgbForCareerLine(careerLine)
     end
-    
+
     return UnitFramesHpBarArchetypeRgbForCareerLine(careerLine)
 end
 
@@ -257,73 +167,19 @@ local function UnitFramesCareerRingRgbForPlayer(playerName, careerLine)
     if not playerName then
         return UnitFramesCareerRingRgbForCareerLine(careerLine)
     end
-    
-    local playerNameStr = NormalizeArchtypeLookupName(playerName)
-    if not playerNameStr or playerNameStr == "" then
+
+    if type(UnitFramesArchetypes.ResolvePaletteRgbForPlayer) ~= "function" then
         return UnitFramesCareerRingRgbForCareerLine(careerLine)
     end
-    
-    -- First, check if player has alt-spec archtype from GRP_STATS packet (warband/party mode)
-    if RoRGroupScoreboard and RoRGroupScoreboard.playersDataRaw then
-        for charId, pdata in pairs(RoRGroupScoreboard.playersDataRaw) do
-            if pdata and pdata.name then
-                local scoreboardNameStr = NormalizeArchtypeLookupName(pdata.name)
-                if scoreboardNameStr and scoreboardNameStr ~= "" then
-                    if playerNameStr == scoreboardNameStr or string.sub(playerNameStr, 2) == string.sub(scoreboardNameStr, 2) then
-                        if pdata.archtype and pdata.archtype > 0 then
-                            local effectiveArch = c_UF_SCOREBOARD_ARCHETYPE_TO_RING[tonumber(pdata.archtype)]
-                            if effectiveArch == nil then
-                                effectiveArch = CustomUI.Archetypes.GetArchetypeForCareerLine(careerLine)
-                                if effectiveArch == CustomUI.Archetypes.HEAL then
-                                    effectiveArch = CustomUI.Archetypes.DPS
-                                end
-                            end
-                            local rgb = effectiveArch and CustomUI.Archetypes.RGB[effectiveArch]
-                            if rgb then
-                                return rgb[1], rgb[2], rgb[3]
-                            end
-                        end
-                        return UnitFramesCareerRingRgbForCareerLine(careerLine)
-                    end
-                end
-            end
-        end
+
+    local r, g, b, matched = UnitFramesArchetypes.ResolvePaletteRgbForPlayer(playerName, careerLine)
+    if r and g and b then
+        return r, g, b
     end
-    
-    -- Second, check scenario roster via GameData.GetScenarioPlayers() (scenario mode)
-    if type(GameData.GetScenarioPlayers) == "function" then
-        local scenarioPlayers = GameData.GetScenarioPlayers()
-        if scenarioPlayers and type(scenarioPlayers) == "table" then
-            for _, player in ipairs(scenarioPlayers) do
-                if player and player.name then
-                    local scenarioNameStr = NormalizeArchtypeLookupName(player.name)
-                    if scenarioNameStr and scenarioNameStr ~= "" then
-                        if playerNameStr == scenarioNameStr or string.sub(playerNameStr, 2) == string.sub(scenarioNameStr, 2) then
-                            -- In scenarios, archtype is encoded in the last character of experiencebonus field
-                            local expBonus = player.experiencebonus
-                            local archtypeIndex = expBonus and type(expBonus) == "string" and tonumber(string.sub(expBonus, -1))
-                            if archtypeIndex and archtypeIndex > 0 then
-                                local effectiveArch = c_UF_SCOREBOARD_ARCHETYPE_TO_RING[archtypeIndex]
-                                if effectiveArch == nil then
-                                    effectiveArch = CustomUI.Archetypes.GetArchetypeForCareerLine(careerLine)
-                                    if effectiveArch == CustomUI.Archetypes.HEAL then
-                                        effectiveArch = CustomUI.Archetypes.DPS
-                                    end
-                                end
-                                local rgb = effectiveArch and CustomUI.Archetypes.RGB[effectiveArch]
-                                if rgb then
-                                    return rgb[1], rgb[2], rgb[3]
-                                end
-                            end
-                            return UnitFramesCareerRingRgbForCareerLine(careerLine)
-                        end
-                    end
-                end
-            end
-        end
+    if matched then
+        return UnitFramesCareerRingRgbForCareerLine(careerLine)
     end
-    
-    -- Fall back to career-based color or grey
+
     return UnitFramesCareerRingRgbForCareerLine(careerLine)
 end
 
@@ -414,6 +270,7 @@ local SafeLayoutUserHide
 local m_stockOnMenuClickSetBackgroundOpacity = nil
 local m_stockOnOpacitySlide = nil
 local m_stockRoRGroupScoreboardPacket = nil
+local m_grpStatsPacketCallback = nil
 local m_eventsRegistered = false
 local m_debugLastMode = nil
 local m_debugLastInitSig = nil
@@ -445,75 +302,6 @@ end
 -- Scenario HP overrides from SCENARIO_PLAYER_HITS_UPDATED (Enemy Groups_OnScenarioPlayerHitsUpdated).
 -- Invalidate cache whenever roster slots change: overrides are keyed by (group, slot); stale entries cause wrong HP (e.g. stuck at 1%).
 local m_scenarioHitHp = {}
-
--- Scenario roster uses compact careerId values (Enemy.ScenarioCareerIdToLine), not the same numbering as Icons.careers / PartyUtils warband members.
--- Source reference: Enemy/Code/Core/Constants.lua
-local c_SCENARIO_CAREER_ID_TO_LINE = {
-    [20] = GameData.CareerLine.IRON_BREAKER,
-    [100] = GameData.CareerLine.SWORDMASTER,
-    [64] = GameData.CareerLine.CHOSEN,
-    [24] = GameData.CareerLine.BLACK_ORC,
-    [60] = GameData.CareerLine.WITCH_HUNTER,
-    [102] = GameData.CareerLine.WHITE_LION,
-    [65] = GameData.CareerLine.MARAUDER,
-    [105] = GameData.CareerLine.WITCH_ELF,
-    [62] = GameData.CareerLine.BRIGHT_WIZARD,
-    [67] = GameData.CareerLine.MAGUS,
-    [107] = GameData.CareerLine.SORCERER,
-    [23] = GameData.CareerLine.ENGINEER,
-    [101] = GameData.CareerLine.SHADOW_WARRIOR,
-    [27] = GameData.CareerLine.SQUIG_HERDER,
-    [63] = GameData.CareerLine.WARRIOR_PRIEST,
-    [106] = GameData.CareerLine.DISCIPLE,
-    [103] = GameData.CareerLine.ARCHMAGE,
-    [26] = GameData.CareerLine.SHAMAN,
-    [22] = GameData.CareerLine.RUNE_PRIEST,
-    [66] = GameData.CareerLine.ZEALOT,
-    [104] = GameData.CareerLine.BLACKGUARD,
-    [61] = GameData.CareerLine.KNIGHT,
-    [25] = GameData.CareerLine.CHOPPA,
-    [21] = GameData.CareerLine.SLAYER or GameData.CareerLine.HAMMERER,
-}
-
--- Party/warband display sort (sortPartyMembersByRole): bucket order tank → melee DPS → ranged DPS → heal → unknown.
-local c_UF_SORT_BUCKET_UNKNOWN = 9
-local c_UF_SORT_TANK = {
-    [GameData.CareerLine.IRON_BREAKER] = true,
-    [GameData.CareerLine.SWORDMASTER] = true,
-    [GameData.CareerLine.CHOSEN] = true,
-    [GameData.CareerLine.BLACK_ORC] = true,
-    [GameData.CareerLine.KNIGHT] = true,
-    [GameData.CareerLine.BLACKGUARD] = true,
-}
-local c_UF_SORT_MELEE_DPS = {
-    [GameData.CareerLine.WITCH_HUNTER] = true,
-    [GameData.CareerLine.WHITE_LION] = true,
-    [GameData.CareerLine.MARAUDER] = true,
-    [GameData.CareerLine.WITCH_ELF] = true,
-    [GameData.CareerLine.CHOPPA] = true,
-}
-local c_UF_SORT_RANGED_DPS = {
-    [GameData.CareerLine.BRIGHT_WIZARD] = true,
-    [GameData.CareerLine.MAGUS] = true,
-    [GameData.CareerLine.SORCERER] = true,
-    [GameData.CareerLine.ENGINEER] = true,
-    [GameData.CareerLine.SHADOW_WARRIOR] = true,
-    [GameData.CareerLine.SQUIG_HERDER] = true,
-}
-local c_UF_SORT_HEAL = {
-    [GameData.CareerLine.WARRIOR_PRIEST] = true,
-    [GameData.CareerLine.DISCIPLE] = true,
-    [GameData.CareerLine.ARCHMAGE] = true,
-    [GameData.CareerLine.SHAMAN] = true,
-    [GameData.CareerLine.RUNE_PRIEST] = true,
-    [GameData.CareerLine.ZEALOT] = true,
-}
-if GameData.CareerLine.SLAYER then
-    c_UF_SORT_MELEE_DPS[GameData.CareerLine.SLAYER] = true
-end
-if GameData.CareerLine.HAMMERER then
-    c_UF_SORT_MELEE_DPS[GameData.CareerLine.HAMMERER] = true
-end
 
 -- Forward decls (used by target-highlight helpers below).
 local IsWarbandModeActive
@@ -604,130 +392,12 @@ local function MemberHasDisplayName(member)
     return member ~= nil and memberName ~= nil and memberName ~= L""
 end
 
-local function UnitFramesSortBucketForCareerLine(line)
-    line = tonumber(line)
-    if line == nil then
-        return c_UF_SORT_BUCKET_UNKNOWN
-    end
-    if c_UF_SORT_TANK[line] then
-        return 1
-    end
-    if c_UF_SORT_MELEE_DPS[line] then
-        return 2
-    end
-    if c_UF_SORT_RANGED_DPS[line] then
-        return 3
-    end
-    if c_UF_SORT_HEAL[line] then
-        return 4
-    end
-    return c_UF_SORT_BUCKET_UNKNOWN
-end
-
-local function UnitFramesGetEffectiveArchetypeForPlayer(playerName, careerLine)
-    if playerName == nil then
-        return UnitFramesSortBucketForCareerLine(careerLine)
-    end
-    
-    local playerNameStr = NormalizeArchtypeLookupName(playerName)
-    if not playerNameStr or playerNameStr == "" then
-        return UnitFramesSortBucketForCareerLine(careerLine)
-    end
-    
-    -- First, check if player has alt-spec archtype from GRP_STATS packet (warband/party mode)
-    if RoRGroupScoreboard and RoRGroupScoreboard.playersDataRaw then
-        for charId, pdata in pairs(RoRGroupScoreboard.playersDataRaw) do
-            if pdata and pdata.name then
-                local scoreboardNameStr = NormalizeArchtypeLookupName(pdata.name)
-                if scoreboardNameStr and scoreboardNameStr ~= "" then
-                    if playerNameStr == scoreboardNameStr or string.sub(playerNameStr, 2) == string.sub(scoreboardNameStr, 2) then
-                        if pdata.archtype and pdata.archtype > 0 and pdata.archtype <= 4 then
-                            return pdata.archtype
-                        end
-                        return UnitFramesSortBucketForCareerLine(careerLine)
-                    end
-                end
-            end
-        end
-    end
-    
-    -- Second, check scenario roster via GameData.GetScenarioPlayers() (scenario mode)
-    if type(GameData.GetScenarioPlayers) == "function" then
-        local scenarioPlayers = GameData.GetScenarioPlayers()
-        if scenarioPlayers and type(scenarioPlayers) == "table" then
-            for _, player in ipairs(scenarioPlayers) do
-                if player and player.name then
-                    local scenarioNameStr = NormalizeArchtypeLookupName(player.name)
-                    if scenarioNameStr and scenarioNameStr ~= "" then
-                        if playerNameStr == scenarioNameStr or string.sub(playerNameStr, 2) == string.sub(scenarioNameStr, 2) then
-                            local expBonus = player.experiencebonus
-                            local archtypeIndex = expBonus and type(expBonus) == "string" and tonumber(string.sub(expBonus, -1))
-                            if archtypeIndex and archtypeIndex > 0 and archtypeIndex <= 4 then
-                                return archtypeIndex
-                            end
-                            return UnitFramesSortBucketForCareerLine(careerLine)
-                        end
-                    end
-                end
-            end
-        end
-    end
-    
-    return UnitFramesSortBucketForCareerLine(careerLine)
-end
-
-local function CareerAlphabeticalSortKey(line)
-    line = tonumber(line)
-    if line == nil or type(GetCareerLine) ~= "function" then
-        return "~"
-    end
-    local w = GetCareerLine(line, nil)
-    local s = ToNameString(w)
-    if s == nil or s == "" then
-        return "~"
-    end
-    return string.lower(s)
-end
-
-local function BattleRankDescendingSortKey(member)
-    return tonumber(member and member.battleLevel) or tonumber(member and member.battleRank) or 0
-end
-
 --- Stable ordering: role bucket → career name A→Z → renown rank (battleLevel) descending → original collection order.
 local function SortMembersForUnitFramesDisplay(members)
-    if type(members) ~= "table" or table.getn(members) < 2 then
+    if type(UnitFramesSort.MembersForDisplay) ~= "function" then
         return members
     end
-    local enriched = {}
-    for i = 1, table.getn(members) do
-        local m = members[i]
-        local line = m and m.careerLine
-        local name = m and (m.name or (m.player and m.player.name))
-        table.insert(enriched, {
-            m = m,
-            bucket = UnitFramesGetEffectiveArchetypeForPlayer(name, line),
-            careerKey = CareerAlphabeticalSortKey(line),
-            br = BattleRankDescendingSortKey(m),
-            ord = i,
-        })
-    end
-    table.sort(enriched, function(a, b)
-        if a.bucket ~= b.bucket then
-            return a.bucket < b.bucket
-        end
-        if a.careerKey ~= b.careerKey then
-            return a.careerKey < b.careerKey
-        end
-        if a.br ~= b.br then
-            return a.br > b.br
-        end
-        return a.ord < b.ord
-    end)
-    local out = {}
-    for i = 1, table.getn(enriched) do
-        out[i] = enriched[i].m
-    end
-    return out
+    return UnitFramesSort.MembersForDisplay(members)
 end
 
 local function IsMemberCurrentFriendlyTarget(member)
@@ -753,129 +423,89 @@ end
 --- Career line for icons/AP tint: match EnemyPlayer:LoadFromScenarioData → Enemy.ScenarioCareerIdToLine[careerId] first,
 --- then RoR Icons reverse-map when careerId is in Careers-names space; raw roster careerLine only if still unknown.
 local function ScenarioCareerLineFromScenarioPlayer(player)
-    if player == nil then
+    if type(UnitFramesScenario.GetCareerLineFromPlayer) ~= "function" then
         return nil
     end
-    local cid = tonumber(player.careerId)
-    if cid ~= nil and c_SCENARIO_CAREER_ID_TO_LINE[cid] ~= nil then
-        return c_SCENARIO_CAREER_ID_TO_LINE[cid]
-    end
-    if cid ~= nil and type(Icons) == "table" and type(Icons.GetCareerIconIDFromCareerNamesID) == "function" and type(Icons.careerLines) == "table" then
-        local iconId = Icons.GetCareerIconIDFromCareerNamesID(cid)
-        if iconId ~= nil and iconId ~= 0 then
-            for lineIdx, lineIcon in pairs(Icons.careerLines) do
-                if type(lineIdx) == "number" and lineIcon == iconId then
-                    return lineIdx
-                end
-            end
-        end
-    end
-    local fromMember = tonumber(player.careerLine)
-    if fromMember ~= nil and fromMember ~= 0 then
-        return fromMember
-    end
-    return nil
+    return UnitFramesScenario.GetCareerLineFromPlayer(player)
 end
 
 local function GetMergedScenarioHealthPercent(groupIndex, memberIndex, player)
-    local base = tonumber(player and player.health) or 0
-    local t = m_scenarioHitHp[groupIndex]
-    if t == nil then
-        return base
+    if type(UnitFramesScenario.GetMergedHealthPercent) ~= "function" then
+        return tonumber(player and player.health) or 0
     end
-    local hit = t[memberIndex]
-    if hit == nil then
-        return base
-    end
-    -- hits == 0 means dead; do not use `or base` — in Lua 0 is falsy and would wrongly restore roster HP.
-    local merged = tonumber(hit)
-    if merged == nil then
-        return base
-    end
-    return merged
+    return UnitFramesScenario.GetMergedHealthPercent(m_scenarioHitHp, groupIndex, memberIndex, player)
 end
 
 local function ClampPercent(v)
-    local n = tonumber(v) or 0
-    if n < 0 then n = 0 end
-    if n > 100 then n = 100 end
-    return n
+    if type(UnitFramesScenario.ClampPercent) ~= "function" then
+        local n = tonumber(v) or 0
+        if n < 0 then n = 0 end
+        if n > 100 then n = 100 end
+        return n
+    end
+    return UnitFramesScenario.ClampPercent(v)
 end
 
 --- Scenario roster / hits often carry float noise; sub-1% reads as dead UX-wise (stock ScenarioGroupWindow uses integer % bands).
 local function SnapScenarioHpPercentNearZero(hpPct)
-    local x = ClampPercent(hpPct)
-    if x > 0 and x < 1 then
-        return 0
+    if type(UnitFramesScenario.SnapHpPercentNearZero) ~= "function" then
+        local x = ClampPercent(hpPct)
+        if x > 0 and x < 1 then
+            return 0
+        end
+        return x
     end
-    return x
+    return UnitFramesScenario.SnapHpPercentNearZero(hpPct)
 end
 
 --- Integer HP % for labels + bar fill in party, warband, and scenario (uniform rounding).
 --- snapNearZero: teammates / roster rows — mirrors scenario hits noise handling; false for local player row (cur/max-derived %).
 local function RoundHpPercentForDisplay(hpPct, snapNearZero)
-    local x = ClampPercent(tonumber(hpPct) or 0)
-    if snapNearZero then
-        x = SnapScenarioHpPercentNearZero(x)
+    if type(UnitFramesScenario.RoundHpPercentForDisplay) ~= "function" then
+        local x = ClampPercent(tonumber(hpPct) or 0)
+        if snapNearZero then
+            x = SnapScenarioHpPercentNearZero(x)
+        end
+        return math.floor(x + 0.5)
     end
-    return math.floor(x + 0.5)
+    return UnitFramesScenario.RoundHpPercentForDisplay(hpPct, snapNearZero)
 end
 
 local function RoundApPercentForDisplay(apPct)
-    return math.floor(ClampPercent(tonumber(apPct) or 0) + 0.5)
+    if type(UnitFramesScenario.RoundApPercentForDisplay) ~= "function" then
+        return math.floor(ClampPercent(tonumber(apPct) or 0) + 0.5)
+    end
+    return UnitFramesScenario.RoundApPercentForDisplay(apPct)
 end
 
 local function RoundScenarioHpForDisplay(hpPct, snapNearZero)
-    return RoundHpPercentForDisplay(hpPct, snapNearZero)
+    if type(UnitFramesScenario.RoundScenarioHpForDisplay) ~= "function" then
+        return RoundHpPercentForDisplay(hpPct, snapNearZero)
+    end
+    return UnitFramesScenario.RoundScenarioHpForDisplay(hpPct, snapNearZero)
 end
 
 --- Minimal warband-shaped row for targeting / borders (scenario roster lacks PartyUtils fields).
 local function ScenarioPlayerAsTargetMember(player, groupIndex, memberIndex)
-    if player == nil then
+    if type(UnitFramesScenario.BuildTargetMember) ~= "function" then
         return nil
     end
-    local hpRaw = GetMergedScenarioHealthPercent(groupIndex, memberIndex, player)
-    local selfRow = GameData and GameData.Player and GameData.Player.name and player.name
-        and NamesMatch(player.name, GameData.Player.name)
-    local hp = RoundScenarioHpForDisplay(hpRaw, not selfRow)
-    local wid = tonumber(player.worldObjNum or player.worldobjnum or player.entityId or player.entityid) or 0
-    return {
-        name = player.name,
-        worldObjNum = wid,
-        healthPercent = hp,
-        online = true,
-    }
+    return UnitFramesScenario.BuildTargetMember(player, groupIndex, memberIndex, m_scenarioHitHp, NamesMatch)
 end
 
 --- Resolve roster player + server slot for a scenario UI row (displaySlot = Member suffix). rosterSlot keys m_scenarioHitHp / merged HP.
 --- groups: optional result of BuildScenarioGroupMap() when sort is off (avoids rebuilding every slot).
 local function TryGetScenarioDisplayRow(groupIndex, displaySlot, groups)
-    if groupIndex == nil or displaySlot == nil then
+    if type(UnitFramesScenario.TryGetDisplayRow) ~= "function" then
         return nil, nil
     end
-    if ShouldSortPartyMembersByRole() then
-        local plan = m_scenarioDisplayPlan[groupIndex]
-        if plan ~= nil then
-            local e = plan[displaySlot]
-            if e ~= nil then
-                return e.player, e.rosterSlot
-            end
-            return nil, nil
-        end
-    end
-    local gmap = groups
-    if gmap == nil and type(BuildScenarioGroupMap) == "function" then
-        gmap = BuildScenarioGroupMap()
-    end
-    if gmap == nil then
-        return nil, nil
-    end
-    local raw = gmap[groupIndex] and gmap[groupIndex][displaySlot]
-    local player = ResolveScenarioPlayer(raw)
-    if MemberHasDisplayName(player) then
-        return player, displaySlot
-    end
-    return nil, nil
+    return UnitFramesScenario.TryGetDisplayRow(groupIndex, displaySlot, {
+        sortByRole = ShouldSortPartyMembersByRole(),
+        displayPlan = m_scenarioDisplayPlan,
+        groups = groups,
+        namesMatchFn = NamesMatch,
+        memberHasDisplayNameFn = MemberHasDisplayName,
+    })
 end
 
 local function RefreshTargetBorders()
@@ -1472,121 +1102,66 @@ end
 
 --- Match ScenarioGroupWindow.UpdateSingleMemberHitPoints: alive iff hp==100 or (0 < hp < 100). Uses integer percent only.
 local function ScenarioStockAliveIntegerBand(hpRounded)
-    local h = tonumber(hpRounded) or 0
-    if h == 100 then
-        return true
+    if type(UnitFramesScenario.IsAliveIntegerBand) ~= "function" then
+        local h = tonumber(hpRounded) or 0
+        if h == 100 then
+            return true
+        end
+        if h > 0 and h < 100 then
+            return true
+        end
+        return false
     end
-    if h > 0 and h < 100 then
-        return true
-    end
-    return false
+    return UnitFramesScenario.IsAliveIntegerBand(hpRounded)
 end
 
 local function ScenarioHitsExplicitZero(groupIndex, memberIndex)
-    local t = m_scenarioHitHp[groupIndex]
-    if t == nil then
-        return false
+    if type(UnitFramesScenario.HitsExplicitZero) ~= "function" then
+        local t = m_scenarioHitHp[groupIndex]
+        if t == nil then
+            return false
+        end
+        local hit = t[memberIndex]
+        return hit ~= nil and tonumber(hit) == 0
     end
-    local hit = t[memberIndex]
-    return hit ~= nil and tonumber(hit) == 0
+    return UnitFramesScenario.HitsExplicitZero(m_scenarioHitHp, groupIndex, memberIndex)
 end
 
 local function TryBuildSelfScenarioRow()
-    if GameData == nil or GameData.Player == nil then
+    if type(UnitFramesScenario.BuildSelfRow) ~= "function" then
         return nil
     end
-    local p = GameData.Player
-    if p.name == nil or p.name == L"" then
-        return nil
-    end
-
-    local hp = 0
-    if p.hitPoints and p.hitPoints.current and p.hitPoints.maximum and tonumber(p.hitPoints.maximum) and tonumber(p.hitPoints.maximum) > 0 then
-        hp = 100 * (tonumber(p.hitPoints.current) / tonumber(p.hitPoints.maximum))
-    end
-    local ap = 0
-    if p.actionPoints and p.actionPoints.current and p.actionPoints.maximum and tonumber(p.actionPoints.maximum) and tonumber(p.actionPoints.maximum) > 0 then
-        ap = 100 * (tonumber(p.actionPoints.current) / tonumber(p.actionPoints.maximum))
-    end
-
-    return {
-        name = p.name,
-        worldObjNum = p.worldObjNum,
-        -- Scenario code paths use these fields:
-        health = RoundScenarioHpForDisplay(hp, false),
-        ap = RoundApPercentForDisplay(ap),
-        careerLine = p.career and p.career.line,
-        careerId = nil,
-        isMainAssist = false,
-        -- Career rank for LabelCareerRank (live player)
-        level = tonumber(p.level) or tonumber(p.rank) or 0,
-    }
+    return UnitFramesScenario.BuildSelfRow()
 end
 
 local function IsSelfScenarioName(name)
-    if name == nil or GameData == nil or GameData.Player == nil or GameData.Player.name == nil then
+    if type(UnitFramesScenario.IsSelfName) ~= "function" then
         return false
     end
-    return NamesMatch(name, GameData.Player.name)
+    return UnitFramesScenario.IsSelfName(name, NamesMatch)
 end
 
 local function ResolveScenarioPlayer(player)
-    -- Scenario roster rows can be stale for the local player; prefer live GameData.Player values.
-    local nm = player and player.name
-    if nm ~= nil and IsSelfScenarioName(nm) then
-        local selfRow = TryBuildSelfScenarioRow()
-        if selfRow ~= nil then
-            return selfRow
-        end
+    if type(UnitFramesScenario.ResolvePlayer) ~= "function" then
+        return player
     end
-    return player
+    return UnitFramesScenario.ResolvePlayer(player, NamesMatch)
 end
 
 local function ScanScenarioDistancesFromMapPoints()
-    if type(GetMapPointData) ~= "function" then
-        return
-    end
-
-    -- Build quick set of scenario roster names (grouped only).
-    local rosterKeySet = {}
     local groups = BuildScenarioGroupMap()
-    for gi = 1, c_MAX_GROUP_WINDOWS do
-        for mi = 1, c_GROUP_MEMBERS do
-            local pl = groups[gi] and groups[gi][mi]
-            local key = FixScenarioMapNameKey(pl and pl.name)
-            if key ~= nil then
-                rosterKeySet[key] = true
-            end
-        end
-    end
-
-    if next(rosterKeySet) == nil then
-        return
-    end
-
-    -- Same pip whitelist as Enemy.GroupsInitialize MapPointTypeFilter (PLAYER intentionally omitted there).
-    local MapPointTypeFilter = {
-        [SystemData.MapPips.GROUP_MEMBER] = true,
-        [SystemData.MapPips.WARBAND_MEMBER] = true,
-        [SystemData.MapPips.DESTRUCTION_ARMY] = true,
-        [SystemData.MapPips.ORDER_ARMY] = true,
-    }
-
-    local DISTANCE_FIX_COEFFICIENT = 1 / 1.06
+    local distanceByKey = {}
     local updated = 0
-
-    -- NOTE: Enemy.GroupsInitialize scans MAX_MAP_POINTS = 511; distance uses math.floor(dist * coeff) (no half-round).
-    for k = 1, 511 do
-        local mpd = GetMapPointData("EA_Window_OverheadMapMapDisplay", k)
-        if mpd and mpd.pointType and MapPointTypeFilter[mpd.pointType] and mpd.name then
-            local key = FixScenarioMapNameKey(mpd.name)
-            if key ~= nil and rosterKeySet[key] then
-                local dist = math.floor((tonumber(mpd.distance) or 0) * DISTANCE_FIX_COEFFICIENT)
-                m_scenarioDistanceByKey[key] = { distance = dist, isDistant = dist >= c_DISTANT_DISTANCE }
-                updated = updated + 1
-            end
-        end
+    if type(UnitFramesScenario.ScanDistancesFromMapPoints) == "function" then
+        distanceByKey, updated = UnitFramesScenario.ScanDistancesFromMapPoints(groups, {
+            fixMapNameKeyFn = FixScenarioMapNameKey,
+            mapWindowName = "EA_Window_OverheadMapMapDisplay",
+            distantDistance = c_DISTANT_DISTANCE,
+        })
+    else
+        distanceByKey = {}
     end
+    m_scenarioDistanceByKey = distanceByKey or {}
 
     if updated > 0 then
         DebugLog("Scenario distance scan: updated=" .. tostring(updated))
@@ -1673,17 +1248,14 @@ local function ApplyDistantHealthIndicator(memberWindow, showClock)
     end
 end
 
--- Stock PartyUtils.GetWarbandMember can error when party.players[slot] is nil but the warband
--- dirty flag is set (zone/load/scenario churn). Treat as empty slot instead of failing the handler.
 local function SafePartyUtilsGetWarbandMember(dataParty, memberIndex)
-    if type(PartyUtils) ~= "table" or type(PartyUtils.GetWarbandMember) ~= "function" then
+    if type(UnitFramesWarband.GetWarbandDisplayMember) == "function" then
+        return UnitFramesWarband.GetWarbandDisplayMember(dataParty, memberIndex)
+    end
+    if type(UnitFramesRoster.GetWarbandMember) ~= "function" then
         return nil
     end
-    local ok, mem = pcall(PartyUtils.GetWarbandMember, dataParty, memberIndex)
-    if ok then
-        return mem
-    end
-    return nil
+    return UnitFramesRoster.GetWarbandMember(dataParty, memberIndex)
 end
 
 TryGetWarbandMember = function(groupIndex, memberIndex)
@@ -1704,67 +1276,23 @@ TryGetWarbandMember = function(groupIndex, memberIndex)
     return SafePartyUtilsGetWarbandMember(dataParty, memberIndex)
 end
 
---- Plain-party source rows: slot 1 = local snapshot; mates = PartyUtils.GetPartyMember / GetPartyData. With sortPartyMembersByRole, display order is reshuffled (no slot-1 self guarantee).
 local function BuildLocalPlayerPartyMemberSnapshot()
-    if GameData == nil or GameData.Player == nil then
+    if type(UnitFramesRoster.BuildLocalPlayerSnapshot) ~= "function" then
         return nil
     end
-    local p = GameData.Player
-    if p.name == nil or p.name == L"" then
-        return nil
-    end
-    local hp = 0
-    if p.hitPoints and tonumber(p.hitPoints.maximum) and tonumber(p.hitPoints.maximum) > 0 then
-        hp = 100 * (tonumber(p.hitPoints.current) or 0) / tonumber(p.hitPoints.maximum)
-    end
-    local ap = 0
-    if p.actionPoints and tonumber(p.actionPoints.maximum) and tonumber(p.actionPoints.maximum) > 0 then
-        ap = 100 * (tonumber(p.actionPoints.current) or 0) / tonumber(p.actionPoints.maximum)
-    end
-    if hp < 0 then hp = 0 elseif hp > 100 then hp = 100 end
-    if ap < 0 then ap = 0 elseif ap > 100 then ap = 100 end
-    local careerLine = nil
-    if p.career ~= nil and p.career.line ~= nil then
-        careerLine = p.career.line
-    end
-    return {
-        name = p.name,
-        healthPercent = hp,
-        actionPointPercent = ap,
-        moraleLevel = 0,
-        level = tonumber(p.rank) or tonumber(p.level) or 0,
-        battleLevel = tonumber(p.battleRank) or tonumber(p.battleLevel) or 0,
-        isRVRFlagged = p.isRVRFlagged == true,
-        zoneNum = tonumber(p.zoneNum) or tonumber(p.zoneNumber) or 0,
-        online = true,
-        isDistant = false,
-        worldObjNum = tonumber(p.worldObjNum) or 0,
-        isGroupLeader = p.isGroupLeader == true,
-        careerLine = careerLine,
-    }
+    return UnitFramesRoster.BuildLocalPlayerSnapshot()
 end
 
+--- Plain-party source rows: slot 1 = local snapshot; mates = PartyUtils.GetPartyMember / GetPartyData.
+--- With sortPartyMembersByRole, display order is reshuffled (no slot-1 self guarantee).
 local function GetPartySlotMemberForUnitFrames(memberIndex, fallbackData)
-    if memberIndex == nil or memberIndex < 1 or memberIndex > c_GROUP_MEMBERS then
+    if fallbackData == nil and type(UnitFramesWarband.GetPartyDisplayMember) == "function" then
+        return UnitFramesWarband.GetPartyDisplayMember(memberIndex)
+    end
+    if type(UnitFramesRoster.GetPartySlotMember) ~= "function" then
         return nil
     end
-    if memberIndex == 1 then
-        return BuildLocalPlayerPartyMemberSnapshot()
-    end
-    local mateIndex = memberIndex - 1
-    if type(PartyUtils) == "table" and type(PartyUtils.GetPartyMember) == "function" then
-        local maxWithoutSelf = tonumber(PartyUtils.PLAYERS_PER_PARTY_WITHOUT_LOCAL) or 5
-        if mateIndex >= 1 and mateIndex <= maxWithoutSelf then
-            local mem = PartyUtils.GetPartyMember(mateIndex)
-            if mem ~= nil then
-                return mem
-            end
-        end
-    end
-    if type(fallbackData) == "table" then
-        return fallbackData[mateIndex]
-    end
-    return nil
+    return UnitFramesRoster.GetPartySlotMember(memberIndex, fallbackData)
 end
 
 TryGetPartyFrameMember = function(groupIndex, memberIndex)
@@ -1774,11 +1302,7 @@ TryGetPartyFrameMember = function(groupIndex, memberIndex)
     if ShouldSortPartyMembersByRole() and m_partySortedDisplayMembers ~= nil then
         return m_partySortedDisplayMembers[memberIndex]
     end
-    local data = nil
-    if type(PartyUtils) == "table" and type(PartyUtils.GetPartyData) == "function" then
-        data = PartyUtils.GetPartyData()
-    end
-    return GetPartySlotMemberForUnitFrames(memberIndex, data)
+    return GetPartySlotMemberForUnitFrames(memberIndex, nil)
 end
 
 GetGroupMemberIndicesFromWindowName = function(windowName)
@@ -2085,56 +1609,41 @@ local function UpdateWarbandGroup(groupIndex, respectStockWarbandToggle, warband
     end
 
     local dataParty = warbandDataPartyIndex or groupIndex
-
-    local warbandParty = PartyUtils.GetWarbandParty(dataParty)
-    local players = (warbandParty and warbandParty.players) or {}
-    local numMembers = table.getn(players)
-
-    local showGroup
-    if respectStockWarbandToggle then
-        showGroup = IsWarbandGroupVisibleByStockToggle(dataParty)
-    else
-        showGroup = numMembers >= 1
+    local groupData = nil
+    if type(UnitFramesWarband.BuildWarbandGroupData) == "function" then
+        groupData = UnitFramesWarband.BuildWarbandGroupData(dataParty, {
+            respectStockWarbandToggle = respectStockWarbandToggle,
+            isGroupVisibleFn = IsWarbandGroupVisibleByStockToggle,
+            sortByRole = ShouldSortPartyMembersByRole(),
+            memberHasDisplayNameFn = MemberHasDisplayName,
+            sortMembersFn = SortMembersForUnitFramesDisplay,
+            toWString = ToWString,
+        })
     end
 
-    if not showGroup or numMembers < 1 then
+    if groupData == nil then
         m_warbandSortedDisplayMembers[dataParty] = nil
+        SafeLayoutUserHide(groupWindow)
+        return
+    end
+
+    m_warbandSortedDisplayMembers[dataParty] = groupData.displayMembers
+
+    if groupData.showGroup ~= true then
         SafeLayoutUserHide(groupWindow)
         return
     end
 
     SafeLayoutUserShow(groupWindow)
 
-    local sortedSlots = nil
-    if ShouldSortPartyMembersByRole() then
-        local collected = {}
-        for mi = 1, c_GROUP_MEMBERS do
-            local mm = SafePartyUtilsGetWarbandMember(dataParty, mi)
-            if MemberHasDisplayName(mm) then
-                table.insert(collected, mm)
-            end
-        end
-        sortedSlots = SortMembersForUnitFramesDisplay(collected)
-        m_warbandSortedDisplayMembers[dataParty] = {}
-        for i = 1, table.getn(sortedSlots) do
-            m_warbandSortedDisplayMembers[dataParty][i] = sortedSlots[i]
-        end
-    else
-        m_warbandSortedDisplayMembers[dataParty] = nil
-    end
-
-    local foundLeader = false
+    local foundLeader = groupData.foundLeader == true
 
     for memberIndex = 1, c_GROUP_MEMBERS do
-        local member = sortedSlots and sortedSlots[memberIndex] or SafePartyUtilsGetWarbandMember(dataParty, memberIndex)
+        local member = groupData.members and groupData.members[memberIndex]
         local memberName = ToWString(member and member.name)
         if member ~= nil and memberName ~= nil and memberName ~= L"" then
             SetMemberWindowShowing(groupIndex, memberIndex, true)
             UpdateWarbandMember(groupIndex, memberIndex, member)
-
-            if member.isGroupLeader then
-                foundLeader = true
-            end
         else
             SetMemberWindowShowing(groupIndex, memberIndex, false)
         end
@@ -2150,48 +1659,26 @@ local function UpdatePartyOnlyGroup()
         return
     end
 
-    if GameData and GameData.Party then
-        GameData.Party.partyDirty = true
+    local groupData = nil
+    if type(UnitFramesWarband.BuildPartyGroupData) == "function" then
+        groupData = UnitFramesWarband.BuildPartyGroupData({
+            sortByRole = ShouldSortPartyMembersByRole(),
+            memberHasDisplayNameFn = MemberHasDisplayName,
+            sortMembersFn = SortMembersForUnitFramesDisplay,
+            toWString = ToWString,
+        })
     end
+    m_partySortedDisplayMembers = groupData and groupData.displayMembers or nil
 
-    local data = nil
-    if type(PartyUtils) == "table" and type(PartyUtils.GetPartyData) == "function" then
-        data = PartyUtils.GetPartyData()
-    end
-    if data == nil and type(GetGroupData) == "function" then
-        data = GetGroupData()
-    end
-
-    local sortedSlots = nil
-    m_partySortedDisplayMembers = nil
-    if ShouldSortPartyMembersByRole() then
-        local collected = {}
-        for mi = 1, c_GROUP_MEMBERS do
-            local mm = GetPartySlotMemberForUnitFrames(mi, data)
-            if MemberHasDisplayName(mm) then
-                table.insert(collected, mm)
-            end
-        end
-        sortedSlots = SortMembersForUnitFramesDisplay(collected)
-        m_partySortedDisplayMembers = {}
-        for i = 1, table.getn(sortedSlots) do
-            m_partySortedDisplayMembers[i] = sortedSlots[i]
-        end
-    end
-
-    local hasAny = false
-    local foundLeader = false
+    local hasAny = groupData and groupData.hasAny == true
+    local foundLeader = groupData and groupData.foundLeader == true
 
     for memberIndex = 1, c_GROUP_MEMBERS do
-        local member = sortedSlots and sortedSlots[memberIndex] or GetPartySlotMemberForUnitFrames(memberIndex, data)
+        local member = groupData and groupData.members and groupData.members[memberIndex] or nil
         local memberName = ToWString(member and member.name)
         if member ~= nil and memberName ~= nil and memberName ~= L"" then
-            hasAny = true
             SetMemberWindowShowing(groupIndex, memberIndex, true)
             UpdateWarbandMember(groupIndex, memberIndex, member)
-            if member.isGroupLeader then
-                foundLeader = true
-            end
         else
             SetMemberWindowShowing(groupIndex, memberIndex, false)
         end
@@ -2234,24 +1721,11 @@ local function HideExtraGroupWindows(fromIndex)
     end
 end
 
---- Battlegroup with UnitFrames Party on + Warband off: show the party the local player belongs to (not always warband party slot 1).
 local function ResolveLocalPlayerWarbandPartyIndex()
-    if GameData == nil or GameData.Player == nil then
+    if type(UnitFramesRoster.ResolveLocalPlayerWarbandPartyIndex) ~= "function" then
         return nil
     end
-    local pname = GameData.Player.name
-    if pname == nil or pname == L"" then
-        return nil
-    end
-    if type(PartyUtils) ~= "table" or type(PartyUtils.IsPlayerInWarband) ~= "function" then
-        return nil
-    end
-    local partyIndex = PartyUtils.IsPlayerInWarband(pname)
-    partyIndex = tonumber(partyIndex)
-    if partyIndex == nil or partyIndex < 1 or partyIndex > c_WARBAND_GROUPS then
-        return nil
-    end
-    return partyIndex
+    return UnitFramesRoster.ResolveLocalPlayerWarbandPartyIndex()
 end
 
 local function ShowWarbandParty1DualModeWindows()
@@ -2278,32 +1752,14 @@ end
 
 -- Only scenario parties with sgroupindex > 0 (assigned groups). Ungrouped roster entries are intentionally ignored (GroupIcons covers broader marking separately).
 BuildScenarioGroupMap = function()
-    local groups = {}
-    for groupIndex = 1, c_MAX_GROUP_WINDOWS do
-        groups[groupIndex] = {}
-    end
-
-    if type(GameData.GetScenarioPlayerGroups) ~= "function" then
+    if type(UnitFramesScenario.BuildGroupMap) ~= "function" then
+        local groups = {}
+        for groupIndex = 1, c_MAX_GROUP_WINDOWS do
+            groups[groupIndex] = {}
+        end
         return groups
     end
-
-    local playerGroups = GameData.GetScenarioPlayerGroups() or {}
-    local invalidEntries = 0
-
-    for _, player in ipairs(playerGroups) do
-        local groupIndex = tonumber(player.sgroupindex)
-        local slotIndex = tonumber(player.sgroupslotnum)
-
-        if groupIndex ~= nil and slotIndex ~= nil and groupIndex > 0
-        and groupIndex >= 1 and groupIndex <= c_MAX_GROUP_WINDOWS
-        and slotIndex >= 1 and slotIndex <= c_GROUP_MEMBERS then
-            groups[groupIndex][slotIndex] = player
-        else
-            invalidEntries = invalidEntries + 1
-        end
-    end
-
-    return groups
+    return UnitFramesScenario.BuildGroupMap()
 end
 
 local function UpdateScenarioGroup(groupIndex, groups)
@@ -2316,7 +1772,17 @@ local function UpdateScenarioGroup(groupIndex, groups)
     local hasMembers = false
 
     local sortedProxies = nil
-    if ShouldSortPartyMembersByRole() then
+    if type(UnitFramesScenario.BuildSortedDisplayPlan) == "function" then
+        local displayPlan = nil
+        sortedProxies, displayPlan = UnitFramesScenario.BuildSortedDisplayPlan(groupSlots, {
+            sortByRole = ShouldSortPartyMembersByRole(),
+            resolvePlayerFn = ResolveScenarioPlayer,
+            memberHasDisplayNameFn = MemberHasDisplayName,
+            getCareerLineFn = ScenarioCareerLineFromScenarioPlayer,
+            sortMembersFn = SortMembersForUnitFramesDisplay,
+        })
+        m_scenarioDisplayPlan[groupIndex] = displayPlan
+    elseif ShouldSortPartyMembersByRole() then
         local collected = {}
         for rosterSlot = 1, c_GROUP_MEMBERS do
             local player = ResolveScenarioPlayer(groupSlots[rosterSlot])
@@ -2464,6 +1930,77 @@ local function ClearScenarioHitHpOverrides()
     m_scenarioHitHp = {}
 end
 
+--- Role sort maps displaySlot → rosterSlot; hits events use server roster slot (stock groupSlotNum).
+local function FindScenarioDisplaySlotForRosterSlot(groupIndex, rosterSlot)
+    local rs = tonumber(rosterSlot)
+    local gi = tonumber(groupIndex)
+    if gi == nil or rs == nil or rs < 1 or rs > c_GROUP_MEMBERS then
+        return nil
+    end
+    if not ShouldSortPartyMembersByRole() then
+        return rs
+    end
+    local plan = m_scenarioDisplayPlan[gi]
+    if type(plan) == "table" then
+        for displaySlot = 1, c_GROUP_MEMBERS do
+            local entry = plan[displaySlot]
+            if entry and tonumber(entry.rosterSlot) == rs then
+                return displaySlot
+            end
+        end
+        return nil
+    end
+    local groups = BuildScenarioGroupMap()
+    for displaySlot = 1, c_GROUP_MEMBERS do
+        local _, slot = TryGetScenarioDisplayRow(gi, displaySlot, groups)
+        if slot == rs then
+            return displaySlot
+        end
+    end
+    return nil
+end
+
+--- Incremental HP refresh for one scenario roster row (mirrors stock ScenarioGroupWindow.OnUpdatePlayerHits).
+local function RefreshScenarioMemberFromHits(groupIndex, rosterSlot)
+    if not m_enabled or not m_windowsInitialized then
+        return
+    end
+    if GetActiveUnitFramesDisplayMode() ~= "scenario" then
+        return
+    end
+
+    local gi = tonumber(groupIndex)
+    local rs = tonumber(rosterSlot)
+    if gi == nil or rs == nil then
+        return
+    end
+
+    local displaySlot = FindScenarioDisplaySlotForRosterSlot(gi, rs)
+    if displaySlot == nil then
+        return
+    end
+
+    local groups = BuildScenarioGroupMap()
+    local raw = groups[gi] and groups[gi][rs]
+    local player = ResolveScenarioPlayer(raw)
+    if not MemberHasDisplayName(player) then
+        return
+    end
+
+    local groupWindow = GroupWindowName(gi)
+    if not DoesWindowExist(groupWindow) or not WindowGetShowing(groupWindow) then
+        return
+    end
+
+    local memberWindow = MemberWindowName(gi, displaySlot)
+    if not DoesWindowExist(memberWindow) or not WindowGetShowing(memberWindow) then
+        return
+    end
+
+    SetScenarioMemberTextAndState(memberWindow, player, gi, rs)
+    SetScenarioMemberBars(memberWindow, player, gi, rs)
+end
+
 --- RoR fires this with (groupIndex, groupSlotNum, hits); Enemy maps it to roster HP updates.
 function UnitFrames.OnScenarioPlayerHitsUpdated(groupIndex, groupSlotNum, hits)
     local gi = tonumber(groupIndex)
@@ -2474,7 +2011,7 @@ function UnitFrames.OnScenarioPlayerHitsUpdated(groupIndex, groupSlotNum, hits)
     m_scenarioHitHp[gi] = m_scenarioHitHp[gi] or {}
     m_scenarioHitHp[gi][mi] = tonumber(hits)
     if m_enabled and m_windowsInitialized and GetActiveUnitFramesDisplayMode() == "scenario" then
-        ApplyModeVisibility()
+        RefreshScenarioMemberFromHits(gi, mi)
     else
         RefreshTargetBorders()
     end
@@ -2486,6 +2023,9 @@ function UnitFrames.OnScenarioLifecycleRefresh()
 end
 
 function UnitFrames.OnVisibilityStateChanged()
+    if type(UnitFramesArchetypes.SyncCacheFromScoreboard) == "function" then
+        UnitFramesArchetypes.SyncCacheFromScoreboard()
+    end
     ApplyModeVisibility()
 end
 
@@ -2526,18 +2066,47 @@ end
 
 --- Scenario self row: keep HP/AP in sync with PlayerStatusWindow (event-driven, not only visibility poll).
 function UnitFrames.OnPlayerSelfResourcesUpdated()
-    if not m_enabled or not m_windowsInitialized or GetActiveUnitFramesDisplayMode() ~= "scenario" then
+    if not m_enabled or not m_windowsInitialized then
         return
     end
-    local groups = BuildScenarioGroupMap()
-    for gi = 1, c_MAX_GROUP_WINDOWS do
-        for displaySlot = 1, c_GROUP_MEMBERS do
-            local player, rosterSlot = TryGetScenarioDisplayRow(gi, displaySlot, groups)
-            if player ~= nil and GameData.Player and GameData.Player.name and NamesMatch(player.name, GameData.Player.name) then
-                local memberWindow = MemberWindowName(gi, displaySlot)
-                if DoesWindowExist(memberWindow) then
-                    SetScenarioMemberBars(memberWindow, player, gi, rosterSlot)
-                    SetScenarioMemberTextAndState(memberWindow, player, gi, rosterSlot)
+    if GameData == nil or GameData.Player == nil or GameData.Player.name == nil then
+        return
+    end
+
+    local mode = GetActiveUnitFramesDisplayMode()
+    if mode == "scenario" then
+        local groups = BuildScenarioGroupMap()
+        for gi = 1, c_MAX_GROUP_WINDOWS do
+            for displaySlot = 1, c_GROUP_MEMBERS do
+                local player, rosterSlot = TryGetScenarioDisplayRow(gi, displaySlot, groups)
+                if player ~= nil and NamesMatch(player.name, GameData.Player.name) then
+                    local memberWindow = MemberWindowName(gi, displaySlot)
+                    if DoesWindowExist(memberWindow) then
+                        SetScenarioMemberBars(memberWindow, player, gi, rosterSlot)
+                        SetScenarioMemberTextAndState(memberWindow, player, gi, rosterSlot)
+                    end
+                end
+            end
+        end
+        return
+    end
+
+    if mode == "party" or mode == "warband" or mode == "warband_party1" then
+        local maxGroups = (mode == "warband") and c_WARBAND_GROUPS or 1
+        for gi = 1, maxGroups do
+            for memberIndex = 1, c_GROUP_MEMBERS do
+                local member = nil
+                if mode == "party" then
+                    member = TryGetPartyFrameMember(gi, memberIndex)
+                else
+                    member = TryGetWarbandMember(gi, memberIndex)
+                end
+                if member ~= nil and NamesMatch(member.name, GameData.Player.name) then
+                    local memberWindow = MemberWindowName(gi, memberIndex)
+                    if DoesWindowExist(memberWindow) then
+                        SetMemberBars(memberWindow, member)
+                        SetMemberTextAndState(memberWindow, member)
+                    end
                 end
             end
         end
@@ -2681,6 +2250,69 @@ end
 function UnitFrames.ShutdownWindow()
 end
 
+local function RefreshUnitFramesArchetypeColors()
+    -- Re-render visible rows when GRP_STATS / alt-spec data arrives or updates.
+    if not m_windowsInitialized or not m_enabled then
+        return
+    end
+    if type(UnitFramesArchetypes.SyncCacheFromScoreboard) == "function" then
+        UnitFramesArchetypes.SyncCacheFromScoreboard()
+    end
+    ApplyModeVisibility()
+end
+
+local function OnGrpStatsPacket(text)
+    if type(UnitFramesArchetypes.IngestGrpStatsPacket) == "function" then
+        UnitFramesArchetypes.IngestGrpStatsPacket(text)
+    end
+    if type(UnitFramesArchetypes.SyncCacheFromScoreboard) == "function" then
+        UnitFramesArchetypes.SyncCacheFromScoreboard()
+    end
+    RefreshUnitFramesArchetypeColors()
+end
+
+local function EnsureArchtypePacketListener()
+    if m_grpStatsPacketCallback ~= nil or m_stockRoRGroupScoreboardPacket ~= nil then
+        return
+    end
+
+    if type(ror_PacketHandling) == "table" and type(ror_PacketHandling.Register) == "function" then
+        m_grpStatsPacketCallback = OnGrpStatsPacket
+        ror_PacketHandling.Register("GRP_STATS", m_grpStatsPacketCallback)
+        if type(UnitFramesArchetypes.SyncCacheFromScoreboard) == "function" then
+            UnitFramesArchetypes.SyncCacheFromScoreboard()
+        end
+        return
+    end
+
+    if type(RoRGroupScoreboard) == "table" and type(RoRGroupScoreboard.Packet) == "function" then
+        m_stockRoRGroupScoreboardPacket = RoRGroupScoreboard.Packet
+        RoRGroupScoreboard.Packet = function(text)
+            m_stockRoRGroupScoreboardPacket(text)
+            RefreshUnitFramesArchetypeColors()
+        end
+        if type(UnitFramesArchetypes.SyncCacheFromScoreboard) == "function" then
+            UnitFramesArchetypes.SyncCacheFromScoreboard()
+        end
+    end
+end
+
+local function RemoveArchtypePacketListener()
+    if m_grpStatsPacketCallback ~= nil
+       and type(ror_PacketHandling) == "table"
+       and type(ror_PacketHandling.Unregister) == "function" then
+        ror_PacketHandling.Unregister("GRP_STATS", m_grpStatsPacketCallback)
+        m_grpStatsPacketCallback = nil
+    end
+
+    if m_stockRoRGroupScoreboardPacket ~= nil then
+        if type(RoRGroupScoreboard) == "table" then
+            RoRGroupScoreboard.Packet = m_stockRoRGroupScoreboardPacket
+        end
+        m_stockRoRGroupScoreboardPacket = nil
+    end
+end
+
 function UnitFrames.Update(elapsedTime)
     if not m_enabled then
         return
@@ -2706,51 +2338,8 @@ function UnitFrames.Update(elapsedTime)
     if m_mouseOverMemberWindow ~= nil or AnyCustomGroupWindowShowing() then
         SyncMouseOverBorderFromGlobalHover()
     end
-end
 
-local function RefreshUnitFramesCareerRingsForArchtype()
-    -- Refresh all visible unit frame career rings when GRP_STATS packet updates archtype data.
-    -- This ensures alt-spec colors are applied immediately when packet arrives, even if late.
-    if not m_windowsInitialized or not m_enabled then
-        return
-    end
-
-    local displayMode = GetActiveUnitFramesDisplayMode()
-    if displayMode == "warband" or displayMode == "warband_party1" or displayMode == "party" then
-        -- Refresh warband/party member rings
-        for groupIndex = 1, c_MAX_GROUP_WINDOWS do
-            for memberIndex = 1, c_GROUP_MEMBERS do
-                local memberWindow = MemberWindowName(groupIndex, memberIndex)
-                if DoesWindowExist(memberWindow) then
-                    local member = TryGetWarbandMember(groupIndex, memberIndex)
-                    if member == nil and displayMode == "party" then
-                        member = TryGetPartyFrameMember(groupIndex, memberIndex)
-                    end
-                    if member ~= nil then
-                        -- Re-render career ring with updated archtype color
-                        SetCareerIcon(memberWindow, member)
-                    end
-                end
-            end
-        end
-    elseif displayMode == "scenario" then
-        -- Refresh scenario group member rings
-        for groupIndex = 1, 6 do
-            for displaySlot = 1, 6 do
-                local memberWindow = MemberWindowName(groupIndex, displaySlot)
-                if DoesWindowExist(memberWindow) then
-                    local plan = m_scenarioDisplayPlan[groupIndex]
-                    if plan and plan[displaySlot] then
-                        local player = plan[displaySlot].player
-                        if player and player.name then
-                            -- Re-render scenario career ring with updated archtype color
-                            SetScenarioCareerIcon(memberWindow, player)
-                        end
-                    end
-                end
-            end
-        end
-    end
+    EnsureArchtypePacketListener()
 end
 
 function UnitFrames.Initialize()
@@ -2822,16 +2411,7 @@ function UnitFrames.Enable()
         end
     end
 
-    -- Hook RoRGroupScoreboard GRP_STATS packet to refresh archtype-based ring colors when data arrives late
-    if type(RoRGroupScoreboard) == "table" and type(RoRGroupScoreboard.Packet) == "function" and m_stockRoRGroupScoreboardPacket == nil then
-        m_stockRoRGroupScoreboardPacket = RoRGroupScoreboard.Packet
-        RoRGroupScoreboard.Packet = function(text)
-            -- Call original handler to update playersDataRaw
-            m_stockRoRGroupScoreboardPacket(text)
-            -- Refresh CustomUI unit frame rings with newly arrived archtype data
-            RefreshUnitFramesCareerRingsForArchtype()
-        end
-    end
+    EnsureArchtypePacketListener()
 
     -- Root hosts OnUpdate; CreateWindow(..., false) leaves it hidden — hidden windows may not tick.
     SetUnitFramesTickWindowShowing(true)
@@ -2881,12 +2461,7 @@ function UnitFrames.Disable()
         m_stockOnOpacitySlide = nil
     end
 
-    if m_stockRoRGroupScoreboardPacket ~= nil then
-        if type(RoRGroupScoreboard) == "table" then
-            RoRGroupScoreboard.Packet = m_stockRoRGroupScoreboardPacket
-        end
-        m_stockRoRGroupScoreboardPacket = nil
-    end
+    RemoveArchtypePacketListener()
 
     return true
 end
@@ -2935,12 +2510,7 @@ function UnitFrames.Shutdown()
         m_stockOnOpacitySlide = nil
     end
 
-    if m_stockRoRGroupScoreboardPacket ~= nil then
-        if type(RoRGroupScoreboard) == "table" then
-            RoRGroupScoreboard.Packet = m_stockRoRGroupScoreboardPacket
-        end
-        m_stockRoRGroupScoreboardPacket = nil
-    end
+    RemoveArchtypePacketListener()
 end
 
 local function ResetUnitFramesWindowDefaults()

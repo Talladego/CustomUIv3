@@ -574,7 +574,12 @@ end
 
 local function SafeWStringEquals(a, b)
     -- Defensive: some call sites still surface mixed string/wstring; never crash OnUpdate.
-    local ok, res = pcall(WStringsCompareIgnoreGrammer, ToWString(a), ToWString(b))
+    local ok, res = CustomUI.TryCallQuiet(
+        "GroupIcons.SafeWStringEquals",
+        WStringsCompareIgnoreGrammer,
+        ToWString(a),
+        ToWString(b)
+    )
     if not ok then
         return false
     end
@@ -664,7 +669,7 @@ local function RosterWorldObjectNameMatchesPlayer(wid, expectedNameW)
     if wid == nil or wid == 0 or type(GetNameForObject) ~= "function" then
         return true
     end
-    local ok, nm = pcall(GetNameForObject, wid)
+    local ok, nm = CustomUI.TryCallQuiet("GroupIcons.RosterWorldObjectNameMatchesPlayer", GetNameForObject, wid)
     if not ok or nm == nil then
         return true
     end
@@ -1152,7 +1157,7 @@ local function OutsiderWorldObjectNameMismatchTracked(trackedNameW, wid)
     if wid == nil or wid == 0 or type(GetNameForObject) ~= "function" then
         return false
     end
-    local ok, nm = pcall(GetNameForObject, wid)
+    local ok, nm = CustomUI.TryCallQuiet("GroupIcons.OutsiderWorldObjectNameMismatchTracked", GetNameForObject, wid)
     if not ok or nm == nil then
         return false
     end

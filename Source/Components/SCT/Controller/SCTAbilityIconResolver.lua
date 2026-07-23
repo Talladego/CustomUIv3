@@ -126,7 +126,7 @@ local function SctTryBuffListIconResolve(abilityId, isIncoming)
 
     local now = nil
     if type(GetGameTime) == "function" then
-        local ok, t = pcall(GetGameTime)
+        local ok, t = CustomUI.TryCallQuiet("SCTAbilityIconResolver.GetGameTime", GetGameTime)
         if ok then
             now = tonumber(t)
         end
@@ -163,7 +163,11 @@ local function SctTryBuffListIconResolve(abilityId, isIncoming)
 
     for _, ent in ipairs(scanOrder) do
         if ent.tt ~= nil then
-            local okList, allBuffs = pcall(GetBuffs, ent.tt)
+            local okList, allBuffs = CustomUI.TryCallQuiet(
+                "SCTAbilityIconResolver.GetBuffs",
+                GetBuffs,
+                ent.tt
+            )
             if okList and type(allBuffs) == "table" then
                 for _, bd in pairs(allBuffs) do
                     if type(bd) == "table" and bd.iconNum and bd.iconNum > 0 then
@@ -199,7 +203,11 @@ local function SctFindWeaponIconForProcAbilityId(procAbilityId)
 
     local wantNorm = ""
     if type(GetAbilityName) == "function" then
-        local okName, rawName = pcall(GetAbilityName, procAbilityId)
+        local okName, rawName = CustomUI.TryCallQuiet(
+            "SCTAbilityIconResolver.GetAbilityName",
+            GetAbilityName,
+            procAbilityId
+        )
         if okName and rawName ~= nil then
             wantNorm = SctNormAbilityNameText(rawName)
         end
@@ -262,7 +270,12 @@ local function SctFindWeaponIconForProcAbilityId(procAbilityId)
         if type(GetAbilityDesc) ~= "function" then
             return false
         end
-        local ok, desc = pcall(GetAbilityDesc, ref, itemLevel or 0)
+        local ok, desc = CustomUI.TryCallQuiet(
+            "SCTAbilityIconResolver.GetAbilityDesc",
+            GetAbilityDesc,
+            ref,
+            itemLevel or 0
+        )
         if not ok or desc == nil then
             return false
         end
@@ -317,14 +330,14 @@ local function SctFindWeaponIconForProcAbilityId(procAbilityId)
         return false
     end
 
-    local okEq, equipment = pcall(DataUtils.GetEquipmentData)
+    local okEq, equipment = CustomUI.TryCallQuiet("SCTAbilityIconResolver.GetEquipmentData", DataUtils.GetEquipmentData)
     if not okEq or type(equipment) ~= "table" then
         equipment = {}
     end
 
     local trophy = {}
     if type(DataUtils.GetTrophyData) == "function" then
-        local okTrophy, trophies = pcall(DataUtils.GetTrophyData)
+        local okTrophy, trophies = CustomUI.TryCallQuiet("SCTAbilityIconResolver.GetTrophyData", DataUtils.GetTrophyData)
         if okTrophy and type(trophies) == "table" then
             trophy = trophies
         end
@@ -449,7 +462,11 @@ function Resolver.GetAbilityIconInfo(abilityId, isIncoming)
                         return cached
                     end
                     local index = { __count = 0, __normVer = NORM_VER }
-                    local ok, tbl = pcall(GetAbilityTable, abilityTypeConst)
+                    local ok, tbl = CustomUI.TryCallQuiet(
+                        "SCTAbilityIconResolver.GetAbilityTable",
+                        GetAbilityTable,
+                        abilityTypeConst
+                    )
                     if ok and type(tbl) == "table" then
                         for _, ability in pairs(tbl) do
                             if type(ability) == "table" and ability.name and ability.iconNum and ability.iconNum > 0 then
@@ -501,7 +518,11 @@ function Resolver.GetAbilityIconInfo(abilityId, isIncoming)
                 if not found then
                     for _, abilityType in ipairs(probeTypes) do
                         if abilityType ~= nil then
-                            local ok, tbl = pcall(GetAbilityTable, abilityType)
+                            local ok, tbl = CustomUI.TryCallQuiet(
+                                "SCTAbilityIconResolver.GetAbilityTable.scan",
+                                GetAbilityTable,
+                                abilityType
+                            )
                             if ok and type(tbl) == "table" then
                                 for _, ability in pairs(tbl) do
                                     if type(ability) == "table" and ability.name and ability.iconNum and ability.iconNum > 0 then
@@ -554,7 +575,11 @@ function Resolver.GetAbilityIconInfo(abilityId, isIncoming)
                         end
                         sample[#sample + 1] = tag .. ":" .. tostring(ability.id) .. ":" .. tostring(ability.name) .. ":iconNum=" .. tostring(ability.iconNum)
                     end
-                    local okTactic, tacticTable = pcall(GetAbilityTable, GameData.AbilityType.TACTIC)
+                    local okTactic, tacticTable = CustomUI.TryCallQuiet(
+                        "SCTAbilityIconResolver.GetAbilityTable.tactic",
+                        GetAbilityTable,
+                        GameData.AbilityType.TACTIC
+                    )
                     if okTactic and type(tacticTable) == "table" then
                         for _, ability in pairs(tacticTable) do
                             if type(ability) == "table" and ability.name and ability.iconNum and ability.iconNum > 0 then

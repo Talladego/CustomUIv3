@@ -68,11 +68,9 @@ function CustomUISettingsWindowTabUnitFrames.Initialize()
 
     LabelSetText( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceSortPartyMembersByRoleLabel", L"Sort party by role" )
     ButtonSetCheckButtonFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceSortPartyMembersByRoleButton", false )
-
 end
 
 function CustomUISettingsWindowTabUnitFrames.UpdateSettings()
-    -- General
     ButtonSetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."GeneralUnitFramesEnabledButton", CustomUI.IsComponentEnabled("UnitFrames") )
 
     local s = EnsureUnitFramesGroupsSettings()
@@ -83,68 +81,55 @@ function CustomUISettingsWindowTabUnitFrames.UpdateSettings()
     ButtonSetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceTargetHudHpBarStyleButton", s.useTargetHudHpBarTexture == true )
     ButtonSetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceCareerRingArchetypeColorsButton", s.colorCareerIconRingByArchetype == true )
     ButtonSetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceSortPartyMembersByRoleButton", s.sortPartyMembersByRole == true )
-
 end
 
 function CustomUISettingsWindowTabUnitFrames.ApplyCurrent()
-	-- General: enable/disable is applied immediately on toggle, nothing to do here
+    local enabled = ButtonGetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."GeneralUnitFramesEnabledButton" )
+    CustomUI.SetComponentEnabled( "UnitFrames", enabled )
+
+    local s = EnsureUnitFramesGroupsSettings()
+    local c = CustomUISettingsWindowTabUnitFrames.contentsName
+    s.showActionPointsBar = ButtonGetPressedFlag( c.."AppearanceShowActionPointsBarButton" ) == true
+    s.useTargetHudHpBarTexture = ButtonGetPressedFlag( c.."AppearanceTargetHudHpBarStyleButton" ) == true
+    s.colorCareerIconRingByArchetype = ButtonGetPressedFlag( c.."AppearanceCareerRingArchetypeColorsButton" ) == true
+    s.sortPartyMembersByRole = ButtonGetPressedFlag( c.."AppearanceSortPartyMembersByRoleButton" ) == true
+    s.groupsParty = ButtonGetPressedFlag( c.."AppearancePartyButton" ) == true
+    s.groupsWarband = ButtonGetPressedFlag( c.."AppearanceWarbandButton" ) == true
+    s.groupsScenario = ButtonGetPressedFlag( c.."AppearanceScenarioButton" ) == true
+    ApplyUnitFramesGroupsSettings()
 end
 
 function CustomUISettingsWindowTabUnitFrames.ResetSettings()
-
 end
-   
+
 function CustomUISettingsWindowTabUnitFrames.OnToggleUnitFrames()
     EA_LabelCheckButton.Toggle()
-    local enabled = ButtonGetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."GeneralUnitFramesEnabledButton" )
-    CustomUI.SetComponentEnabled( "UnitFrames", enabled )
 end
 
 function CustomUISettingsWindowTabUnitFrames.OnToggleShowActionPointsBar()
     EA_LabelCheckButton.Toggle()
-    local s = EnsureUnitFramesGroupsSettings()
-    s.showActionPointsBar = ButtonGetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceShowActionPointsBarButton" ) == true
-    ApplyUnitFramesGroupsSettings()
 end
 
 function CustomUISettingsWindowTabUnitFrames.OnToggleTargetHudHpBarStyle()
     EA_LabelCheckButton.Toggle()
-    local s = EnsureUnitFramesGroupsSettings()
-    s.useTargetHudHpBarTexture = ButtonGetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceTargetHudHpBarStyleButton" ) == true
-    ApplyUnitFramesGroupsSettings()
 end
 
 function CustomUISettingsWindowTabUnitFrames.OnToggleCareerRingArchetypeColors()
     EA_LabelCheckButton.Toggle()
-    local s = EnsureUnitFramesGroupsSettings()
-    s.colorCareerIconRingByArchetype = ButtonGetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceCareerRingArchetypeColorsButton" ) == true
-    ApplyUnitFramesGroupsSettings()
 end
 
 function CustomUISettingsWindowTabUnitFrames.OnToggleSortPartyMembersByRole()
     EA_LabelCheckButton.Toggle()
-    local s = EnsureUnitFramesGroupsSettings()
-    s.sortPartyMembersByRole = ButtonGetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceSortPartyMembersByRoleButton" ) == true
-    ApplyUnitFramesGroupsSettings()
 end
 
 function CustomUISettingsWindowTabUnitFrames.OnToggleGroupsParty()
     EA_LabelCheckButton.Toggle()
-    local s = EnsureUnitFramesGroupsSettings()
-    s.groupsParty = ButtonGetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearancePartyButton" ) == true
-    ApplyUnitFramesGroupsSettings()
 end
 
 function CustomUISettingsWindowTabUnitFrames.OnToggleGroupsWarband()
     EA_LabelCheckButton.Toggle()
-    local s = EnsureUnitFramesGroupsSettings()
-    s.groupsWarband = ButtonGetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceWarbandButton" ) == true
-    ApplyUnitFramesGroupsSettings()
 end
 
 function CustomUISettingsWindowTabUnitFrames.OnToggleGroupsScenario()
     EA_LabelCheckButton.Toggle()
-    local s = EnsureUnitFramesGroupsSettings()
-    s.groupsScenario = ButtonGetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceScenarioButton" ) == true
-    ApplyUnitFramesGroupsSettings()
 end

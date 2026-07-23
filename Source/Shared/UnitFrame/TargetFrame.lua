@@ -1,15 +1,15 @@
 ----------------------------------------------------------------
 -- CustomUI.TargetFrame
 -- **Current (shipped):** used by TargetWindow only. Not legacy. See README "Source/Shared".
--- Subclasses the stock TargetUnitFrame class.  All non-Create()
--- methods (UpdateUnit, UpdateHealth, UpdateStatusFrame, UpdateLevel,
--- UpdateCombatState, StopInterpolatingStatus, SetCareerIcon, etc.)
--- are inherited from TargetUnitFrame unchanged.
+-- Subclasses the stock TargetUnitFrame class.  Most methods
+-- (UpdateUnit, UpdateStatusFrame, UpdateCombatState,
+-- StopInterpolatingStatus, SetCareerIcon, etc.) are inherited from
+-- TargetUnitFrame unchanged. Create(), UpdateLevel(), and UpdateHealth()
+-- are overridden (HP% label on the status bar).
 --
--- Only Create() is overridden.  It mirrors TargetUnitFrame:Create()
--- exactly but substitutes CustomUI.BuffTracker for BuffTracker, and
--- does NOT register with UnitFrames so stock ea_targetwindow keeps
--- its own slot undisturbed.
+-- Create() mirrors TargetUnitFrame:Create() but substitutes
+-- CustomUI.BuffTracker for BuffTracker, and does NOT register with
+-- UnitFrames so stock ea_targetwindow keeps its own slot undisturbed.
 --
 -- Usage:
 --   local frame = CustomUI.TargetFrame:Create(
@@ -84,7 +84,8 @@ function CustomUI.TargetFrame:Create( windowName, unitId,
     local newFrame = self:CreateFromTemplate( windowName )
     if newFrame == nil then return nil end
 
-    newFrame.m_AlwaysShowHitPoints = false
+    -- Always draw HP% on the bar (TargetInfo health is already 0–100).
+    newFrame.m_AlwaysShowHitPoints = true
     newFrame.m_UnitId              = unitId
     newFrame.m_Type                = 0
     newFrame.m_IsAStaticObject     = false
@@ -119,6 +120,17 @@ function CustomUI.TargetFrame:Create( windowName, unitId,
 
     newFrame.m_StatusFrame = TargetUnitFrameStatus:Create(
         windowName .. "Status", windowName, statusAnchor, newFrame.m_IsFriendly )
+
+    -- HP% label over the dynamically created HealthPercentBar (stock status
+    -- container has TierLabel on the bar, but no HealthText like PlayerWindow).
+    local healthTextName = windowName .. "StatusHealthText"
+    local healthBarName  = windowName .. "StatusHealthPercentBar"
+    if CreateWindowFromTemplate( healthTextName, "CustomUITargetHealthText", windowName .. "Status" ) then
+        WindowClearAnchors( healthTextName )
+        WindowAddAnchor( healthTextName, "topleft",     healthBarName, "topleft",     0, 0 )
+        WindowAddAnchor( healthTextName, "bottomright", healthBarName, "bottomright", 0, 0 )
+        WindowSetShowing( healthTextName, false )
+    end
 
     -- Buff tracker — CustomUI subclass with square frame aesthetic.
     -- Prefix windowName.."CUIBuffs" avoids collision with the stock
@@ -190,4 +202,40 @@ function CustomUI.TargetFrame:UpdateLevel(level, battleLevel, conColor)
     WindowSetShowing(windowName .. "LevelBackgroundTint", not self.m_IsFriendly)
     WindowSetShowing(windowName .. "LevelText", self.m_IsAStaticObject == false)
     WindowSetShowing(windowName .. "LevelBackground", self.m_IsAStaticObject == false)
+end
+
+-- Stock UpdateHealth only fills the bar; overlay current HP as an integer percent
+-- (same visual role as PlayerStatusWindow's current/max HealthText).
+function CustomUI.TargetFrame:UpdateHealth()
+    TargetUnitFrame.UpdateHealth(self)
+
+    local windowName     = self:GetName()
+    local healthTextName = windowName .. "StatusHealthText"
+    if not DoesWindowExist(healthTextName) then
+        return
+    end
+
+    local showHealth = (self.m_Type ~= SystemData.TargetObjectType.STATIC) or self.showHealthBar
+    if not showHealth then
+        WindowSetShowing(healthTextName, false)
+        return
+    end
+
+    local hp = tonumber(TargetInfo:UnitHealth(self.m_UnitId)) or 0
+    if hp < 0 then
+        hp = 0
+    elseif hp > 100 then
+        hp = 100
+    end
+    local hpRounded = math.floor(hp + 0.5)
+
+    LabelSetText(healthTextName, towstring(hpRounded) .. L"%")
+    WindowSetShowing(healthTextName, true)
+
+    -- TierLabel uses the same bar area (Champion / Hero / Lord / Friendly).
+    -- Prefer HP% there; portrait skulls still convey threat for hostiles.
+    local tierLabel = windowName .. "StatusTierLabel"
+    if DoesWindowExist(tierLabel) then
+        WindowSetShowing(tierLabel, false)
+    end
 end

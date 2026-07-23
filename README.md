@@ -2,6 +2,8 @@
 
 CustomUI is a modular Return of Reckoning addon that replaces and enhances stock UI components behind a single settings surface and slash-command workflow.
 
+**Version:** CustomUI `1.1.0` (see `CustomUI.Version` / `CustomUI.mod`). Companion settings addon: CustomUISettingsWindow `1.2.0`. One addon-level semver (not per-component); the active profile also stores `CustomUI.Settings.version` on init.
+
 ## Documentation
 
 **This README is the architecture and conventions reference.** Runtime backlog and validation checklists live in [TODO.md](TODO.md). Settings-window XML/layout pitfalls live in [CustomUISettingsWindow/README.md](CustomUISettingsWindow/README.md); settings-specific backlog in [CustomUISettingsWindow/TODO.md](CustomUISettingsWindow/TODO.md).
@@ -25,16 +27,17 @@ Place **CustomUI** and **CustomUISettingsWindow** under the game’s `Interface\
 - Hides the corresponding stock window when a CustomUI replacement is enabled; restores it on disable.
 - Provides shared subsystems (buff tracking, unit frames) reused across multiple components.
 - Keeps component lifecycle handling (initialize/enable/disable/shutdown) consistent.
+- On load (and `/customui status`), prints a colored `[CustomUI]` chat banner with version, enabled count, and a per-component enable/disable list (`PrintStatusMessage` / `PrintComponentStatuses`).
 
 ## Components
 
 | Component | Replaces | Status |
 |---|---|---|
 | `PlayerStatusWindow` | `ea_playerstatuswindow` | ✅ Implemented, `DefaultEnabled = false` |
-| `TargetWindow` | `ea_targetwindow` (hostile + friendly slots) | ✅ Implemented, `DefaultEnabled = false` |
+| `TargetWindow` | `ea_targetwindow` (hostile + friendly slots) | ✅ Implemented, `DefaultEnabled = false` — HP% overlay on health bars |
 | `PlayerPetWindow` | `PetHealthWindow` in `ea_careerresourceswindow` | ✅ Implemented helper component, not registered separately in `/customui components` |
 | `GroupWindow` | `ea_groupwindow` | ✅ Implemented, `DefaultEnabled = false` |
-| `TargetHUD` | — (new world-attached HUDs for hostile and friendly targets) | ✅ Implemented, `DefaultEnabled = false` |
+| `TargetHUD` | — (new world-attached HUDs for hostile and friendly targets) | ✅ Implemented, `DefaultEnabled = false` — HP% on `HealthBarBarText` |
 | `UnitFrames` | BattlegroupHUD + FloatingScenarioGroup scenario roster frames | ✅ Implemented, `DefaultEnabled = false` |
 | `GroupIcons` | — (career icons on world objects for party / warband / scenario members) | ✅ Implemented, enabled by default on a fresh profile |
 | `SCT` | `easystem_eventtext` combat/point-gain floating text | ✅ Complete, `DefaultEnabled = false` |
@@ -72,9 +75,20 @@ pair per feature.
 
 Each per-tab script binds controls to the matching component’s public APIs (for
 example `CustomUI.IsComponentEnabled`, `CustomUI.PlayerStatusWindow.GetSettings()`).
-The footer **Apply / Reset / Cancel** handlers in `CustomUISettingsWindowTabbed` call
-into the selected tab class (`UpdateSettings`, `ApplyCurrent`, `ResetSettings`, etc.)
-where implemented.
+
+**Player** tab sections in use: **General** (enable + pet window) and **Buff Tracker**. There is no Player Appearance section — the old minimal chrome and low-HP screen flash were removed (flash belongs in **RedAlert** if you want that effect).
+
+Footer buttons match stock **User Settings** (`EA_SettingsWindow`):
+
+| Button | Behavior |
+|--------|----------|
+| **Okay** | Apply all tabs, then close |
+| **Apply** | Commit widget state for all tabs; seal baseline; stay open |
+| **Reset** | Discard unapplied changes back to last-applied baseline (not factory defaults) |
+| **Cancel** / **X** | Reset, then close |
+
+Most tabs defer writes until Apply/Okay (widgets only until then). SCT still
+previews live; Cancel/Reset restores the baseline captured on open or last Apply.
 
 Component settings persist in **`CustomUI.Settings`** (declared in `CustomUI.mod` → `SavedVariables.lua` under the active UI profile). After changing settings, keep CustomUI **enabled** through **`/reloadui` or logout** so the profile file is written; disabling the whole mod before reload can leave an empty or missing save file.
 
@@ -109,6 +123,10 @@ Current helper split under `Source/Shared/BuffTracker/`:
 ### CustomUI.TargetFrame
 
 A `TargetUnitFrame` subclass used by `TargetWindow` for both hostile and friendly targets. Inherits all stock health-bar, portrait, and `UpdateUnit` logic; adds a `CustomUI.BuffTracker` instance for per-target buff display.
+
+Also creates a `CustomUITargetHealthText` label over the status bar and overrides `UpdateHealth()` to show current HP as an integer percent (from `TargetInfo:UnitHealth`). While HP% is shown, the stock `TierLabel` (Champion / Hero / etc.) is hidden so the two do not overlap.
+
+`TargetHUD` uses the same idea on the built-in `HealthBarBarText` (written from `RefreshHUDFromCache`), not via `TargetFrame`.
 
 ### CustomUI.TargetPresence
 
@@ -181,19 +199,16 @@ CustomUI/
 			PlayerStatusWindow/
 				Controller/
 					PlayerStatusWindowController.lua
+					PlayerPetWindowController.lua   ← helper owned by PlayerStatusWindow
 				View/
 					PlayerStatusWindow.lua        ← view lua (tooltips, label helpers)
 					PlayerStatusWindow.xml
+					PlayerPetWindow.xml
 			TargetWindow/
 				Controller/
 					TargetWindowController.lua
 				View/
-					TargetWindow.xml
-			PlayerPetWindow/
-				Controller/
-					PlayerPetWindowController.lua
-				View/
-					PlayerPetWindow.xml
+					TargetWindow.xml              ← includes CustomUITargetHealthText template
 			GroupWindow/
 				Controller/
 					GroupWindowController.lua
@@ -248,25 +263,33 @@ CustomUI/
 | Path | Status | Role |
 |------|--------|------|
 | `Shared.xml` | **Current** | Defines `CustomUIBuffContainerTemplate`; `BuffTracker` creates slot windows from it. |
-| `Archetypes.lua` | **Current** | Shared career-to-archetype mapping and RGB helpers used by PlayerStatus, UnitFrames, and GroupIcons. |
+| `Archetypes.lua` | **Current** | Shared career-to-archetype mapping and RGB helpers used by UnitFrames and GroupIcons. |
 | `BuffTracker/` (`BuffTracker.lua`, `BuffTrackerLayout.lua`, `BuffTrackerRules.lua`, `BuffTrackerGrouping.lua`, `BuffFilterDefaults.lua`, `BuffGroups.lua`, `BuffLists.lua`) | **Current** | Core buff list behavior, helper splits, and shared filter defaults for trackers used by `PlayerStatusWindow`, `TargetWindow` (via `TargetFrame`), `GroupWindow`, and `TargetHUD`. |
 | `TargetPresence.lua` | **Current** | Shared target cache owner for `TargetWindow` + `TargetHUD`, including transient-gap holds and shared refresh coordination. |
-| `UnitFrame/TargetFrame.lua` | **Current** | Stock `TargetUnitFrame` subclass with `CustomUI.BuffTracker`; used only by **TargetWindow**. |
+| `UnitFrame/TargetFrame.lua` | **Current** | Stock `TargetUnitFrame` subclass with `CustomUI.BuffTracker` and HP% overlay; used only by **TargetWindow**. |
 
 All of the above are loaded from `CustomUI.mod` on the main path and are required for shipped components.
 
-### Removed legacy settings code
+### Removed legacy settings / player chrome
 
 The old in-addon `CustomUI.SettingsWindow` / `MiniSettingsWindow` shells and per-component `*Tab.xml` + `CustomUI.<Name>.Tab` handlers were removed after the standalone **CustomUISettingsWindow** became the shipped `/cui` UI. Do not reintroduce `Source/Settings/`, `CustomUI.SettingsWindow.RegisterTab`, component `View/*Tab.xml`, or `CustomUI.<Name>.Tab`; add settings UI in `CustomUISettingsWindow` instead.
+
+Also removed from CustomUI (do not reintroduce):
+
+- **Minimal PlayerStatusWindow** appearance (`PlayerStatusWindowMinimal.xml`, dual-chrome settings) — only the standard player frame remains.
+- **Low-HP screen flash** (`CustomUILowHpScreenFlashWindow` / `EA_ScreenFlashWindow` dependency) — use **RedAlert** (or similar) for that effect.
+- Legacy profile keys cleared in `GetSettings()` when present: `appearance`, `minimalShowApBar`, `minimalHpBarStyle`, `lowHpScreenFlash*`.
 
 
 ## Best Practices and Design Rules
 
 ### Safe Hooking and Wrappers
-- Always use `pcall` when wrapping or hooking engine or stock functions to prevent errors from propagating and breaking the UI.
-- **No blind `pcall`:** capture `local ok, … = pcall(…)` and forward every return value from stock on success; log on failure. See [TODO.md](TODO.md) (code-quality notes).
+- Use **`CustomUI.TryCall(context, fn, …)`** for hooks, initialization, and user-facing actions. Failures are logged via `LogLuaMessage` at WARNING with a context prefix.
+- Use **`CustomUI.TryCallQuiet(context, fn, …)`** for hot-path optional engine lookups (`GetNameForObject`, `GetBuffs`, etc.). Failures log at DEBUG only when `CustomUI.DebugLogging` is true.
+- Use **`CustomUI.NarrowWString(value)`** instead of raw `pcall(WStringToString, …)`.
+- **No blind `pcall`:** raw `pcall` belongs only inside the helpers above. Capture `ok`, forward every stock return on success, and report failures with a context string.
+- RoR engine APIs may still write to `uilog.log` when given invalid arguments, even inside `pcall` — validate inputs first. See RoR-Interface `docs/api/lua-protected-calls.md`.
 - Forward all arguments (`...`) and return values in wrappers to preserve original behavior.
-- Log errors in wrappers for easier debugging.
 
 ### Event Handler Lifecycle
 - For every `WindowRegisterEventHandler`, ensure a matching `WindowUnregisterEventHandler` is called in `Shutdown` or `Disable`.
@@ -313,7 +336,7 @@ Large controllers were split into helper modules loaded **before** their coordin
 
 - Open settings: `/customui` or `/cui` (window **CustomUISettingsWindowTabbed** from the **CustomUISettingsWindow** addon). The old in-addon settings windows were removed.
 - `/customui mini` — prints a deprecation notice; use `/cui` instead.
-- Status output: `/customui status`
+- Status / load banner: `/customui status` (same as post-init chat: version, `enabled/registered` count, then each registered component with enable/disable icons). Init also calls this once.
 - List components: `/customui components`
 - Enable component: `/customui enable <name>`
 - Disable component: `/customui disable <name>`

@@ -2,13 +2,21 @@ CustomUISettingsWindowTabGroup = {}
 
 CustomUISettingsWindowTabGroup.contentsName = "SWTabGroupContentsScrollChild"
 
+local BUFF_CHECKBOX_KEYS = {
+    BuffTrackerBuffs          = "showBuffs",
+    BuffTrackerDebuffs        = "showDebuffs",
+    BuffTrackerNeutral        = "showNeutral",
+    BuffTrackerShort          = "showShort",
+    BuffTrackerLong           = "showLong",
+    BuffTrackerPermanent      = "showPermanent",
+    BuffTrackerPlayerCastOnly = "playerCastOnly",
+}
+
 function CustomUISettingsWindowTabGroup.Initialize()
-    -- General
     LabelSetText( CustomUISettingsWindowTabGroup.contentsName.."GeneralTitle", L"General" )
     LabelSetText( CustomUISettingsWindowTabGroup.contentsName.."GeneralGroupWindowEnabledLabel", L"Enabled" )
     ButtonSetCheckButtonFlag( CustomUISettingsWindowTabGroup.contentsName.."GeneralGroupWindowEnabledButton", true )
 
-    -- Buff Tracker
     local bt = CustomUISettingsWindowTabGroup.contentsName.."BuffTracker"
     LabelSetText( bt.."Title", L"Buff Tracker" )
     LabelSetText( bt.."CategoryLabel",       L"Category" )
@@ -31,10 +39,8 @@ function CustomUISettingsWindowTabGroup.Initialize()
 end
 
 function CustomUISettingsWindowTabGroup.UpdateSettings()
-    -- General
     ButtonSetPressedFlag( CustomUISettingsWindowTabGroup.contentsName.."GeneralGroupWindowEnabledButton", CustomUI.IsComponentEnabled("GroupWindow") )
 
-    -- Buff Tracker
     local bt  = CustomUISettingsWindowTabGroup.contentsName.."BuffTracker"
     local cfg = CustomUI.GroupWindow.GetSettings().buffs
     ButtonSetPressedFlag( bt.."BuffsButton",          cfg.showBuffs )
@@ -47,38 +53,24 @@ function CustomUISettingsWindowTabGroup.UpdateSettings()
 end
 
 function CustomUISettingsWindowTabGroup.ApplyCurrent()
-    -- General: enable/disable is applied immediately on toggle, nothing to do here
+    local enabled = ButtonGetPressedFlag( CustomUISettingsWindowTabGroup.contentsName.."GeneralGroupWindowEnabledButton" )
+    CustomUI.SetComponentEnabled( "GroupWindow", enabled )
 
-    -- Buff Tracker: applied immediately on toggle, nothing to do here
+    local cfg = CustomUI.GroupWindow.GetSettings().buffs
+    local prefix = CustomUISettingsWindowTabGroup.contentsName
+    for suffix, key in pairs(BUFF_CHECKBOX_KEYS) do
+        cfg[key] = ButtonGetPressedFlag(prefix .. suffix .. "Button") == true
+    end
+    CustomUI.GroupWindow.ApplyBuffSettings()
 end
 
 function CustomUISettingsWindowTabGroup.ResetSettings()
-
 end
-
-local BUFF_CHECKBOX_KEYS = {
-    BuffTrackerBuffs          = "showBuffs",
-    BuffTrackerDebuffs        = "showDebuffs",
-    BuffTrackerNeutral        = "showNeutral",
-    BuffTrackerShort          = "showShort",
-    BuffTrackerLong           = "showLong",
-    BuffTrackerPermanent      = "showPermanent",
-    BuffTrackerPlayerCastOnly = "playerCastOnly",
-}
 
 function CustomUISettingsWindowTabGroup.OnBuffFilterChanged()
     EA_LabelCheckButton.Toggle()
-    local winName = SystemData.ActiveWindow.name
-    local suffix = string.sub(winName, #CustomUISettingsWindowTabGroup.contentsName + 1)
-    local key = BUFF_CHECKBOX_KEYS[suffix]
-    if not key then return end
-    local cfg = CustomUI.GroupWindow.GetSettings().buffs
-    cfg[key] = ButtonGetPressedFlag(winName .. "Button")
-    CustomUI.GroupWindow.ApplyBuffSettings()
 end
 
 function CustomUISettingsWindowTabGroup.OnToggleGroupWindow()
     EA_LabelCheckButton.Toggle()
-    local enabled = ButtonGetPressedFlag( CustomUISettingsWindowTabGroup.contentsName.."GeneralGroupWindowEnabledButton" )
-    CustomUI.SetComponentEnabled( "GroupWindow", enabled )
 end

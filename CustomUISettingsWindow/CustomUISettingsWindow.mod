@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ModuleFile xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" >
 
-    <UiMod name="CustomUISettingsWindow" version="1.1" date="4/20/2026" >
+    <UiMod name="CustomUISettingsWindow" version="1.2.0" date="2026-07-23" >
         <Author name="Talladego" email="" />
         <Description text="This module contains the Custom UI Settings Window." />
         <Dependencies>        

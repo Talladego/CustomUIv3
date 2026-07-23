@@ -9,7 +9,9 @@ if CustomUI.DebugLogging == nil then
 end
 
 CustomUI.Name = "CustomUI"
-CustomUI.Version = "1.0"
+-- Semver (MAJOR.MINOR.PATCH), matching RedAlert / ScenarioBalance / DungeonCoach.
+-- One addon version for the whole modular package; components are toggles, not separately versioned releases.
+CustomUI.Version = "1.1.0"
 CustomUI.SlashCommands = CustomUI.SlashCommands or { "customui", "cui" }
 CustomUI.Components = CustomUI.Components or {}
 CustomUI.ComponentOrder = CustomUI.ComponentOrder or {}
@@ -24,6 +26,14 @@ CustomUI.State = CustomUI.State or
     loadCount = 0,
     slashRegistered = false,
 }
+
+-- Chat prefix style matches WarTriage / RedAlert: colored [CustomUI] via LINK tag.
+-- Keep LINK text ASCII only (see docs/api/lua-chat-strings.md).
+local c_CHAT_PREFIX_TEXT = "CustomUI"
+local c_CHAT_PREFIX_COLOR = { 255, 198, 80 }
+-- Stock chat icons used by WarTriage for on/off status lines.
+local c_ICON_ENABLED  = L"<icon57>"
+local c_ICON_DISABLED = L"<icon58>"
 
 CustomUI.FollowLeader = CustomUI.FollowLeader or
 {
@@ -176,6 +186,22 @@ function CustomUI.GetComponentStatusText()
     return L"components: " .. towstring(enabledCount) .. L"/" .. towstring(registeredCount) .. L" enabled"
 end
 
+-- WarTriage-style: [CustomUI] with LINK color, then message body.
+local function GetChatPrefixWString(includeSpace)
+    local coloredPartRaw = string.format(
+        "<LINK data=\"0\" color=\"%d,%d,%d\" text=\"%s\">",
+        c_CHAT_PREFIX_COLOR[1],
+        c_CHAT_PREFIX_COLOR[2],
+        c_CHAT_PREFIX_COLOR[3],
+        c_CHAT_PREFIX_TEXT
+    )
+    local prefix = L"[" .. towstring(coloredPartRaw) .. L"]"
+    if includeSpace then
+        prefix = prefix .. L" "
+    end
+    return prefix
+end
+
 function CustomUI.PrintMessage(message)
     if type(message) == "string" then
         message = towstring(message)
@@ -185,7 +211,7 @@ function CustomUI.PrintMessage(message)
         return
     end
 
-    local output = L"[CustomUI] " .. message
+    local output = GetChatPrefixWString(true) .. message
 
     if EA_ChatWindow and EA_ChatWindow.Print then
         EA_ChatWindow.Print(output)
@@ -221,9 +247,96 @@ function CustomUI.SCTLog(message)
     end
 end
 
+--- Log a protected-call failure. `filter` defaults to WARNING.
+function CustomUI.LogProtectedCallFailure(context, err, filter)
+    if not LogLuaMessage or not SystemData or not SystemData.UiLogFilters then
+        return
+    end
+
+    filter = filter or SystemData.UiLogFilters.WARNING
+    local msg = "[CustomUI] " .. tostring(context or "unknown") .. ": " .. tostring(err or "unknown error")
+    if type(towstring) == "function" then
+        LogLuaMessage("Lua", filter, towstring(msg))
+    end
+end
+
+function CustomUI.TryCall(context, fn, ...)
+    if type(fn) ~= "function" then
+        CustomUI.LogProtectedCallFailure(context, "expected function, got " .. type(fn))
+        return false
+    end
+
+    local results = { pcall(fn, ...) }
+    local ok = table.remove(results, 1)
+    if ok then
+        if #results == 0 then
+            return true
+        end
+        return true, unpack(results)
+    end
+
+    CustomUI.LogProtectedCallFailure(context, results[1])
+    return false
+end
+
+--- For hot-path optional lookups: log only when `CustomUI.DebugLogging` is true.
+function CustomUI.TryCallQuiet(context, fn, ...)
+    if type(fn) ~= "function" then
+        if CustomUI.DebugLogging == true then
+            CustomUI.LogProtectedCallFailure(
+                context,
+                "expected function, got " .. type(fn),
+                SystemData and SystemData.UiLogFilters and SystemData.UiLogFilters.DEBUG
+            )
+        end
+        return false
+    end
+
+    local results = { pcall(fn, ...) }
+    local ok = table.remove(results, 1)
+    if ok then
+        if #results == 0 then
+            return true
+        end
+        return true, unpack(results)
+    end
+
+    if CustomUI.DebugLogging == true then
+        CustomUI.LogProtectedCallFailure(
+            context,
+            results[1],
+            SystemData and SystemData.UiLogFilters and SystemData.UiLogFilters.DEBUG
+        )
+    end
+    return false
+end
+
+function CustomUI.NarrowWString(value)
+    if value == nil then
+        return ""
+    end
+    if type(value) == "string" then
+        return value
+    end
+    if type(WStringToString) == "function" then
+        local ok, narrowed = CustomUI.TryCallQuiet("NarrowWString", WStringToString, value)
+        if ok and type(narrowed) == "string" and narrowed ~= "" then
+            return narrowed
+        end
+    end
+    return tostring(value) or ""
+end
+
 function CustomUI.PrintStatusMessage()
-    local message = L"v" .. towstring(CustomUI.Version) .. L" loaded, " .. CustomUI.GetComponentStatusText()
-    CustomUI.PrintMessage(message)
+    local registeredCount = CountRegisteredComponents()
+    local enabledCount = CountEnabledComponents()
+    CustomUI.PrintMessage(
+        L"v" .. towstring(CustomUI.Version)
+            .. L" loaded. "
+            .. towstring(enabledCount) .. L"/" .. towstring(registeredCount)
+            .. L" components enabled. /cui opens settings."
+    )
+    CustomUI.PrintComponentStatuses()
 end
 
 function CustomUI.PrintComponentStatuses()
@@ -233,13 +346,11 @@ function CustomUI.PrintComponentStatuses()
     end
 
     for _, componentName in ipairs(CustomUI.ComponentOrder) do
-        local statusText = L"disabled"
-
+        local icon = c_ICON_DISABLED
         if CustomUI.IsComponentEnabled(componentName) then
-            statusText = L"enabled"
+            icon = c_ICON_ENABLED
         end
-
-        CustomUI.PrintMessage(towstring(componentName) .. L": " .. statusText)
+        CustomUI.PrintMessage(L"--- " .. icon .. L" " .. towstring(componentName))
     end
 end
 
@@ -337,17 +448,20 @@ local function InstallFollowLeaderActionHook()
         local shouldFollowOnClick = self and type(self.GetSlot) == "function" and not Cursor.IconOnCursor()
             and IsFollowLeaderMacroSlot(self:GetSlot())
 
-        local ok, r1, r2, r3, r4, r5 = pcall(m_stockActionButtonOnLButtonUp, self, flags, x, y)
+        local ok, r1, r2, r3, r4, r5 = CustomUI.TryCall(
+            "ActionButton.OnLButtonUp",
+            m_stockActionButtonOnLButtonUp,
+            self,
+            flags,
+            x,
+            y
+        )
 
         if shouldFollowOnClick then
             SendChatText(L"/follow ", L"")
         end
 
         if not ok then
-            if CustomUI.DebugLogging == true then
-                LogLuaMessage("Lua", SystemData.UiLogFilters.WARNING,
-                    L"[CustomUI] ActionButton.OnLButtonUp stock error: " .. towstring(r1))
-            end
             return
         end
 
@@ -562,7 +676,6 @@ function CustomUI.HandleSlashCommand(input)
 
     if command == "status" then
         CustomUI.PrintStatusMessage()
-        CustomUI.PrintComponentStatuses()
         return
     end
 
@@ -818,9 +931,6 @@ end
 -- saved layout, DoesWindowExist, and the layout editor can resolve window names.
 local ROOT_WINDOW_NAMES = {
     "CustomUIPlayerStatusWindow",
-    "CustomUILowHpScreenFlashWindow",
-    -- Sibling overlay in PlayerStatusWindow.xml; must be instantiated here (anchors to CustomUIPlayerStatusWindow).
-    "CustomUIPlayerStatusWindowMinimal",
     "CustomUIPlayerPetWindow",
     "CustomUIHostileTargetWindow",
     "CustomUIFriendlyTargetWindow",
@@ -837,8 +947,6 @@ local ROOT_WINDOW_NAMES = {
     "CustomUISCTWindow", -- SCT root placeholder; was not in the old .mod list
     "CustomUIGroupIconsWorldProbe",
     "CustomUIGroupIconsDriver",
-    -- Stock vignette overlay (EA_ScreenFlashWindow); CreateWindow is often omitted from the stock mod on RoR.
-    "ScreenFlashWindow",
     "CustomUIGlobalUpdateDriver",
 }
 
@@ -904,6 +1012,7 @@ function CustomUI.Initialize()
     CustomUI.State.initialized = true
     CustomUI.State.loadCount = CustomUI.State.loadCount + 1
     CustomUI.State.slashRegistered = false
+    CustomUI.Settings.version = CustomUI.Version
 
     CustomUI.RegisterSlashCommands()
     CustomUI.RegisterFollowLeaderHandlers()

@@ -1086,3 +1086,6 @@ function notifyChange()
     end
     Settings()
 end
+
+-- Public entry for settings UI Cancel/Reset baseline restore (same as a setter notify).
+CustomUI.SCT.NotifySettingsChanged = notifyChange

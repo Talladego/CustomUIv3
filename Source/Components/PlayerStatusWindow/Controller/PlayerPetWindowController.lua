@@ -50,12 +50,12 @@ local function InstallPetProxyHook()
     -- with the career resources window when our component is disabled.
     g_ourUpdatePetWrapper = function( self )
         -- Never blind pcall: keep all stock returns intact when successful.
-        local ok, r1, r2, r3, r4, r5 = pcall( m_stockUpdatePetProxy, self )
+        local ok, r1, r2, r3, r4, r5 = CustomUI.TryCall(
+            "PetWindow.UpdatePet",
+            m_stockUpdatePetProxy,
+            self
+        )
         if not ok then
-            if CustomUI.DebugLogging == true then
-                LogLuaMessage( "Lua", SystemData.UiLogFilters.WARNING,
-                    L"[CustomUI] PetWindow.UpdatePet stock error: " .. tostring( r1 ) )
-            end
             return
         end
         if m_enabled then

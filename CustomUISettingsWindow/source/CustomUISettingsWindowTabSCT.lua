@@ -453,16 +453,12 @@ local function RefreshSctControls()
     end
     SctHideColorPicker()
     m_refreshing = true
-    local ok, err = pcall(function()
+    local ok = CustomUI.TryCall("CustomUISettingsWindow.RefreshSctControls", function()
         for _, d in ipairs(CustomUI.SCT.GetSettingsRowDescriptors()) do
             SetupRow(ContentPrefixForRowSuffix(d.suffix), d.suffix)
         end
     end)
     m_refreshing = false  -- always clear, even on error
-    if not ok and CustomUI.DebugLogging == true then
-        LogLuaMessage("Lua", SystemData.UiLogFilters.WARNING,
-            L"[CustomUI] RefreshSctControls error: " .. tostring(err))
-    end
 end
 
 local function ParseControlName(winName)
@@ -918,17 +914,17 @@ function CustomUISettingsWindowTabSCT.UpdateSettings()
 end
 
 function CustomUISettingsWindowTabSCT.ApplyCurrent()
+    -- SCT controls still write live for preview; Apply seals them via Tabbed baseline capture.
+    local enabled = ButtonGetPressedFlag( c_SCROLL_CHILD .. "GeneralSCTEnabledButton" )
+    CustomUI.SetComponentEnabled( "SCT", enabled )
 end
 
 function CustomUISettingsWindowTabSCT.ResetSettings()
-    CustomUI.SCT.ApplySctSettingsTabFullReset()
-    BroadcastEvent(SystemData.Events.USER_SETTINGS_CHANGED)
+    -- Footer Reset restores the Tabbed settings baseline (last applied), not factory SCT defaults.
 end
 
 function CustomUISettingsWindowTabSCT.OnToggleSCT()
     EA_LabelCheckButton.Toggle()
-    local enabled = ButtonGetPressedFlag( c_SCROLL_CHILD .. "GeneralSCTEnabledButton" )
-    CustomUI.SetComponentEnabled( "SCT", enabled )
 end
 
 function CustomUISettingsWindowTabSCT.OnCritAnimationModeChanged()

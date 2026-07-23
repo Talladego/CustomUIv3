@@ -16,7 +16,6 @@ end
 ----------------------------------------------------------------
 
 CustomUI.PlayerStatusWindow.FADE_OUT_ANIM_DELAY = 2
-CustomUI.PlayerStatusWindow.LOW_HP_SCREEN_FLASH_THRESHOLD_PERCENTS = { 25, 50, 75, 100 }
 CustomUI.PlayerStatusWindow.TOOLTIP_ANCHOR      = {
     Point         = "bottom",
     RelativeTo    = "CustomUIPlayerStatusWindow",
@@ -64,14 +63,6 @@ local prevMoraleLevel         = 0
 local prevHitpointLevel       = 1
 local m_handlersRegistered    = false
 local m_stockPlayerUnhooked   = false
-local m_lowHpScreenFlashHoldActive = false
-local m_wasBelowLowHpScreenFlashThreshold = false
-local m_lowHpScreenFlashTimer = 0
-
-local c_LOW_HP_FLASH_WINDOW = "CustomUILowHpScreenFlashWindow"
-local c_LOW_HP_FLASH_DURATION = 1.5
-local c_LOW_HP_FLASH_START_ALPHA = 0.0
-local c_LOW_HP_FLASH_END_ALPHA = 1.0
 
 local function RegisterHandlers()
     if m_handlersRegistered then return end
@@ -191,127 +182,6 @@ local function RehookStockPlayerWindowHandlers()
     m_stockPlayerUnhooked = false
 end
 
-local function LowHpScreenFlashWindowApiAvailable()
-    return DoesWindowExist(c_LOW_HP_FLASH_WINDOW)
-        and type(WindowSetTintColor) == "function"
-        and type(WindowSetShowing) == "function"
-        and type(WindowStartAlphaAnimation) == "function"
-end
-
-local function ApplyLowHpScreenFlashDamageTint()
-    if not LowHpScreenFlashWindowApiAvailable() then
-        return
-    end
-    WindowSetTintColor(c_LOW_HP_FLASH_WINDOW, 255, 0, 0)
-end
-
-local function StopLowHpScreenFlash()
-    m_lowHpScreenFlashTimer = 0
-    if DoesWindowExist(c_LOW_HP_FLASH_WINDOW) and type(WindowSetShowing) == "function" then
-        WindowSetShowing(c_LOW_HP_FLASH_WINDOW, false)
-    end
-end
-
-local function StartLowHpScreenFlash()
-    if not LowHpScreenFlashWindowApiAvailable() then
-        return
-    end
-    if m_lowHpScreenFlashTimer > 0 then
-        return
-    end
-    ApplyLowHpScreenFlashDamageTint()
-    WindowSetAlpha(c_LOW_HP_FLASH_WINDOW, c_LOW_HP_FLASH_START_ALPHA)
-    WindowSetShowing(c_LOW_HP_FLASH_WINDOW, true)
-    WindowStartAlphaAnimation(c_LOW_HP_FLASH_WINDOW,
-                              Window.AnimationType.POP_AND_EASE,
-                              c_LOW_HP_FLASH_START_ALPHA,
-                              c_LOW_HP_FLASH_END_ALPHA,
-                              c_LOW_HP_FLASH_DURATION,
-                              true, 0, 0)
-    m_lowHpScreenFlashTimer = c_LOW_HP_FLASH_DURATION
-end
-
-local function TickLowHpScreenFlashCooldown(timePassed)
-    if type(timePassed) ~= "number" or timePassed <= 0 then
-        return
-    end
-    if m_lowHpScreenFlashTimer <= 0 then
-        return
-    end
-    m_lowHpScreenFlashTimer = m_lowHpScreenFlashTimer - timePassed
-    if m_lowHpScreenFlashTimer <= 0 then
-        StopLowHpScreenFlash()
-    end
-end
-
-local function GetLowHpScreenFlashThresholdFraction()
-    local s = CustomUI.PlayerStatusWindow.GetSettings()
-    local p = tonumber(s.lowHpScreenFlashThresholdPercent) or 50
-    if p < 1 then p = 1 end
-    if p > 100 then p = 100 end
-    return p / 100
-end
-
-local function IsStrictlyBelowLowHpScreenFlashThreshold()
-    if not GameData or not GameData.Player or not GameData.Player.hitPoints then
-        return false
-    end
-    local hp = GameData.Player.hitPoints
-    local maxHp = hp.maximum
-    if maxHp == nil or maxHp <= 0 then
-        return false
-    end
-    return (hp.current or 0) / maxHp < GetLowHpScreenFlashThresholdFraction()
-end
-
-local function SyncLowHpScreenFlashHold()
-    if not LowHpScreenFlashWindowApiAvailable() then
-        m_lowHpScreenFlashHoldActive = false
-        return
-    end
-    local s = CustomUI.PlayerStatusWindow.GetSettings()
-    local wantHold = (s.lowHpScreenFlash == true) and IsStrictlyBelowLowHpScreenFlashThreshold()
-    m_lowHpScreenFlashHoldActive = wantHold
-    if not wantHold then
-        StopLowHpScreenFlash()
-    end
-end
-
-local function ReleaseLowHpScreenFlashHold()
-    m_lowHpScreenFlashHoldActive = false
-    StopLowHpScreenFlash()
-end
-
-local function ResetLowHpScreenFlashLatch()
-    m_wasBelowLowHpScreenFlashThreshold = false
-end
-
---- Runs while Player Status handlers are active (component enabled).
-local function UpdateLowHpScreenFlashOnHpChanged()
-    if not LowHpScreenFlashWindowApiAvailable() then
-        return
-    end
-    local s = CustomUI.PlayerStatusWindow.GetSettings()
-    if s.lowHpScreenFlash ~= true then
-        ResetLowHpScreenFlashLatch()
-        ReleaseLowHpScreenFlashHold()
-        return
-    end
-    local hpCur = GameData.Player.hitPoints.current
-    local belowNow = IsStrictlyBelowLowHpScreenFlashThreshold()
-    local crossedInto = belowNow and not m_wasBelowLowHpScreenFlashThreshold
-    m_wasBelowLowHpScreenFlashThreshold = belowNow
-
-    SyncLowHpScreenFlashHold()
-    if not m_lowHpScreenFlashHoldActive then
-        return
-    end
-    local tookDamage = hpCur < prevHitpointLevel
-    if hpCur > 0 and (tookDamage or crossedInto) then
-        StartLowHpScreenFlash()
-    end
-end
-
 local MoraleLevelSliceMap = {
     [1] = { slice = "Morale-Mini-1" },
     [2] = { slice = "Morale-Mini-2" },
@@ -322,45 +192,9 @@ local MoraleLevelSliceMap = {
 local c_MAX_BUFF_SLOTS = 20
 local c_BUFF_STRIDE    = 5
 local c_CAREER_ICON_WINDOW = "CustomUIPlayerStatusWindowCareerIcon"
-local c_MIN_CONTAINER = "CustomUIPlayerStatusWindowMinimal"
-local c_MIN_HP_BAR = c_MIN_CONTAINER .. "HPBar"
-local c_MIN_HP_BAR_TARGETHUD = c_MIN_CONTAINER .. "HPBarTargetHud"
-local c_MIN_AP_BAR = c_MIN_CONTAINER .. "APBar"
-local c_MIN_LABEL_NAME = c_MIN_CONTAINER .. "LabelName"
-local c_MIN_LABEL_HEALTH = c_MIN_CONTAINER .. "LabelHealth"
-local c_MIN_CAREER_ICON_WINDOW = c_MIN_CONTAINER .. "CareerIcon"
-local c_MIN_CAREER_ICON_RING_WINDOW = c_MIN_CONTAINER .. "CareerIconRing"
 local c_GROUP_LEADER_CROWN_WINDOW = "CustomUIPlayerStatusWindowGroupLeaderCrown"
 local c_WARBAND_LEADER_CROWN_WINDOW = "CustomUIPlayerStatusWindowWarbandLeaderCrown"
-local c_MIN_GROUP_LEADER_CROWN_WINDOW = c_MIN_CONTAINER .. "GroupLeaderCrown"
-local c_MIN_WARBAND_LEADER_CROWN_WINDOW = c_MIN_CONTAINER .. "WarbandLeaderCrown"
--- Archetype tint palette for minimal HP (CastBar) + career ring — keep in sync with UnitFramesController c_UF_RING_* / GroupIcons.
-local c_PS_RING_GREY_R, c_PS_RING_GREY_G, c_PS_RING_GREY_B = 160, 160, 160
-
--- Hide default-frame chrome via per-window alpha in minimal mode (never touch root alpha —
--- BuffTracker lives under CustomUIPlayerStatusWindow and would inherit invisible state).
 local c_PS_ROOT = "CustomUIPlayerStatusWindow"
-local c_PS_CHROME_HIDE_MINIMAL_SUFFIXES = {
-    "StatusContainer",
-    "PlayerName",
-    "PortraitBackground",
-    "Portrait",
-    "DeathPortrait",
-    "PortraitFrame",
-    "KillingSpree",
-    "LevelBackground",
-    "RvRFlagIndicator",
-    "RvRFlagCountDown",
-    "RelicBonus",
-    "LevelText",
-    "AdvancementIndicator",
-    "RenownIndicator",
-    "GroupLeaderCrown",
-    "WarbandLeaderCrown",
-    "MainAssistCrown",
-    "MoraleMini",
-    "CareerIcon",
-}
 
 -- Crown atlas/size parity with GroupIconsController WarbandCrown (EA_HUD_01 @ 162,138).
 local c_GI_CROWN_TEX_W = 25
@@ -376,228 +210,41 @@ local c_GI_CROWN_ANCHOR_TOUCH_OFFSET_Y = 5 -- sync GroupIconsController c_CROWN_
 -- Local / Utility Functions
 ----------------------------------------------------------------
 
-local function IsMinimalAppearanceEnabled()
-    -- DEPRECATED: Minimal PlayerStatusWindow is deprecated and will be removed in a future release.
-    local s = CustomUI.PlayerStatusWindow.GetSettings and CustomUI.PlayerStatusWindow.GetSettings()
-    return s ~= nil and s.appearance == "minimal"
-end
-
 --- README §Notes: arg2 Point on target, arg4 RelativePoint on anchored window → crown sits above icon.
---- Default crowns must only anchor to widgets on CustomUIPlayerStatusWindow; minimal crowns only to the minimal layer.
 local function LayoutPlayerStatusLeaderCrownsLikeGroupIcons()
-    local function applyLayout(crownWin, iconWin)
-        if crownWin == nil or iconWin == nil then
-            return
-        end
-        if not DoesWindowExist(crownWin) or not DoesWindowExist(iconWin) then
+    local iconWin = c_CAREER_ICON_WINDOW
+    if not DoesWindowExist(iconWin) then
+        return
+    end
+
+    local function applyLayout(crownWin)
+        if crownWin == nil or not DoesWindowExist(crownWin) then
             return
         end
         WindowClearAnchors(crownWin)
         WindowSetDimensions(crownWin, c_GI_CROWN_TEX_W, c_GI_CROWN_TEX_H)
         WindowAddAnchor(crownWin, "top", iconWin, "bottom", c_GI_CROWN_ANCHOR_OPTICAL_OFFSET_X, c_GI_CROWN_ANCHOR_TOUCH_OFFSET_Y)
         -- Match GroupIcons crown atlas exactly on warband crown; group crown keeps template UV (different art).
-        if crownWin == c_WARBAND_LEADER_CROWN_WINDOW or crownWin == c_MIN_WARBAND_LEADER_CROWN_WINDOW then
+        if crownWin == c_WARBAND_LEADER_CROWN_WINDOW then
             DynamicImageSetTexture(crownWin, c_GI_CROWN_TEXTURE, c_GI_CROWN_TEX_X, c_GI_CROWN_TEX_Y)
             DynamicImageSetTextureDimensions(crownWin, c_GI_CROWN_TEX_W, c_GI_CROWN_TEX_H)
         end
     end
 
-    if IsMinimalAppearanceEnabled() then
-        local iconWin = c_MIN_CAREER_ICON_RING_WINDOW
-        if not DoesWindowExist(iconWin) then
-            return
-        end
-        applyLayout(c_MIN_GROUP_LEADER_CROWN_WINDOW, iconWin)
-        applyLayout(c_MIN_WARBAND_LEADER_CROWN_WINDOW, iconWin)
-        return
-    end
-
-    local iconWin = c_CAREER_ICON_WINDOW
-    if not DoesWindowExist(iconWin) then
-        return
-    end
-    applyLayout(c_GROUP_LEADER_CROWN_WINDOW, iconWin)
-    applyLayout(c_WARBAND_LEADER_CROWN_WINDOW, iconWin)
+    applyLayout(c_GROUP_LEADER_CROWN_WINDOW)
+    applyLayout(c_WARBAND_LEADER_CROWN_WINDOW)
 end
 
-local function ApplyDefaultChromeVisibilityForMinimalAppearance(minimalMode)
-    local alpha = minimalMode and 0 or 1
-    local prefix = c_PS_ROOT
-    for _, sfx in ipairs(c_PS_CHROME_HIDE_MINIMAL_SUFFIXES) do
-        local wname = prefix .. sfx
-        if DoesWindowExist(wname) then
-            WindowSetAlpha(wname, alpha)
-        end
-    end
-end
-
-local function ShouldMinimalShowApBar()
-    local s = CustomUI.PlayerStatusWindow.GetSettings and CustomUI.PlayerStatusWindow.GetSettings()
-    if s == nil then
-        return true
-    end
-    if s.minimalShowApBar == nil then
-        return true
-    end
-    return s.minimalShowApBar == true
-end
-
-local function ApplyMinimalApBarVisibility()
-    if DoesWindowExist(c_MIN_AP_BAR) then
-        WindowSetShowing(c_MIN_AP_BAR, ShouldMinimalShowApBar())
-    end
-end
-
-local function MinimalUsesArchetypeHpBarTexture()
-    local s = CustomUI.PlayerStatusWindow.GetSettings and CustomUI.PlayerStatusWindow.GetSettings()
-    return s ~= nil and s.minimalHpBarStyle == "archetype"
-end
-
-local function ApplyMinimalHpBarStyle()
-    if not IsMinimalAppearanceEnabled() then
-        return
-    end
-    local useTh = MinimalUsesArchetypeHpBarTexture()
-    if DoesWindowExist(c_MIN_HP_BAR) then
-        WindowSetShowing(c_MIN_HP_BAR, not useTh)
-    end
-    if DoesWindowExist(c_MIN_HP_BAR_TARGETHUD) then
-        WindowSetShowing(c_MIN_HP_BAR_TARGETHUD, useTh)
-    end
-end
-
-local function ArchetypeRgbForPlayerCareer()
-    local careerLine = GameData and GameData.Player and GameData.Player.career and tonumber(GameData.Player.career.line)
-    return CustomUI.Archetypes.GetColorForCareerLineOrDefault(
-        careerLine,
-        c_PS_RING_GREY_R,
-        c_PS_RING_GREY_G,
-        c_PS_RING_GREY_B
-    )
-end
-
-local function UpdateMinimalBarsAndLabels()
-    if not IsMinimalAppearanceEnabled() then
-        return
-    end
-    ApplyMinimalHpBarStyle()
-    if not GameData or not GameData.Player then
-        return
-    end
-    local hp = GameData.Player.hitPoints
-    local ap = GameData.Player.actionPoints
-    if hp and DoesWindowExist(c_MIN_HP_BAR) then
-        StatusBarSetMaximumValue(c_MIN_HP_BAR, hp.maximum or 1)
-        StatusBarSetCurrentValue(c_MIN_HP_BAR, hp.current or 0)
-    end
-    if hp and DoesWindowExist(c_MIN_HP_BAR_TARGETHUD) then
-        StatusBarSetMaximumValue(c_MIN_HP_BAR_TARGETHUD, hp.maximum or 1)
-        StatusBarSetCurrentValue(c_MIN_HP_BAR_TARGETHUD, hp.current or 0)
-        local r, g, b = ArchetypeRgbForPlayerCareer()
-        StatusBarSetForegroundTint(c_MIN_HP_BAR_TARGETHUD, r, g, b)
-        StatusBarSetBackgroundTint(c_MIN_HP_BAR_TARGETHUD, 200, 55, 55)
-    end
-    if ap and DoesWindowExist(c_MIN_AP_BAR) then
-        StatusBarSetMaximumValue(c_MIN_AP_BAR, ap.maximum or 1)
-        StatusBarSetCurrentValue(c_MIN_AP_BAR, ap.current or 0)
-    end
-    if DoesWindowExist(c_MIN_LABEL_NAME) and GameData.Player.name then
-        LabelSetText(c_MIN_LABEL_NAME, GameData.Player.name)
-        LabelSetTextColor(c_MIN_LABEL_NAME, DefaultColor.NAME_COLOR_PLAYER.r, DefaultColor.NAME_COLOR_PLAYER.g, DefaultColor.NAME_COLOR_PLAYER.b)
-    end
-    if DoesWindowExist(c_MIN_LABEL_HEALTH) and hp and hp.maximum and hp.maximum > 0 then
-        local pct = math.floor((hp.current / hp.maximum) * 100 + 0.5)
-        LabelSetText(c_MIN_LABEL_HEALTH, towstring(pct) .. L"%")
-    end
-end
-
-local function UpdateMinimalCareerIcon()
-    if not IsMinimalAppearanceEnabled() then
-        return
-    end
-    if not GameData or not GameData.Player then
-        return
-    end
-    local career = GameData.Player.career or {}
-    local careerLine = tonumber(career.line)
-    if careerLine == nil then
-        if DoesWindowExist(c_MIN_CAREER_ICON_WINDOW) then
-            WindowSetShowing(c_MIN_CAREER_ICON_WINDOW, false)
-        end
-        return
-    end
-    local careerIconId = Icons.GetCareerIconIDFromCareerLine(careerLine)
-    if careerIconId == nil or careerIconId == 0 then
-        if DoesWindowExist(c_MIN_CAREER_ICON_WINDOW) then
-            WindowSetShowing(c_MIN_CAREER_ICON_WINDOW, false)
-        end
-        return
-    end
-    local iconTexture, iconX, iconY = GetIconData(careerIconId)
-    if iconTexture == nil then
-        if DoesWindowExist(c_MIN_CAREER_ICON_WINDOW) then
-            WindowSetShowing(c_MIN_CAREER_ICON_WINDOW, false)
-        end
-        return
-    end
-
-    if DoesWindowExist(c_MIN_CAREER_ICON_WINDOW) then
-        DynamicImageSetTexture(c_MIN_CAREER_ICON_WINDOW, iconTexture, iconX, iconY)
-        WindowSetShowing(c_MIN_CAREER_ICON_WINDOW, true)
-    end
-
-    if DoesWindowExist(c_MIN_CAREER_ICON_RING_WINDOW) then
-        DynamicImageSetTexture(c_MIN_CAREER_ICON_RING_WINDOW, "EA_HUD_01", 295, 475)
-        DynamicImageSetTextureDimensions(c_MIN_CAREER_ICON_RING_WINDOW, 38, 38)
-        local rr, gg, bb = ArchetypeRgbForPlayerCareer()
-        WindowSetTintColor(c_MIN_CAREER_ICON_RING_WINDOW, rr, gg, bb)
-        WindowSetShowing(c_MIN_CAREER_ICON_RING_WINDOW, true)
-    end
-
-    LayoutPlayerStatusLeaderCrownsLikeGroupIcons()
-end
-
+--- Show the default player frame (LayoutEditor-aware).
 function CustomUI.PlayerStatusWindow.ApplyAppearance()
-    local minimal = IsMinimalAppearanceEnabled()
-
-    local function SetVariantShowing(winName, show)
-        if winName == nil then return end
-        if LayoutEditor and LayoutEditor.windowsList and LayoutEditor.windowsList[winName] then
-            if show then
-                LayoutEditor.UserShow(winName)
-            else
-                LayoutEditor.UserHide(winName)
-            end
-            return
-        end
-        -- Fallback: if the window isn't registered yet (startup ordering), still enforce visibility.
-        if DoesWindowExist(winName) then
-            WindowSetShowing(winName, show)
-        end
+    if LayoutEditor and LayoutEditor.windowsList and LayoutEditor.windowsList[c_PS_ROOT] then
+        LayoutEditor.UserShow(c_PS_ROOT)
+    elseif DoesWindowExist(c_PS_ROOT) then
+        WindowSetShowing(c_PS_ROOT, true)
     end
-
-    -- Switch between the two registered windows using LayoutEditor so each keeps its own saved position.
-    if minimal then
-        SetVariantShowing(c_PS_ROOT, false)
-        SetVariantShowing(c_MIN_CONTAINER, true)
-        -- LayoutEditor can persist window scale; force 1.0 so "minimal" is not upscaled.
-        if type(WindowSetScale) == "function" and DoesWindowExist(c_MIN_CONTAINER) then
-            WindowSetScale(c_MIN_CONTAINER, 1.0)
-        end
-    else
-        SetVariantShowing(c_MIN_CONTAINER, false)
-        SetVariantShowing(c_PS_ROOT, true)
-    end
-
-    -- Root must stay opaque: BuffTracker is parented here and inherits root alpha when hidden globally.
     if DoesWindowExist(c_PS_ROOT) then
         WindowSetAlpha(c_PS_ROOT, 1)
     end
-    ApplyDefaultChromeVisibilityForMinimalAppearance(minimal)
-
-    ApplyMinimalApBarVisibility()
-    UpdateMinimalBarsAndLabels()
-    UpdateMinimalCareerIcon()
     CustomUI.PlayerStatusWindow.UpdateCrown()
 end
 
@@ -662,11 +309,6 @@ function CustomUI.PlayerStatusWindow.Initialize()
     WindowSetShowing( "CustomUIPlayerStatusWindowKillingSpree",          false )
     WindowSetShowing( "CustomUIPlayerStatusWindowRelicBonus",            false )
     WindowSetShowing( "CustomUIPlayerStatusWindowStatusContainerAPText", false )
-    if DoesWindowExist(c_LOW_HP_FLASH_WINDOW) then
-        WindowSetShowing(c_LOW_HP_FLASH_WINDOW, false)
-        WindowSetTintColor(c_LOW_HP_FLASH_WINDOW, 255, 0, 0)
-    end
-    m_lowHpScreenFlashTimer = 0
 
     WindowSetTintColor( "CustomUIPlayerStatusWindowKillingSpreeBoxInner", 0, 0, 0 )
     WindowSetAlpha( "CustomUIPlayerStatusWindowKillingSpreeBoxInner", 0.6 )
@@ -700,22 +342,7 @@ function CustomUI.PlayerStatusWindow.Initialize()
     CustomUI.PlayerStatusWindow.ApplyAppearance()
 end
 
-function CustomUI.PlayerStatusWindow.InitializeMinimal()
-    LayoutEditor.RegisterWindow( "CustomUIPlayerStatusWindowMinimal",
-                                 L"CustomUI: Player Status (Minimal)",
-                                 L"CustomUI minimal player status (UnitFrames-style row).",
-                                 false, false, true, nil )
-    LayoutEditor.UserHide( "CustomUIPlayerStatusWindowMinimal" ) -- hidden until component Enable() / ApplyAppearance()
-    -- Enforce canonical 180×40 (same width as default status bar, double height, Player-Health texture tiled horizontally).
-    if DoesWindowExist("CustomUIPlayerStatusWindowMinimal") then
-        WindowSetScale("CustomUIPlayerStatusWindowMinimal", 1.0)
-        WindowSetDimensions("CustomUIPlayerStatusWindowMinimal", 180, 40)
-    end
-end
-
 function CustomUI.PlayerStatusWindow.Shutdown()
-    ReleaseLowHpScreenFlashHold()
-    ResetLowHpScreenFlashLatch()
     UnregisterHandlers()
     CustomUI.PlayerStatusWindow.playerBuffs:Shutdown()
 end
@@ -729,8 +356,6 @@ function CustomUI.PlayerStatusWindow.OnHidden()
 end
 
 function CustomUI.PlayerStatusWindow.Update( timePassed )
-    TickLowHpScreenFlashCooldown(timePassed)
-
     if ( bUnflagCountdownStarted == true and GameData.Player.rvrPermaFlagged == false ) then
         bUnflagCountdownStarted = false
     end
@@ -823,18 +448,14 @@ function CustomUI.PlayerStatusWindow.UpdateCurrentActionPoints()
     StatusBarSetCurrentValue( "CustomUIPlayerStatusWindowStatusContainerAPPercentBar", GameData.Player.actionPoints.current )
     CustomUI.PlayerStatusWindow.UpdateAPTextLabel()
     UpdateStatusContainerVisibility()
-    UpdateMinimalBarsAndLabels()
 end
 
 function CustomUI.PlayerStatusWindow.UpdateMaximumActionPoints()
     StatusBarSetMaximumValue( "CustomUIPlayerStatusWindowStatusContainerAPPercentBar", GameData.Player.actionPoints.maximum )
     CustomUI.PlayerStatusWindow.UpdateCurrentActionPoints()
-    UpdateMinimalBarsAndLabels()
 end
 
 function CustomUI.PlayerStatusWindow.UpdateCurrentHitPoints()
-    UpdateLowHpScreenFlashOnHpChanged()
-
     StatusBarSetCurrentValue( "CustomUIPlayerStatusWindowStatusContainerHealthPercentBar", GameData.Player.hitPoints.current )
 
     if ( GameData.Player.hitPoints.current == 0 ) then
@@ -848,14 +469,12 @@ function CustomUI.PlayerStatusWindow.UpdateCurrentHitPoints()
 
     prevHitpointLevel = GameData.Player.hitPoints.current
     CustomUI.PlayerStatusWindow.UpdateHealthTextLabel()
-    UpdateMinimalBarsAndLabels()
 end
 
 function CustomUI.PlayerStatusWindow.UpdateMaximumHitPoints()
     StatusBarSetMaximumValue( "CustomUIPlayerStatusWindowStatusContainerHealthPercentBar", GameData.Player.hitPoints.maximum )
     -- Re-apply current so the bar fill matches after max changes or out-of-order events.
     CustomUI.PlayerStatusWindow.UpdateCurrentHitPoints()
-    UpdateMinimalBarsAndLabels()
 end
 
 function CustomUI.PlayerStatusWindow.UpdatePlayer()
@@ -865,8 +484,6 @@ function CustomUI.PlayerStatusWindow.UpdatePlayer()
     CustomUI.PlayerStatusWindow.UpdateCareerIcon()
     CustomUI.PlayerStatusWindow.UpdateAdvancementNag()
     CustomUI.PlayerStatusWindow.UpdateCrown()
-    UpdateMinimalBarsAndLabels()
-    UpdateMinimalCareerIcon()
 end
 
 function CustomUI.PlayerStatusWindow.UpdateCareerIcon()
@@ -893,7 +510,6 @@ function CustomUI.PlayerStatusWindow.UpdateCareerIcon()
     DynamicImageSetTexture( c_CAREER_ICON_WINDOW, iconTexture, iconX, iconY )
     WindowSetShowing( c_CAREER_ICON_WINDOW, true )
     LayoutPlayerStatusLeaderCrownsLikeGroupIcons()
-    UpdateMinimalCareerIcon()
 end
 
 function CustomUI.PlayerStatusWindow.UpdatePlayerLevel()
@@ -916,19 +532,12 @@ end
 
 function CustomUI.PlayerStatusWindow.UpdateCrown()
     LayoutPlayerStatusLeaderCrownsLikeGroupIcons()
-    local minimal = IsMinimalAppearanceEnabled()
-    WindowSetShowing( c_GROUP_LEADER_CROWN_WINDOW, (not minimal) and GameData.Player.isGroupLeader == true )
+    WindowSetShowing( c_GROUP_LEADER_CROWN_WINDOW, GameData.Player.isGroupLeader == true )
     local wbLeader = false
     if GameData.Player ~= nil and GameData.Player.isWarbandLeader == true then
         wbLeader = true
     end
-    WindowSetShowing( c_WARBAND_LEADER_CROWN_WINDOW, (not minimal) and wbLeader )
-    if DoesWindowExist( c_MIN_GROUP_LEADER_CROWN_WINDOW ) then
-        WindowSetShowing( c_MIN_GROUP_LEADER_CROWN_WINDOW, minimal and GameData.Player.isGroupLeader == true )
-    end
-    if DoesWindowExist( c_MIN_WARBAND_LEADER_CROWN_WINDOW ) then
-        WindowSetShowing( c_MIN_WARBAND_LEADER_CROWN_WINDOW, minimal and wbLeader )
-    end
+    WindowSetShowing( c_WARBAND_LEADER_CROWN_WINDOW, wbLeader )
 end
 
 function CustomUI.PlayerStatusWindow.ShowMenu()
@@ -1076,7 +685,6 @@ local PlayerStatusWindowComponent = {
 
 function PlayerStatusWindowComponent:Enable()
     RegisterHandlers()
-    -- ApplyAppearance selects which of the two registered windows to show.
     CustomUI.PlayerStatusWindow.ApplyAppearance()
     if LayoutEditor.windowsList["PlayerWindow"] then
         LayoutEditor.UserHide( "PlayerWindow" )
@@ -1114,8 +722,6 @@ function PlayerStatusWindowComponent:Enable()
 end
 
 function PlayerStatusWindowComponent:Disable()
-    ReleaseLowHpScreenFlashHold()
-    ResetLowHpScreenFlashLatch()
     CustomUI.PlayerPetWindow.Disable()
     UnregisterHandlers()
     -- Clear CUI buff tracker before handing back to stock to avoid stale entries across rapid toggles.
@@ -1129,9 +735,6 @@ function PlayerStatusWindowComponent:Disable()
     end
     if LayoutEditor.windowsList["CustomUIPlayerStatusWindow"] then
         LayoutEditor.UserHide("CustomUIPlayerStatusWindow")
-    end
-    if LayoutEditor.windowsList["CustomUIPlayerStatusWindowMinimal"] then
-        LayoutEditor.UserHide("CustomUIPlayerStatusWindowMinimal")
     end
     RehookStockPlayerWindowHandlers()
     if LayoutEditor.windowsList["PlayerWindow"] then
@@ -1185,39 +788,15 @@ end
 function CustomUI.PlayerStatusWindow.GetSettings()
     CustomUI.Settings.PlayerStatusWindow = CustomUI.Settings.PlayerStatusWindow or {}
     local v = CustomUI.Settings.PlayerStatusWindow
-    -- Legacy unused keys (Medium #8): drop from persisted settings if still present.
+    -- Legacy unused keys: drop from persisted settings if still present.
     v.alwaysShowHitPoints = nil
     v.alwaysShowAPPoints = nil
+    v.appearance = nil
+    v.minimalShowApBar = nil
+    v.minimalHpBarStyle = nil
+    v.lowHpScreenFlash = nil
+    v.lowHpScreenFlashThresholdPercent = nil
     v.buffs = v.buffs or {}
-    if v.appearance == nil then
-        v.appearance = "default"
-    end
-    if v.minimalShowApBar == nil then
-        v.minimalShowApBar = true
-    end
-    if v.minimalHpBarStyle == nil then
-        v.minimalHpBarStyle = "archetype"
-    elseif v.minimalHpBarStyle ~= "archetype" and v.minimalHpBarStyle ~= "standard" then
-        v.minimalHpBarStyle = "standard"
-    end
-    if v.lowHpScreenFlash == nil then
-        v.lowHpScreenFlash = false
-    end
-    if v.lowHpScreenFlashThresholdPercent == nil then
-        v.lowHpScreenFlashThresholdPercent = 50
-    else
-        local t = tonumber(v.lowHpScreenFlashThresholdPercent) or 50
-        local allowed = CustomUI.PlayerStatusWindow.LOW_HP_SCREEN_FLASH_THRESHOLD_PERCENTS
-        local best, bestDist = 50, math.huge
-        for _, pct in ipairs(allowed) do
-            local d = math.abs(t - pct)
-            if d < bestDist then
-                bestDist = d
-                best = pct
-            end
-        end
-        v.lowHpScreenFlashThresholdPercent = best
-    end
     local defs = CustomUI.BuffTracker.FilterDefaults
     for _, k in ipairs(CustomUI.BuffTracker.FilterSettingKeys) do
         if v.buffs[k] == nil then
@@ -1232,25 +811,6 @@ function CustomUI.PlayerStatusWindow.ApplyBuffSettings()
     if not tracker then return end
     local cfg = CustomUI.PlayerStatusWindow.GetSettings().buffs
     tracker:SetFilter(cfg)
-end
-
---- Sync low-HP flash state after settings edits (does not trigger a flash).
-function CustomUI.PlayerStatusWindow.SyncLowHpScreenFlashFromSettings()
-    if not LowHpScreenFlashWindowApiAvailable() then
-        return
-    end
-    if not CustomUI.IsComponentEnabled("PlayerStatusWindow") then
-        ReleaseLowHpScreenFlashHold()
-        ResetLowHpScreenFlashLatch()
-        return
-    end
-    local s = CustomUI.PlayerStatusWindow.GetSettings()
-    if s.lowHpScreenFlash ~= true then
-        ReleaseLowHpScreenFlashHold()
-        ResetLowHpScreenFlashLatch()
-        return
-    end
-    SyncLowHpScreenFlashHold()
 end
 
 CustomUI.RegisterComponent( "PlayerStatusWindow", PlayerStatusWindowComponent )

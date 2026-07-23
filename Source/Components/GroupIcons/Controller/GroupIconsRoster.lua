@@ -99,7 +99,7 @@ local function RosterWorldObjectNameMatchesPlayer(wid, expectedNameW, opts)
     if wid == nil or wid == 0 or type(GetNameForObject) ~= "function" then
         return true
     end
-    local ok, nm = pcall(GetNameForObject, wid)
+    local ok, nm = CustomUI.TryCallQuiet("GroupIconsRoster.RosterWorldObjectNameMatchesPlayer", GetNameForObject, wid)
     if not ok or nm == nil then
         return true
     end

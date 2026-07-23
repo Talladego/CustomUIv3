@@ -105,14 +105,18 @@ function UnitFramesSort.GetEffectiveArchetypeForPlayer(playerName, careerLine)
         return UnitFramesSort.GetBucketForCareerLine(careerLine)
     end
 
-    if type(UnitFramesArchetypes.ResolveOverrideIndexForPlayer) ~= "function" then
-        return UnitFramesSort.GetBucketForCareerLine(careerLine)
+    -- Scoreboard archtype > 0 = alt-spec (not tank/dps/heal bucket ids). Hybrid healers sort as DPS.
+    if type(UnitFramesArchetypes.IsAltSpec) == "function" and UnitFramesArchetypes.IsAltSpec(playerName) then
+        local line = tonumber(careerLine)
+        if line ~= nil and c_UF_SORT_HEAL[line] then
+            -- Melee hybrids (WP/DoK) → melee DPS bucket; caster hybrids → ranged.
+            if line == GameData.CareerLine.WARRIOR_PRIEST or line == GameData.CareerLine.DISCIPLE then
+                return 2
+            end
+            return 3
+        end
     end
 
-    local overrideIndex, matched = UnitFramesArchetypes.ResolveOverrideIndexForPlayer(playerName)
-    if matched and overrideIndex and overrideIndex <= 4 then
-        return overrideIndex
-    end
     return UnitFramesSort.GetBucketForCareerLine(careerLine)
 end
 

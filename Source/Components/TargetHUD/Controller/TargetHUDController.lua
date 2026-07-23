@@ -148,8 +148,20 @@ local function RefreshHUDFromCache(hud, windowName)
         return 0
     end
 
-    -- Update health bar.
-    StatusBarSetCurrentValue(windowName .. "HealthBarBar", TargetInfo:UnitHealth(hud.unitId))
+    -- Update health bar + HP% overlay (EA_Window_DefaultFrameStatusBar BarText).
+    local hp = tonumber(TargetInfo:UnitHealth(hud.unitId)) or 0
+    if hp < 0 then
+        hp = 0
+    elseif hp > 100 then
+        hp = 100
+    end
+    local hpRounded = math.floor(hp + 0.5)
+    StatusBarSetCurrentValue(windowName .. "HealthBarBar", hp)
+    local healthTextName = windowName .. "HealthBarBarText"
+    if DoesWindowExist(healthTextName) then
+        LabelSetText(healthTextName, towstring(hpRounded) .. L"%")
+        WindowSetShowing(healthTextName, true)
+    end
 
     -- Single label: <icon> career portrait + name + rank.
     local unitName   = TargetInfo:UnitName(hud.unitId)
@@ -224,11 +236,15 @@ function CustomUI.TargetHUD.Initialize()
     StatusBarSetBackgroundTint(c_HOSTILE_WINDOW_NAME  .. "HealthBarBar", 0, 0, 0)
     StatusBarSetBackgroundTint(c_FRIENDLY_WINDOW_NAME .. "HealthBarBar", 0, 0, 0)
 
-    local function HideIfExists(name)
-        if DoesWindowExist(name) then WindowSetShowing(name, false) end
+    -- BarText starts empty until the first target refresh writes HP%.
+    local function ClearHealthTextIfExists(name)
+        if DoesWindowExist(name) then
+            LabelSetText(name, L"")
+            WindowSetShowing(name, false)
+        end
     end
-    HideIfExists(c_HOSTILE_WINDOW_NAME  .. "HealthBarBarText")
-    HideIfExists(c_FRIENDLY_WINDOW_NAME .. "HealthBarBarText")
+    ClearHealthTextIfExists(c_HOSTILE_WINDOW_NAME  .. "HealthBarBarText")
+    ClearHealthTextIfExists(c_FRIENDLY_WINDOW_NAME .. "HealthBarBarText")
 
     m_hostile.buffTracker  = CreateHUDBuffTracker(c_HOSTILE_WINDOW_NAME,  GameData.BuffTargetType.TARGET_HOSTILE)
     m_friendly.buffTracker = CreateHUDBuffTracker(c_FRIENDLY_WINDOW_NAME, GameData.BuffTargetType.TARGET_FRIENDLY)

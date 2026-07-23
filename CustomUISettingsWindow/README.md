@@ -8,7 +8,20 @@ players open it with **`/cui`** or **`/customui`** (registered by CustomUI).
 **Backlog:** [TODO.md](TODO.md) — open issues, validation, new-tab checklist.  
 **Parent addon:** [../README.md](../README.md) (architecture), [../TODO.md](../TODO.md) (runtime validation and component work).
 
-This README is **layout and diagnostics only**; do not duplicate parent backlog here except settings-specific items.
+This README is **layout and diagnostics** plus footer-button semantics. Do not
+duplicate parent backlog here except settings-specific items.
+
+### Footer buttons (stock User Settings parity)
+
+Same contract as `SettingsWindowTabbed` in `ea_settingswindow`:
+
+- **Okay** — `ApplyCurrent` on every tab, seal settings baseline, close.
+- **Apply** — same commit, window stays open.
+- **Reset** — restore `CustomUI.Settings` from the baseline taken on open / last Apply, re-apply components, refresh widgets. This is **not** factory defaults.
+- **Cancel** / close / Enter — Reset, then close.
+
+Most feature tabs only flip checkboxes until Apply/Okay. SCT may write live for
+preview; Cancel/Reset still undo those via the baseline.
 
 **Tabs (load order in `CustomUISettingsWindow.mod`):** Player → Target →
 TargetHUD → Group → UnitFrames → GroupIcons → SCT, plus the shared

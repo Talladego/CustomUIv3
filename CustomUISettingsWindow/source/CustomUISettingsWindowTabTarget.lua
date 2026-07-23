@@ -32,6 +32,16 @@ local function SyncBuffButtonsToCfg(prefix, cfg)
     ButtonSetPressedFlag(prefix .. "PlayerCastOnlyButton", cfg.playerCastOnly)
 end
 
+local function ReadBuffButtonsToCfg(prefix, cfg)
+    cfg.showBuffs = ButtonGetPressedFlag(prefix .. "BuffsButton") == true
+    cfg.showDebuffs = ButtonGetPressedFlag(prefix .. "DebuffsButton") == true
+    cfg.showNeutral = ButtonGetPressedFlag(prefix .. "NeutralButton") == true
+    cfg.showShort = ButtonGetPressedFlag(prefix .. "ShortButton") == true
+    cfg.showLong = ButtonGetPressedFlag(prefix .. "LongButton") == true
+    cfg.showPermanent = ButtonGetPressedFlag(prefix .. "PermanentButton") == true
+    cfg.playerCastOnly = ButtonGetPressedFlag(prefix .. "PlayerCastOnlyButton") == true
+end
+
 function CustomUISettingsWindowTabTarget.Initialize()
     LabelSetText(CustomUISettingsWindowTabTarget.contentsName .. "GeneralTitle", L"General")
     LabelSetText(CustomUISettingsWindowTabTarget.contentsName .. "GeneralTargetWindowEnabledLabel", L"Enabled")
@@ -55,46 +65,7 @@ function CustomUISettingsWindowTabTarget.UpdateSettings()
 end
 
 function CustomUISettingsWindowTabTarget.ApplyCurrent()
-end
-
-function CustomUISettingsWindowTabTarget.ResetSettings()
-end
-
--- Suffix after contentsName (e.g. BuffTrackerHostileBuffs) → slot + filter key
-local BUFF_CHECKBOX_KEYS = {
-    BuffTrackerHostileBuffs = { "hostile", "showBuffs" },
-    BuffTrackerHostileDebuffs = { "hostile", "showDebuffs" },
-    BuffTrackerHostileNeutral = { "hostile", "showNeutral" },
-    BuffTrackerHostileShort = { "hostile", "showShort" },
-    BuffTrackerHostileLong = { "hostile", "showLong" },
-    BuffTrackerHostilePermanent = { "hostile", "showPermanent" },
-    BuffTrackerHostilePlayerCastOnly = { "hostile", "playerCastOnly" },
-    BuffTrackerFriendlyBuffs = { "friendly", "showBuffs" },
-    BuffTrackerFriendlyDebuffs = { "friendly", "showDebuffs" },
-    BuffTrackerFriendlyNeutral = { "friendly", "showNeutral" },
-    BuffTrackerFriendlyShort = { "friendly", "showShort" },
-    BuffTrackerFriendlyLong = { "friendly", "showLong" },
-    BuffTrackerFriendlyPermanent = { "friendly", "showPermanent" },
-    BuffTrackerFriendlyPlayerCastOnly = { "friendly", "playerCastOnly" },
-}
-
-function CustomUISettingsWindowTabTarget.OnBuffFilterChanged()
-    EA_LabelCheckButton.Toggle()
-    local winName = SystemData.ActiveWindow.name
-    local suffix = string.sub(winName, #CustomUISettingsWindowTabTarget.contentsName + 1)
-    local entry = BUFF_CHECKBOX_KEYS[suffix]
-    if not entry then return end
-    local slot, key = entry[1], entry[2]
-    local cfg = slot == "hostile" and CustomUI.TargetWindow.GetBuffFilterHostile() or CustomUI.TargetWindow.GetBuffFilterFriendly()
-    cfg[key] = ButtonGetPressedFlag(winName .. "Button")
-    CustomUI.TargetWindow.ApplyBuffSettings()
-end
-
-function CustomUISettingsWindowTabTarget.OnToggleTargetWindow()
-    EA_LabelCheckButton.Toggle()
     local enabled = ButtonGetPressedFlag(CustomUISettingsWindowTabTarget.contentsName .. "GeneralTargetWindowEnabledButton")
-    -- CustomUI.EnableComponent only writes Settings.Components on success. Persist the choice first
-    -- so a transient Enable() failure (or load-order) still saves and the next /reload can retry.
     CustomUI.Settings.Components = CustomUI.Settings.Components or {}
     CustomUI.Settings.Components.TargetWindow = enabled
     if enabled then
@@ -102,7 +73,21 @@ function CustomUISettingsWindowTabTarget.OnToggleTargetWindow()
     else
         CustomUI.DisableComponent("TargetWindow")
     end
-    ButtonSetPressedFlag(
-        CustomUISettingsWindowTabTarget.contentsName .. "GeneralTargetWindowEnabledButton",
-        CustomUI.IsComponentEnabled("TargetWindow"))
+
+    local btH = CustomUISettingsWindowTabTarget.contentsName .. "BuffTrackerHostile"
+    local btF = CustomUISettingsWindowTabTarget.contentsName .. "BuffTrackerFriendly"
+    ReadBuffButtonsToCfg(btH, CustomUI.TargetWindow.GetBuffFilterHostile())
+    ReadBuffButtonsToCfg(btF, CustomUI.TargetWindow.GetBuffFilterFriendly())
+    CustomUI.TargetWindow.ApplyBuffSettings()
+end
+
+function CustomUISettingsWindowTabTarget.ResetSettings()
+end
+
+function CustomUISettingsWindowTabTarget.OnBuffFilterChanged()
+    EA_LabelCheckButton.Toggle()
+end
+
+function CustomUISettingsWindowTabTarget.OnToggleTargetWindow()
+    EA_LabelCheckButton.Toggle()
 end

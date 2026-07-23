@@ -1,6 +1,12 @@
-
 ----------------------------------------------------------------
--- Global Variables
+-- CustomUISettingsWindowTabbed
+-- Footer buttons match stock EA SettingsWindowTabbed:
+--   Okay   = Apply all tabs, then close
+--   Apply  = commit all tabs from widgets (and seal SCT live edits), stay open
+--   Reset  = discard unapplied UI changes back to last-applied baseline (NOT factory defaults)
+--   Cancel = Reset, then close
+-- Pending edits for most tabs live in widgets until Apply/Okay.
+-- SCT still writes live for preview; Cancel/Reset restore a settings baseline captured on open/Apply.
 ----------------------------------------------------------------
 
 CustomUISettingsWindowTabbed = {}
@@ -16,8 +22,98 @@ CustomUISettingsWindowTabbed.TABS_MAX_NUMBER	= 7
 
 local c_SCT_COLOR_PICKER_DEFAULT_BUTTON = "CustomUISettingsWindowTabbedSctColorPickerHostSctColorPickerDefaultButton"
 
+-- Deep copy of CustomUI.Settings at last Apply / window open (stock "last applied" baseline).
+local m_settingsBaseline = nil
+
 local function SctSetDefaultColorButtonCaption()
     ButtonSetText( c_SCT_COLOR_PICKER_DEFAULT_BUTTON, L"Default" )
+end
+
+local function DeepCopy(value)
+    if type(value) ~= "table" then
+        return value
+    end
+    local copy = {}
+    for k, v in pairs(value) do
+        copy[k] = DeepCopy(v)
+    end
+    return copy
+end
+
+local function ReplaceTableContents(dst, src)
+    if type(dst) ~= "table" or type(src) ~= "table" then
+        return
+    end
+    for k in pairs(dst) do
+        dst[k] = nil
+    end
+    for k, v in pairs(src) do
+        if type(v) == "table" then
+            dst[k] = DeepCopy(v)
+        else
+            dst[k] = v
+        end
+    end
+end
+
+local function CaptureSettingsBaseline()
+    if type(CustomUI) ~= "table" or type(CustomUI.Settings) ~= "table" then
+        m_settingsBaseline = nil
+        return
+    end
+    m_settingsBaseline = DeepCopy(CustomUI.Settings)
+end
+
+local function ReapplyComponentsFromSettings()
+    if type(CustomUI) ~= "table" then
+        return
+    end
+
+    if type(CustomUI.ComponentOrder) == "table" and type(CustomUI.SetComponentEnabled) == "function" then
+        local comps = (CustomUI.Settings and CustomUI.Settings.Components) or {}
+        for _, name in ipairs(CustomUI.ComponentOrder) do
+            local want = comps[name] == true
+            if CustomUI.IsComponentEnabled(name) ~= want then
+                CustomUI.SetComponentEnabled(name, want)
+            end
+        end
+    end
+
+    if CustomUI.PlayerStatusWindow and type(CustomUI.PlayerStatusWindow.ApplyBuffSettings) == "function" then
+        CustomUI.PlayerStatusWindow.ApplyBuffSettings()
+    end
+    if CustomUI.TargetWindow and type(CustomUI.TargetWindow.ApplyBuffSettings) == "function" then
+        CustomUI.TargetWindow.ApplyBuffSettings()
+    end
+    if CustomUI.TargetHUD and type(CustomUI.TargetHUD.ApplyBuffSettings) == "function" then
+        CustomUI.TargetHUD.ApplyBuffSettings()
+    end
+    if CustomUI.GroupWindow and type(CustomUI.GroupWindow.ApplyBuffSettings) == "function" then
+        CustomUI.GroupWindow.ApplyBuffSettings()
+    end
+    if CustomUI.UnitFrames and type(CustomUI.UnitFrames.OnGroupsSettingsChanged) == "function" then
+        CustomUI.UnitFrames.OnGroupsSettingsChanged()
+    end
+    if CustomUI.GroupIcons and type(CustomUI.GroupIcons.OnSettingsChanged) == "function" then
+        CustomUI.GroupIcons.OnSettingsChanged()
+    end
+    -- SCT reads CustomUI.Settings.SCT; force a settings-changed refresh if available.
+    if CustomUI.SCT then
+        if type(CustomUI.SCT.NotifySettingsChanged) == "function" then
+            CustomUI.SCT.NotifySettingsChanged()
+        elseif type(CustomUI.SCT.OnSettingsChanged) == "function" then
+            CustomUI.SCT.OnSettingsChanged()
+        end
+    end
+end
+
+local function RestoreSettingsBaseline()
+    if type(CustomUI) ~= "table" or type(CustomUI.Settings) ~= "table" or type(m_settingsBaseline) ~= "table" then
+        return false
+    end
+    ReplaceTableContents(CustomUI.Settings, m_settingsBaseline)
+    ReapplyComponentsFromSettings()
+    return true
 end
 
 CustomUISettingsWindowTabbed.SelectedTab		= CustomUISettingsWindowTabbed.TABS_PLAYER
@@ -36,11 +132,11 @@ CustomUISettingsWindowTabbed.Tabs[ CustomUISettingsWindowTabbed.TABS_SCT        
 function CustomUISettingsWindowTabbed.OnShow()
     WindowUtils.OnShown()
     SctSetDefaultColorButtonCaption()
-    -- SettingsWindowTabInterface.OnShown()
     CustomUISettingsWindowTabbed.UpdateSettings()
+    -- Baseline = last applied / currently live settings (stock Cancel/Reset target).
+    CaptureSettingsBaseline()
 end
 
--- OnInitialize Handler()
 function CustomUISettingsWindowTabbed.Initialize()
 
     if CustomUI and type(CustomUI.ShowSettings) ~= "function" then
@@ -53,31 +149,26 @@ function CustomUISettingsWindowTabbed.Initialize()
     
     CustomUISettingsWindowTabbed.SetTabLabels()
     
-    --buttons on the bottom
     ButtonSetText( "CustomUISettingsWindowTabbedOkayButton", GetString( StringTables.Default.LABEL_OKAY ) )
     ButtonSetText( "CustomUISettingsWindowTabbedApplyButton", GetString( StringTables.Default.LABEL_APPLY ) )
     ButtonSetText( "CustomUISettingsWindowTabbedResetButton", GetString( StringTables.Default.LABEL_RESET ) )
     ButtonSetText( "CustomUISettingsWindowTabbedCancelButton", GetString( StringTables.Default.LABEL_CANCEL ) )
     SctSetDefaultColorButtonCaption()
     
-    --could consider saving off and loading the tab they were looking at like GuildWindow does
     CustomUISettingsWindowTabbed.SelectTab(CustomUISettingsWindowTabbed.SelectedTab)
 
     CustomUISettingsWindowTabbed.UpdateSettings()
+    CaptureSettingsBaseline()
 end
 
--- Initializes all the text on the tab buttons
 function CustomUISettingsWindowTabbed.SetTabLabels()
     for index, TabData in ipairs(CustomUISettingsWindowTabbed.Tabs) 
     do
-        -- ButtonSetText(TabData.name, GetStringFromTable( "UserSettingsStrings", TabData.label ) )
 		ButtonSetText(TabData.name, TabData.label )
     end
 end
 
 function CustomUISettingsWindowTabbed.UpdateSettings()
-
-    -- Reload the current settings
     for index, TabIndex in ipairs(CustomUISettingsWindowTabbed.Tabs) 
     do
         if TabIndex.tabClass ~= nil then
@@ -86,19 +177,16 @@ function CustomUISettingsWindowTabbed.UpdateSettings()
     end
 end
 
+-- Stock: Cancel = Reset, then close.
 function CustomUISettingsWindowTabbed.OnCancelButton()
-    -- Do not call OnResetButton here: Close (X), Cancel, and Enter use this path. Resetting the
-    -- *selected* tab was resetting SCT colors (CustomUISettingsWindowTabSCT.ResetColorsToStockDefault)
-    -- whenever the SCT tab was active, which is never what "close" should do. Use the footer Reset
-    -- button for tab-scoped defaults.
+    CustomUISettingsWindowTabbed.OnResetButton()
     WindowSetShowing( "CustomUISettingsWindowTabbed", false )
 end
 
+-- Stock: Reset discards unapplied widget/live-preview changes back to last-applied settings
+-- (NOT factory defaults). SCT tab factory reset is intentionally not invoked here.
 function CustomUISettingsWindowTabbed.OnResetButton()
-    local tab = CustomUISettingsWindowTabbed.Tabs[CustomUISettingsWindowTabbed.SelectedTab]
-    if tab and tab.tabClass and tab.tabClass.ResetSettings then
-        tab.tabClass.ResetSettings()
-    end
+    RestoreSettingsBaseline()
     CustomUISettingsWindowTabbed.UpdateSettings()
 end
 
@@ -122,12 +210,10 @@ function CustomUISettingsWindowTabbed.SelectTab(tabNumber)
     end
 end
 
--- EventHandler for OnLButtonUp when a user L- clicks a tab
 function CustomUISettingsWindowTabbed.OnLButtonUpTab()
     CustomUISettingsWindowTabbed.SelectTab(WindowGetId (SystemData.ActiveWindow.name))
 end
 
--- Same idea as SettingsWindowTabbed.OnMouseOverTab, but tab text is local wstrings (no UserSettingsStrings table).
 function CustomUISettingsWindowTabbed.OnMouseOverTab()
     local windowName = SystemData.ActiveWindow.name
     local windowIndex = WindowGetId(windowName)
@@ -146,34 +232,26 @@ function CustomUISettingsWindowTabbed.OnMouseOverTab()
 end
 
 function CustomUISettingsWindowTabbed.OnApplyButton()
-
-    -- Set the Options
     for index, TabIndex in ipairs(CustomUISettingsWindowTabbed.Tabs) do
         if TabIndex.tabClass ~= nil then
             TabIndex.tabClass.ApplyCurrent()
         end
     end
-    
+    -- Seal current live settings as the new Cancel/Reset baseline (includes SCT live edits).
+    CaptureSettingsBaseline()
     BroadcastEvent( SystemData.Events.USER_SETTINGS_CHANGED )
 end
 
 function CustomUISettingsWindowTabbed.OnOkayButton()
-
     CustomUISettingsWindowTabbed.OnApplyButton()
-
-    -- Close the window     
     WindowSetShowing( "CustomUISettingsWindowTabbed", false )
 end
 
 function CustomUISettingsWindowTabbed.DoLoginPerformanceWarning()
-
     if ( SystemData.Settings.Performance.perfLevelOverridden and 
          SystemData.Settings.ShowWarning[SystemData.Settings.DlgWarning.WARN_PERFORMANCE] )        
     then
         SystemData.Settings.Performance.perfLevelOverridden = false
         DialogManager.MakeOneButtonDialog(GetPregameString(StringTables.Pregame.LABEL_PERFORMANCE_OVERRIDDEN), GetPregameString(StringTables.Pregame.LABEL_OKAY), nil, nil, DialogManager.UNTYPED_ID)
     end
-
 end
-
-

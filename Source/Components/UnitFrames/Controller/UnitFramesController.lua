@@ -791,10 +791,7 @@ local function NarrowWindowName(raw)
         return raw
     end
     if type(WStringToString) == "function" then
-        local ok, s = pcall(WStringToString, raw)
-        if ok and type(s) == "string" and s ~= "" then
-            return s
-        end
+        return CustomUI.NarrowWString(raw)
     end
     return tostring(raw) or ""
 end
@@ -1460,6 +1457,16 @@ local function RefreshCareerRankLabelsOnVisibleMemberRows()
     end
 end
 
+--- Force empty HP/AP when dead so skull cannot sit on a stale full (archetype-tinted) bar.
+local function ForceMemberBarsDead(memberWindow)
+    SetMemberHpBarValues(memberWindow, 100, 0)
+    local apBar = tostring(memberWindow or "") .. "APBar"
+    if DoesWindowExist(apBar) then
+        StatusBarSetMaximumValue(apBar, 100)
+        StatusBarSetCurrentValue(apBar, 0)
+    end
+end
+
 local function SetMemberTextAndState(memberWindow, member)
     local memberName = ToWString(member and member.name) or L""
     LabelSetText(memberWindow .. "LabelName", memberName)
@@ -1467,7 +1474,6 @@ local function SetMemberTextAndState(memberWindow, member)
     local isSelfRow = GameData and GameData.Player and member and member.name
         and NamesMatch(member.name, GameData.Player.name)
     local hpRounded = RoundHpPercentForDisplay(member.healthPercent, not isSelfRow)
-    local apRounded = RoundApPercentForDisplay(member.actionPointPercent)
 
     local healthText = towstring(hpRounded) .. L"%"
     local hpRaw = tonumber(member.healthPercent) or 0
@@ -1485,6 +1491,8 @@ local function SetMemberTextAndState(memberWindow, member)
     elseif isDead then
         healthText = L""
         SetMemberSkullIconShowing(memberWindow, true)
+        -- Must run after SetMemberBars so dead styling wins over stale/interpolated fill.
+        ForceMemberBarsDead(memberWindow)
     elseif member.isDistant then
         healthText = L""
         dimFrames = true
@@ -1554,6 +1562,8 @@ local function SetScenarioMemberTextAndState(memberWindow, player, groupIndex, m
     if isDead then
         LabelSetText(memberWindow .. "LabelHealth", L"")
         SetMemberSkullIconShowing(memberWindow, true)
+        -- Must run after SetScenarioMemberBars so skull cannot sit on a full archetype-tinted bar.
+        ForceMemberBarsDead(memberWindow)
     elseif isDistant then
         LabelSetText(memberWindow .. "LabelHealth", L"")
         dimFrames = true
@@ -1578,9 +1588,10 @@ local function UpdateWarbandMember(groupIndex, memberIndex, member)
         return
     end
 
+    -- Bars first; TextAndState applies skull and forces empty bars when dead.
+    SetMemberBars(memberWindow, member)
     SetMemberTextAndState(memberWindow, member)
     SetCareerIcon(memberWindow, member)
-    SetMemberBars(memberWindow, member)
 
     local groupLeaderIcon = GroupWindowName(groupIndex) .. "GroupLeaderIcon"
 
@@ -1828,9 +1839,9 @@ local function UpdateScenarioGroup(groupIndex, groups)
         if player ~= nil and playerName ~= nil and playerName ~= L"" then
             hasMembers = true
             SetMemberWindowShowing(groupIndex, displaySlot, true)
+            SetScenarioMemberBars(memberWindow, player, groupIndex, rosterSlot)
             SetScenarioMemberTextAndState(memberWindow, player, groupIndex, rosterSlot)
             SetScenarioCareerIcon(memberWindow, player)
-            SetScenarioMemberBars(memberWindow, player, groupIndex, rosterSlot)
         else
             SetMemberWindowShowing(groupIndex, displaySlot, false)
         end
@@ -1997,8 +2008,8 @@ local function RefreshScenarioMemberFromHits(groupIndex, rosterSlot)
         return
     end
 
-    SetScenarioMemberTextAndState(memberWindow, player, gi, rs)
     SetScenarioMemberBars(memberWindow, player, gi, rs)
+    SetScenarioMemberTextAndState(memberWindow, player, gi, rs)
 end
 
 --- RoR fires this with (groupIndex, groupSlotNum, hits); Enemy maps it to roster HP updates.
@@ -2161,7 +2172,12 @@ function UnitFrames.OnMouseOverCareerIcon()
 
     local levelString = L""
     if type(PartyUtils) == "table" and type(PartyUtils.GetLevelText) == "function" then
-        local ok, txt = pcall(PartyUtils.GetLevelText, tonumber(member.level) or 0, tonumber(member.battleLevel) or 0)
+        local ok, txt = CustomUI.TryCallQuiet(
+            "UnitFrames.ShowMemberTooltip.GetLevelText",
+            PartyUtils.GetLevelText,
+            tonumber(member.level) or 0,
+            tonumber(member.battleLevel) or 0
+        )
         if ok and txt ~= nil then
             levelString = txt
         end

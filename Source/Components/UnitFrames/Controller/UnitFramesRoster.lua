@@ -25,7 +25,12 @@ function UnitFramesRoster.GetWarbandMember(dataParty, memberIndex)
         return nil
     end
 
-    local ok, member = pcall(PartyUtils.GetWarbandMember, dataParty, memberIndex)
+    local ok, member = CustomUI.TryCallQuiet(
+        "UnitFramesRoster.GetWarbandMember",
+        PartyUtils.GetWarbandMember,
+        dataParty,
+        memberIndex
+    )
     if ok then
         return member
     end

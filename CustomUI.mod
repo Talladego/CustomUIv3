@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ModuleFile xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-    <UiMod name="CustomUI" version="1.0" date="13/04/2026">
+    <UiMod name="CustomUI" version="1.1.0" date="2026-07-23">
         <Author name="Talladego" email="" />
         <Description text="Modular Return of Reckoning UI replacement addon with component toggles and shared systems." />
+        <VersionSettings gameVersion="1.4.8" windowsVersion="1.0" savedVariablesVersion="1.0" />
         <Dependencies>
             <!-- Common core: shared utility helpers used throughout the default UI code. -->
             <Dependency name="EASystem_Utils" />
@@ -22,8 +23,6 @@
             <Dependency name="EA_TacticsWindow" />
             <!-- PlayerStatusWindow component: ensures stock player status resources are loaded so this component can reuse default assets. -->
             <Dependency name="EA_PlayerStatusWindow" />
-            <!-- Low HP screen vignette (ScreenFlashWindow) when enabled in Player Status settings. -->
-            <Dependency name="EA_ScreenFlashWindow" />
             <!-- GroupWindow component: ensures stock group window assets are loaded so member rows render correctly. -->
             <Dependency name="EA_GroupWindow" />
             <!-- TargetWindow component: overrides target window hooks and layout. -->
@@ -52,7 +51,6 @@
             <File name="Source/Shared/UnitFrame/TargetFrame.lua" />
             <File name="Source/Components/PlayerStatusWindow/Controller/PlayerStatusWindowController.lua" />
             <File name="Source/Components/PlayerStatusWindow/View/PlayerStatusWindow.xml" />
-            <File name="Source/Components/PlayerStatusWindow/View/PlayerStatusWindowMinimal.xml" />
             <File name="Source/Components/TargetWindow/Controller/TargetWindowController.lua" />
             <File name="Source/Components/TargetWindow/View/TargetWindow.xml" />
             <File name="Source/Components/PlayerStatusWindow/Controller/PlayerPetWindowController.lua" />

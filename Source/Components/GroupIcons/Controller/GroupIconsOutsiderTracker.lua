@@ -222,8 +222,35 @@ function OutsiderTracker.ValidateTracked(state, cal, opts)
         return
     end
 
+    opts = opts or {}
+    local maxBatch = tonumber(opts.maxBatch) or 0
+    local wids = {}
+    for wid in pairs(state.trackWidToSlot) do
+        wids[#wids + 1] = wid
+    end
+    table.sort(wids)
+
+    local startIndex = 1
+    local endIndex = #wids
+    if maxBatch > 0 and #wids > maxBatch then
+        startIndex = tonumber(state.probeCursor) or 1
+        if startIndex < 1 or startIndex > #wids then
+            startIndex = 1
+        end
+        endIndex = math.min(#wids, startIndex + maxBatch - 1)
+        local nextCursor = endIndex + 1
+        if nextCursor > #wids then
+            nextCursor = 1
+        end
+        state.probeCursor = nextCursor
+    else
+        state.probeCursor = 1
+    end
+
     local toUntrack = {}
-    for wid, idx in pairs(state.trackWidToSlot) do
+    for i = startIndex, endIndex do
+        local wid = wids[i]
+        local idx = state.trackWidToSlot[wid]
         local icon = state.outsiderPool[idx]
         local win = icon and icon.windowName
         if not win or not DoesWindowExist(win) then

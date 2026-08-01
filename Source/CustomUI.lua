@@ -214,11 +214,11 @@ function CustomUI.PrintMessage(message)
     local output = GetChatPrefixWString(true) .. message
 
     if EA_ChatWindow and EA_ChatWindow.Print then
-        EA_ChatWindow.Print(output)
+        EA_ChatWindow.Print(output, SystemData.SystemLogFilters.GENERAL)
         return
     end
 
-    TextLogAddEntry("Chat", 0, output)
+    TextLogAddEntry("System", SystemData.SystemLogFilters.GENERAL, output)
 end
 
 --- Optional client debug hook (`d`). Do not assign global `d` from addons; read-only via this accessor (README).
@@ -898,6 +898,12 @@ function CustomUI.ResetAllToDefaults()
 end
 
 function CustomUI.InitializeComponents()
+    -- Initialize every component (even when disabled) so LayoutEditor.RegisterWindow /
+    -- UserHide run for movable roots. Then enable only the components that are on.
+    for _, componentName in ipairs(CustomUI.ComponentOrder) do
+        CustomUI.InitializeComponent(componentName)
+    end
+
     for _, componentName in ipairs(CustomUI.ComponentOrder) do
         if CustomUI.IsComponentEnabled(componentName) then
             CustomUI.EnableComponent(componentName)
@@ -937,16 +943,19 @@ local ROOT_WINDOW_NAMES = {
     "CustomUIHostileTargetHUD",
     "CustomUIFriendlyTargetHUD",
     "CustomUIGroupWindow",
-    "CustomUIUnitFramesRoot",
+    -- UnitFrames groups before Root: Root OnInitialize calls UnitFrames.InitializeWindow and
+    -- needs Group1–6 to exist for LayoutEditor.RegisterWindow.
     "CustomUIUnitFramesGroup1Window",
     "CustomUIUnitFramesGroup2Window",
     "CustomUIUnitFramesGroup3Window",
     "CustomUIUnitFramesGroup4Window",
     "CustomUIUnitFramesGroup5Window",
     "CustomUIUnitFramesGroup6Window",
+    "CustomUIUnitFramesRoot",
     "CustomUISCTWindow", -- SCT root placeholder; was not in the old .mod list
     "CustomUIGroupIconsWorldProbe",
     "CustomUIGroupIconsDriver",
+    "CustomUIKillTrackerWindow",
     "CustomUIGlobalUpdateDriver",
 }
 

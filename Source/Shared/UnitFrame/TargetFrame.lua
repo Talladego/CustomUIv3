@@ -2,10 +2,10 @@
 -- CustomUI.TargetFrame
 -- **Current (shipped):** used by TargetWindow only. Not legacy. See README "Source/Shared".
 -- Subclasses the stock TargetUnitFrame class.  Most methods
--- (UpdateUnit, UpdateStatusFrame, UpdateCombatState,
--- StopInterpolatingStatus, SetCareerIcon, etc.) are inherited from
--- TargetUnitFrame unchanged. Create(), UpdateLevel(), and UpdateHealth()
--- are overridden (HP% label on the status bar).
+-- (UpdateStatusFrame, UpdateCombatState, StopInterpolatingStatus,
+-- SetCareerIcon, etc.) are inherited from TargetUnitFrame unchanged.
+-- Create(), UpdateLevel(), UpdateUnit(), and UpdateHealth() are overridden
+-- (HP% on the bar; Champion/Hero/Lord via portrait skulls instead of TierLabel).
 --
 -- Create() mirrors TargetUnitFrame:Create() but substitutes
 -- CustomUI.BuffTracker for BuffTracker, and does NOT register with
@@ -64,6 +64,34 @@ local c_STATUS_ANCHOR_FRIENDLY =
     RelativePoint = "left",
     XOffset       = -18,
     YOffset       = -4,
+}
+
+-- Stock TargetUnitFrame skull layouts (eatemplate_unitframes targetunitframe.lua).
+-- ThreatLevel N = N skulls on the portrait (Champion/Hero/Lord + special).
+local c_TIER_SKULL_ANCHORS =
+{
+    [1] =
+    {
+        [1] = { Point = "bottom", RelativeTo = "PortraitFrame", RelativePoint = "bottom", XOffset = 0, YOffset = 0 },
+    },
+    [2] =
+    {
+        [1] = { Point = "bottom", RelativeTo = "PortraitFrame", RelativePoint = "bottom", XOffset = -10, YOffset = -3 },
+        [2] = { Point = "bottom", RelativeTo = "PortraitFrame", RelativePoint = "bottom", XOffset = 10, YOffset = -3 },
+    },
+    [3] =
+    {
+        [1] = { Point = "bottom", RelativeTo = "PortraitFrame", RelativePoint = "bottom", XOffset = 0, YOffset = 0 },
+        [2] = { Point = "center", RelativeTo = "Skull1", RelativePoint = "center", XOffset = -20, YOffset = -5 },
+        [3] = { Point = "center", RelativeTo = "Skull1", RelativePoint = "center", XOffset = 20, YOffset = -5 },
+    },
+    [4] =
+    {
+        [1] = { Point = "bottom", RelativeTo = "PortraitFrame", RelativePoint = "bottom", XOffset = -25, YOffset = -10 },
+        [2] = { Point = "bottom", RelativeTo = "PortraitFrame", RelativePoint = "bottom", XOffset = -10, YOffset = -3 },
+        [3] = { Point = "bottom", RelativeTo = "PortraitFrame", RelativePoint = "bottom", XOffset = 10, YOffset = -3 },
+        [4] = { Point = "bottom", RelativeTo = "PortraitFrame", RelativePoint = "bottom", XOffset = 25, YOffset = -10 },
+    },
 }
 
 ----------------------------------------------------------------
@@ -188,6 +216,18 @@ function CustomUI.TargetFrame:Create( windowName, unitId,
     WindowSetShowing( windowName .. "StatusSwordLeft",  false )
     WindowSetShowing( windowName .. "StatusSwordRight", false )
 
+    -- Hide unused TierLabel (HP% owns the bar); start with no skulls.
+    local tierLabel = windowName .. "StatusTierLabel"
+    if DoesWindowExist(tierLabel) then
+        WindowSetShowing(tierLabel, false)
+    end
+    for skull = 1, 4 do
+        local skullWin = windowName .. "Skull" .. skull
+        if DoesWindowExist(skullWin) then
+            WindowSetShowing(skullWin, false)
+        end
+    end
+
     return newFrame
 end
 
@@ -202,6 +242,76 @@ function CustomUI.TargetFrame:UpdateLevel(level, battleLevel, conColor)
     WindowSetShowing(windowName .. "LevelBackgroundTint", not self.m_IsFriendly)
     WindowSetShowing(windowName .. "LevelText", self.m_IsAStaticObject == false)
     WindowSetShowing(windowName .. "LevelBackground", self.m_IsAStaticObject == false)
+end
+
+-- Portrait skulls for Champion / Hero / Lord (stock TierLabel text is hidden for HP%).
+-- Prefer UnitTier (1/2/3); fall back to UnitDifficultyMask for special NPCs with no tier.
+local function ResolveTierSkullCount(unitId)
+    local tier = 0
+    local mask = 0
+    if type(TargetInfo) == "table" then
+        if type(TargetInfo.UnitTier) == "function" then
+            tier = tonumber(TargetInfo:UnitTier(unitId)) or 0
+        end
+        if type(TargetInfo.UnitDifficultyMask) == "function" then
+            mask = tonumber(TargetInfo:UnitDifficultyMask(unitId)) or 0
+        end
+    end
+    local count = tier
+    if count <= 0 then
+        count = mask
+    end
+    if count < 0 then
+        count = 0
+    elseif count > 4 then
+        count = 4
+    end
+    return count
+end
+
+function CustomUI.TargetFrame:UpdateTierSkulls()
+    local windowName = self:GetName()
+    local skullCount = 0
+    if not self.m_IsAStaticObject then
+        skullCount = ResolveTierSkullCount(self.m_UnitId)
+    end
+
+    local layout = c_TIER_SKULL_ANCHORS[skullCount]
+    for skull = 1, 4 do
+        local skullWinName = windowName .. "Skull" .. skull
+        if DoesWindowExist(skullWinName) then
+            local show = layout ~= nil and skull <= skullCount
+            WindowSetShowing(skullWinName, show)
+            if show and layout[skull] then
+                local anchor = layout[skull]
+                local relativeWin = windowName .. anchor.RelativeTo
+                WindowClearAnchors(skullWinName)
+                WindowAddAnchor(
+                    skullWinName,
+                    anchor.Point,
+                    relativeWin,
+                    anchor.RelativePoint,
+                    anchor.XOffset,
+                    anchor.YOffset
+                )
+            end
+        end
+    end
+end
+
+local function HideTierLabel(windowName)
+    local tierLabel = windowName .. "StatusTierLabel"
+    if DoesWindowExist(tierLabel) then
+        WindowSetShowing(tierLabel, false)
+    end
+end
+
+function CustomUI.TargetFrame:UpdateUnit()
+    TargetUnitFrame.UpdateUnit(self)
+    -- Stock UpdateUnit sets TierLabel text and DifficultyMask skulls; replace with
+    -- UnitTier-driven skulls and keep the bar free for HP%.
+    HideTierLabel(self:GetName())
+    self:UpdateTierSkulls()
 end
 
 -- Stock UpdateHealth only fills the bar; overlay current HP as an integer percent
@@ -232,10 +342,6 @@ function CustomUI.TargetFrame:UpdateHealth()
     LabelSetText(healthTextName, towstring(hpRounded) .. L"%")
     WindowSetShowing(healthTextName, true)
 
-    -- TierLabel uses the same bar area (Champion / Hero / Lord / Friendly).
-    -- Prefer HP% there; portrait skulls still convey threat for hostiles.
-    local tierLabel = windowName .. "StatusTierLabel"
-    if DoesWindowExist(tierLabel) then
-        WindowSetShowing(tierLabel, false)
-    end
+    -- TierLabel shares the bar with HP%; Champion/Hero/Lord use portrait skulls.
+    HideTierLabel(windowName)
 end

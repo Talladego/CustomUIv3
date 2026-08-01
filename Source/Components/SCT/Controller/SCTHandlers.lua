@@ -384,6 +384,129 @@ end
 function CustomUI.SCT.OnLoadingEnd()    CustomUI.SCT.loading = false end
 
 ----------------------------------------------------------------
+-- Settings offset preview (throttled test floats while dragging X/Y sliders)
+----------------------------------------------------------------
+
+local c_OFFSET_PREVIEW_INTERVAL = 1.0
+local m_lastOffsetPreviewAt = 0
+
+local function getPlayerWorldObjNumForPreview()
+    local wid = GameData and GameData.Player and tonumber(GameData.Player.worldObjNum)
+    if wid and wid ~= 0 then
+        return wid
+    end
+    return nil
+end
+
+local function getOutgoingPreviewAttachWorldObj(playerWid)
+    if type(TargetInfo) == "table" and type(TargetInfo.UnitEntityId) == "function" then
+        local hostile = tonumber(TargetInfo:UnitEntityId("selfhostiletarget"))
+        if hostile and hostile ~= 0 and hostile ~= playerWid then
+            return hostile, false
+        end
+        local friendly = tonumber(TargetInfo:UnitEntityId("selffriendlytarget"))
+        if friendly and friendly ~= 0 and friendly ~= playerWid then
+            return friendly, false
+        end
+    end
+    -- No other target: attach to the player but force outgoing offsets.
+    return playerWid, true
+end
+
+--- Spawn a few dummy SCT floats for the given offset category ("outgoing"|"incoming"|"points").
+--- Throttled to once per second. Requires SCT handlers installed (component enabled).
+function CustomUI.SCT.PreviewOffsetCategory(category)
+    if category ~= "outgoing" and category ~= "incoming" and category ~= "points" then
+        return false
+    end
+    if not CustomUI.SCT._handlersInstalled or CustomUI.SCT.loading then
+        return false
+    end
+    if not DoesWindowExist("CustomUISCTWindow") then
+        return false
+    end
+
+    local now = 0
+    if type(GetGameTime) == "function" then
+        local ok, t = CustomUI.TryCallQuiet("SCT.PreviewOffsetCategory.GetGameTime", GetGameTime)
+        if ok then
+            now = tonumber(t) or 0
+        end
+    end
+    if now > 0 and m_lastOffsetPreviewAt > 0 and (now - m_lastOffsetPreviewAt) < c_OFFSET_PREVIEW_INTERVAL then
+        return false
+    end
+    if now > 0 then
+        m_lastOffsetPreviewAt = now
+    end
+
+    local playerWid = getPlayerWorldObjNumForPreview()
+    if not playerWid then
+        return false
+    end
+
+    if category == "points" then
+        local tracker = getOrCreateTracker(
+            "sctOffsetPreview_points",
+            playerWid,
+            CustomUI.SCT.SctAnchorName("offsetPreviewPoints")
+        )
+        if not tracker then
+            return false
+        end
+        tracker.m_OffsetPreviewCategory = "points"
+        markTrackerActive(tracker)
+        tracker:AddEvent({ event = POINT_GAIN, amount = 100, type = XP_GAIN })
+        tracker:AddEvent({ event = POINT_GAIN, amount = 50, type = RENOWN_GAIN })
+        tracker:AddEvent({ event = POINT_GAIN, amount = 25, type = INFLUENCE_GAIN })
+        return true
+    end
+
+    local C = GameData and GameData.CombatEvent
+    if type(C) ~= "table" or C.HIT == nil then
+        return false
+    end
+
+    local tracker
+    if category == "incoming" then
+        tracker = getOrCreateTracker(
+            "sctOffsetPreview_incoming",
+            playerWid,
+            CustomUI.SCT.IncomingDamageAnchorName(playerWid)
+        )
+        if tracker then
+            tracker.m_OffsetPreviewCategory = "incoming"
+        end
+    else
+        local attachWid, forceOutgoingCategory = getOutgoingPreviewAttachWorldObj(playerWid)
+        tracker = getOrCreateTracker(
+            "sctOffsetPreview_outgoing",
+            attachWid,
+            CustomUI.SCT.SctAnchorName("offsetPreviewOut")
+        )
+        if tracker then
+            if forceOutgoingCategory then
+                tracker.m_OffsetPreviewCategory = "outgoing"
+            else
+                tracker.m_OffsetPreviewCategory = nil
+            end
+        end
+    end
+
+    if not tracker then
+        return false
+    end
+
+    markTrackerActive(tracker)
+    -- Bypass message-rate throttle so the sample appears immediately.
+    tracker:AddEvent({ event = COMBAT_EVENT, amount = -1234, type = C.HIT, abilityId = 0 })
+    tracker:AddEvent({ event = COMBAT_EVENT, amount = -567, type = C.ABILITY_HIT or C.HIT, abilityId = 0 })
+    local critType = C.CRITICAL or C.ABILITY_CRITICAL or C.HIT
+    tracker:AddEvent({ event = COMBAT_EVENT, amount = -890, type = critType, abilityId = 0 })
+    return true
+end
+
+----------------------------------------------------------------
 -- OnUpdate driver — called by CustomUISCTWindow XML in Mode D
 ----------------------------------------------------------------
 

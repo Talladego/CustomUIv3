@@ -288,6 +288,34 @@ local m_scenarioDisplayPlan = {}
 -- Scenario distance snapshot from map points (Enemy-style).
 -- { [nameKey] = { distance = number, isDistant = boolean } }
 local m_scenarioDistanceByKey = {}
+-- Same-frame reuse for BuildScenarioGroupMap (hits bursts + distance scan).
+local m_scenarioGroupMapCache = nil
+local m_scenarioGroupMapCacheValid = false
+
+local function InvalidateScenarioGroupMapCache()
+    m_scenarioGroupMapCacheValid = false
+    m_scenarioGroupMapCache = nil
+end
+
+local function ScenarioDistantFlagsChanged(oldMap, newMap)
+    oldMap = oldMap or {}
+    newMap = newMap or {}
+    local seen = {}
+    for key, info in pairs(newMap) do
+        seen[key] = true
+        local oldDistant = oldMap[key] ~= nil and oldMap[key].isDistant == true
+        local newDistant = info ~= nil and info.isDistant == true
+        if oldDistant ~= newDistant then
+            return true
+        end
+    end
+    for key, info in pairs(oldMap) do
+        if not seen[key] and info ~= nil and info.isDistant == true then
+            return true
+        end
+    end
+    return false
+end
 
 local function DebugLog(msg)
     if CustomUI.DebugLogging ~= true then
@@ -745,23 +773,38 @@ local function GetWindowSets()
 end
 
 local function RegisterCustomWindowsForLayout()
-    -- LayoutEditor is used for persistence + user show/hide, but UnitFrames must function even if
-    -- the layout editor isn't ready yet (eg early load / scenario transition).
+    -- LayoutEditor owns persistence + browser entries + drag frames. Show/hide still works via
+    -- WindowSetShowing if registration is not ready yet (early load / scenario transition).
     if not IsLayoutEditorReady() then
-        return true
+        return false
     end
 
     local windowSets = GetWindowSets()
-    local anyRegistered = false
-
-    for _, windowName in ipairs(windowSets.customDualMode) do
-        local registered = SafeLayoutRegister(windowName, towstring("CustomUI: " .. windowName), L"CustomUI UnitFrames dual-mode group window")
-        anyRegistered = anyRegistered or (registered == true)
-        SafeLayoutUserHide(windowName)
+    local expected = #(windowSets.customDualMode or {})
+    if expected == 0 then
+        return false
     end
 
-    -- Do not gate feature behavior on layout-editor registration success; we can still show/hide via WindowSetShowing.
-    return anyRegistered or true
+    local registeredCount = 0
+
+    for i, windowName in ipairs(windowSets.customDualMode) do
+        local alreadyRegistered = LayoutEditor.windowsList[windowName] ~= nil
+        local displayName = towstring("CustomUI: Unit Frames Group " .. tostring(i))
+        local registered = SafeLayoutRegister(
+            windowName,
+            displayName,
+            L"CustomUI UnitFrames dual-mode group window"
+        )
+        if registered then
+            registeredCount = registeredCount + 1
+            -- Only hide on first registration so Enable → InitializeWindow does not yank visible groups.
+            if not alreadyRegistered then
+                SafeLayoutUserHide(windowName)
+            end
+        end
+    end
+
+    return registeredCount == expected
 end
 
 local function HideAllStockWindows()
@@ -1158,10 +1201,14 @@ local function ScanScenarioDistancesFromMapPoints()
     else
         distanceByKey = {}
     end
+
+    local previous = m_scenarioDistanceByKey
     m_scenarioDistanceByKey = distanceByKey or {}
 
-    if updated > 0 then
-        DebugLog("Scenario distance scan: updated=" .. tostring(updated))
+    -- Only rebuild the 6x6 scenario UI when distant flags actually change.
+    -- Previously any successful map match (updated > 0) forced a full rebuild every poll.
+    if updated > 0 and ScenarioDistantFlagsChanged(previous, m_scenarioDistanceByKey) then
+        DebugLog("Scenario distance scan: distant flags changed; updated=" .. tostring(updated))
         if m_enabled and m_windowsInitialized and GetActiveUnitFramesDisplayMode() == "scenario" then
             ShowScenarioDualModeWindows()
         end
@@ -1763,14 +1810,23 @@ end
 
 -- Only scenario parties with sgroupindex > 0 (assigned groups). Ungrouped roster entries are intentionally ignored (GroupIcons covers broader marking separately).
 BuildScenarioGroupMap = function()
+    if m_scenarioGroupMapCacheValid and m_scenarioGroupMapCache ~= nil then
+        return m_scenarioGroupMapCache
+    end
+
+    local groups
     if type(UnitFramesScenario.BuildGroupMap) ~= "function" then
-        local groups = {}
+        groups = {}
         for groupIndex = 1, c_MAX_GROUP_WINDOWS do
             groups[groupIndex] = {}
         end
-        return groups
+    else
+        groups = UnitFramesScenario.BuildGroupMap()
     end
-    return UnitFramesScenario.BuildGroupMap()
+
+    m_scenarioGroupMapCache = groups
+    m_scenarioGroupMapCacheValid = true
+    return groups
 end
 
 local function UpdateScenarioGroup(groupIndex, groups)
@@ -2030,6 +2086,7 @@ end
 
 function UnitFrames.OnScenarioLifecycleRefresh()
     ClearScenarioHitHpOverrides()
+    InvalidateScenarioGroupMapCache()
     ApplyModeVisibility()
 end
 
@@ -2037,12 +2094,14 @@ function UnitFrames.OnVisibilityStateChanged()
     if type(UnitFramesArchetypes.SyncCacheFromScoreboard) == "function" then
         UnitFramesArchetypes.SyncCacheFromScoreboard()
     end
+    InvalidateScenarioGroupMapCache()
     ApplyModeVisibility()
 end
 
 --- Scenario roster or assigned-slot changes: drop cached hits so GetScenarioPlayerGroups().health wins until fresh hits arrive.
 function UnitFrames.OnScenarioRosterOrSlotsUpdated()
     ClearScenarioHitHpOverrides()
+    InvalidateScenarioGroupMapCache()
     ApplyModeVisibility()
 end
 
@@ -2239,23 +2298,24 @@ function UnitFrames.OnMemberLeftClick()
 end
 
 function UnitFrames.InitializeWindow()
-    if m_windowsInitialized then
-        return
-    end
-
-    -- Do not depend on LayoutEditor registration to consider windows "initialized":
-    -- the XML instances are created by CustomUI.EnsureRootWindowInstances(), so if they exist we can show/hide them.
-    m_windowsInitialized = DoesWindowExist(c_ROOT_WINDOW_NAME) and DoesWindowExist(GroupWindowName(1))
-    if not m_windowsInitialized then
-        m_windowsInitialized = RegisterCustomWindowsForLayout() == true
+    -- CustomUIUnitFramesRoot OnInitialize can fire while EnsureRootWindowInstances is still
+    -- creating Group1–6. Do not latch m_windowsInitialized true until those windows exist,
+    -- and always (re)attempt LayoutEditor registration once they do — otherwise the early
+    -- call permanently skips RegisterWindow and the groups never appear in the Window Browser.
+    local windowsExist = DoesWindowExist(c_ROOT_WINDOW_NAME) and DoesWindowExist(GroupWindowName(1))
+    local layoutRegistered = false
+    if windowsExist then
+        layoutRegistered = RegisterCustomWindowsForLayout() == true
+        m_windowsInitialized = true
     else
-        RegisterCustomWindowsForLayout()
+        m_windowsInitialized = false
     end
 
     local sig = tostring(m_windowsInitialized)
         .. "|root=" .. tostring(DoesWindowExist(c_ROOT_WINDOW_NAME))
         .. "|g1=" .. tostring(DoesWindowExist(GroupWindowName(1)))
-        .. "|layoutReady=" .. tostring(type(LayoutEditor) == "table")
+        .. "|layoutReg=" .. tostring(layoutRegistered)
+        .. "|layoutReady=" .. tostring(IsLayoutEditorReady())
     if sig ~= m_debugLastInitSig then
         m_debugLastInitSig = sig
         DebugLog("InitializeWindow: " .. sig)
@@ -2333,6 +2393,9 @@ function UnitFrames.Update(elapsedTime)
     if not m_enabled then
         return
     end
+
+    -- Fresh roster map for this tick; hit events after Update may reuse it until the next tick/roster change.
+    InvalidateScenarioGroupMapCache()
 
     if not m_windowsInitialized then
         UnitFrames.InitializeWindow()

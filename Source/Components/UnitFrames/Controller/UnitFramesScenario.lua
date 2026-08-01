@@ -310,17 +310,25 @@ function UnitFramesScenario.ScanDistancesFromMapPoints(groups, opts)
     local mapWindowName = opts.mapWindowName or "EA_Window_OverheadMapMapDisplay"
     local distantDistance = tonumber(opts.distantDistance) or 250
 
+    local rosterCount = 0
+    for _ in pairs(rosterKeySet) do
+        rosterCount = rosterCount + 1
+    end
+
     for pointIndex = 1, c_MAX_MAP_POINTS do
         local mpd = GetMapPointData(mapWindowName, pointIndex)
         if mpd and mpd.pointType and mapPointTypeFilter[mpd.pointType] and mpd.name then
             local key = type(opts.fixMapNameKeyFn) == "function" and opts.fixMapNameKeyFn(mpd.name) or nil
-            if key ~= nil and rosterKeySet[key] then
+            if key ~= nil and rosterKeySet[key] and distanceByKey[key] == nil then
                 local dist = math.floor((tonumber(mpd.distance) or 0) * c_DISTANCE_FIX_COEFFICIENT)
                 distanceByKey[key] = {
                     distance = dist,
                     isDistant = dist >= distantDistance,
                 }
                 updated = updated + 1
+                if updated >= rosterCount then
+                    break
+                end
             end
         end
     end

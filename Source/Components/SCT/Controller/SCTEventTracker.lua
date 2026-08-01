@@ -40,11 +40,13 @@ end
 
 function CustomUI.SCT.EventTracker:InitializeAnimationData(displayType)
     local animData = StockEventTracker.InitializeAnimationData(self, displayType)
-    local category
-    if displayType == COMBAT_EVENT then
-        category = (self.m_TargetObject == GameData.Player.worldObjNum) and "incoming" or "outgoing"
-    else
-        category = "points"
+    local category = self.m_OffsetPreviewCategory
+    if category ~= "outgoing" and category ~= "incoming" and category ~= "points" then
+        if displayType == COMBAT_EVENT then
+            category = (self.m_TargetObject == GameData.Player.worldObjNum) and "incoming" or "outgoing"
+        else
+            category = "points"
+        end
     end
 
     local xOffset = CustomUI.SCT.GetXOffset and CustomUI.SCT.GetXOffset(category) or 0

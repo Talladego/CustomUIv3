@@ -1237,10 +1237,96 @@ local function AnyRosterWorldAttachedIcons()
     return false
 end
 
+--- True when every non-self roster member with a *live* worldObjNum is attached to that id.
+--- liveWid==0 (distant / not streamed) is ignored — those members should have no icon.
+--- Returns false while no live wids exist yet so warm polling keeps running after /reloadui
+--- (stopping on "any attached icon" was too eager when only some members had ids).
+local function RosterLiveWorldIdsFullyAttached()
+    local s = EnsureSettings()
+    local inScenario = IsScenarioContext()
+    local sawLive = false
+
+    local function memberLiveAttached(partyIndex, memberIndex, member)
+        if not member or not member.name then
+            return true
+        end
+        local memberName = ToWString(member.name)
+        if memberName == nil or memberName == L"" or IsSelfMember(memberName) then
+            return true
+        end
+        local liveWid = tonumber(member.worldObjNum) or 0
+        if liveWid == 0 then
+            return true
+        end
+        sawLive = true
+        local icon = m_icons[partyIndex][memberIndex]
+        if not icon
+            or not icon.isEnabled
+            or icon.worldObjNum ~= liveWid
+            or not icon.windowName
+            or not DoesWindowExist(icon.windowName)
+        then
+            return false
+        end
+        return true
+    end
+
+    if inScenario then
+        if s.showParty then
+            local data = (type(PartyUtils) == "table" and type(PartyUtils.GetPartyData) == "function") and PartyUtils.GetPartyData() or GetGroupData()
+            if type(data) == "table" then
+                for m = 1, c_MAX_MEMBERS do
+                    if not memberLiveAttached(1, m, GetPartySlotMember(m, data)) then
+                        return false
+                    end
+                end
+            end
+        end
+    elseif IsWarBandActive() then
+        local showAll = s.showWarband == true
+        local showParty1 = s.showParty == true
+        local parties = GetBattlegroupMemberData()
+        if type(parties) == "table" then
+            for p = 1, c_MAX_PARTIES do
+                local party = parties[p]
+                for m = 1, c_MAX_MEMBERS do
+                    local member = party and party.players and party.players[m]
+                    if type(PartyUtils) == "table" and type(PartyUtils.GetWarbandMember) == "function" then
+                        local hydrated = PartyUtils.GetWarbandMember(p, m)
+                        if hydrated ~= nil then
+                            member = hydrated
+                        end
+                    end
+                    local shouldShow = showAll or (showParty1 and p == 1)
+                    if shouldShow and not memberLiveAttached(p, m, member) then
+                        return false
+                    end
+                end
+            end
+        end
+    elseif s.showParty then
+        local data = (type(PartyUtils) == "table" and type(PartyUtils.GetPartyData) == "function") and PartyUtils.GetPartyData() or GetGroupData()
+        if type(data) == "table" then
+            for m = 1, c_MAX_MEMBERS do
+                if not memberLiveAttached(1, m, GetPartySlotMember(m, data)) then
+                    return false
+                end
+            end
+        end
+    end
+    return sawLive
+end
+
 --- True when settings allow party/warband roster world markers (not outsiders-only).
 local function WantRosterWorldMarkers()
     local s = EnsureSettings()
     return s.showParty == true or s.showWarband == true
+end
+
+local function EnsureGroupIconsDriverShowing()
+    if DoesWindowExist(c_GROUPICONS_DRIVER) then
+        WindowSetShowing(c_GROUPICONS_DRIVER, true)
+    end
 end
 
 local function ScheduleWarmRefreshRosterPolling(minAttempts)
@@ -1332,7 +1418,10 @@ local function WarmRefreshRosterIfNeeded(dt)
         m_postEnableWarmRefreshPoll = 0
         return
     end
-    if AnyRosterWorldAttachedIcons() then
+    -- Stop early only when every *live* roster wid is attached. Do not treat sticky/distant
+    -- attaches (or a single early nearby attach) as warm-refresh success — that caused
+    -- post-/reloadui missing icons until a manual disable/enable.
+    if RosterLiveWorldIdsFullyAttached() then
         m_postEnableWarmRefreshRemaining = 0
         m_postEnableWarmRefreshPoll = 0
         return
@@ -1653,6 +1742,8 @@ end
 
 function CustomUI.GroupIcons.OnInterfaceReady()
     -- Stock UI commonly rebuilds windows from INTERFACE_RELOADED in addition to LOADING_END.
+    -- Driver is CreateWindow(..., false); keep it shown so OnUpdate/warm refresh keep ticking after reload.
+    EnsureGroupIconsDriverShowing()
     ScheduleWarmRefreshRosterPolling()
     RequestWarbandLeaderData()
     OnWarbandLeaderListMaybeChanged()
@@ -1740,9 +1831,7 @@ function GroupIconsComponent:Enable()
     WindowRegisterEventHandler("Root", SystemData.Events.SOCIAL_OPENPARTY_UPDATED, "CustomUI.GroupIcons.OnOpenPartyUpdated")
     WindowRegisterEventHandler("Root", SystemData.Events.SOCIAL_OPENPARTY_WORLD_UPDATED, "CustomUI.GroupIcons.OnOpenPartyUpdated")
     WindowRegisterEventHandler("Root", SystemData.Events.SOCIAL_OPENPARTY_NOTIFY, "CustomUI.GroupIcons.OnOpenPartyUpdated")
-    if DoesWindowExist(c_GROUPICONS_DRIVER) then
-        WindowSetShowing(c_GROUPICONS_DRIVER, true)
-    end
+    EnsureGroupIconsDriverShowing()
     -- First ticks after Enable re-run roster attach until late roster worldObj ids arrive (common after /reloadui).
     m_needsRefreshAll = true
     ScheduleWarmRefreshRosterPolling()

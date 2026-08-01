@@ -507,7 +507,7 @@ function CustomUI.BuffTracker:DebugLog( msg )
         elseif CustomUI.PrintMessage then
             CustomUI.PrintMessage(wmsg)
         else
-            TextLogAddEntry("Chat", 0, L"[CustomUI] " .. wmsg)
+            TextLogAddEntry("System", SystemData.SystemLogFilters.GENERAL, L"[CustomUI] " .. wmsg)
         end
     end
 end

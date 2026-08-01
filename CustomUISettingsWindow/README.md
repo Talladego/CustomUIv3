@@ -2,7 +2,7 @@
 
 Second UiMod (`CustomUISettingsWindow`) that depends on **`CustomUI`**. The game
 must load the parent addon first; the `.mod` file declares that dependency. The
-shell is created on initialize (`CreateWindow` for `CustomUISettingsWindowTabbed`);
+shell is created on initialize (`CreateWindow` for `CustomUISettingsWindowTabbed` with `show="false"`);
 players open it with **`/cui`** or **`/customui`** (registered by CustomUI).
 
 **Backlog:** [TODO.md](TODO.md) — open issues, validation, new-tab checklist.  

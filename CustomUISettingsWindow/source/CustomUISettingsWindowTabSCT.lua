@@ -1072,6 +1072,9 @@ function CustomUISettingsWindowTabSCT.OnXOffsetChanged()
     end
     CustomUI.SCT.SetXOffset(category, CustomUI.SCT.SliderPosToXOffset(pos))
     CustomUISettingsWindowTabSCT.OnMouseOverSliderValue()
+    if type(CustomUI.SCT.PreviewOffsetCategory) == "function" then
+        CustomUI.SCT.PreviewOffsetCategory(category)
+    end
 end
 
 function CustomUISettingsWindowTabSCT.OnYOffsetChanged()
@@ -1089,6 +1092,9 @@ function CustomUISettingsWindowTabSCT.OnYOffsetChanged()
     end
     CustomUI.SCT.SetYOffset(category, CustomUI.SCT.SliderPosToYOffset(pos))
     CustomUISettingsWindowTabSCT.OnMouseOverSliderValue()
+    if type(CustomUI.SCT.PreviewOffsetCategory) == "function" then
+        CustomUI.SCT.PreviewOffsetCategory(category)
+    end
 end
 
 function CustomUISettingsWindowTabSCT.OnMouseOverSliderValue()

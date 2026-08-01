@@ -1,0 +1,116 @@
+<Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+	<Windows>
+
+		<!-- Compact: [killerIcon] Killer[k] killed [victimIcon] Victim[d] with [abilityIcon] Ability -->
+		<Window name="CustomUIKillTrackerRow" movable="false" savesettings="false" handleinput="false">
+			<Size>
+				<AbsPoint x="512" y="28" />
+			</Size>
+			<Windows>
+				<DynamicImage name="$parentKillerCareer" handleinput="false" texturescale="1.0">
+					<Size>
+						<AbsPoint x="24" y="24" />
+					</Size>
+					<Anchors>
+						<Anchor point="left" relativePoint="left" relativeTo="$parent">
+							<AbsPoint x="0" y="2" />
+						</Anchor>
+					</Anchors>
+				</DynamicImage>
+
+				<Label name="$parentKillerName" font="font_chat_text" maxchars="40"
+					   textalign="leftcenter" autoresizewidth="true" handleinput="false" layer="popup">
+					<Size>
+						<AbsPoint x="100" y="24" />
+					</Size>
+					<Anchors>
+						<Anchor point="right" relativePoint="left" relativeTo="$parentKillerCareer">
+							<AbsPoint x="4" y="0" />
+						</Anchor>
+					</Anchors>
+				</Label>
+
+				<Label name="$parentText" font="font_chat_text" maxchars="16"
+					   textalign="leftcenter" autoresizewidth="true" handleinput="false" layer="popup">
+					<Size>
+						<AbsPoint x="48" y="24" />
+					</Size>
+					<Anchors>
+						<Anchor point="right" relativePoint="left" relativeTo="$parentKillerName">
+							<AbsPoint x="2" y="0" />
+						</Anchor>
+					</Anchors>
+				</Label>
+
+				<DynamicImage name="$parentVictimCareer" handleinput="false" texturescale="1.0">
+					<Size>
+						<AbsPoint x="24" y="24" />
+					</Size>
+					<Anchors>
+						<Anchor point="right" relativePoint="left" relativeTo="$parentText">
+							<AbsPoint x="4" y="2" />
+						</Anchor>
+					</Anchors>
+				</DynamicImage>
+
+				<Label name="$parentVictimName" font="font_chat_text" maxchars="40"
+					   textalign="leftcenter" autoresizewidth="true" handleinput="false" layer="popup">
+					<Size>
+						<AbsPoint x="100" y="24" />
+					</Size>
+					<Anchors>
+						<Anchor point="right" relativePoint="left" relativeTo="$parentVictimCareer">
+							<AbsPoint x="4" y="0" />
+						</Anchor>
+					</Anchors>
+				</Label>
+
+				<DynamicImage name="$parentAbilityIcon" handleinput="false" texturescale="1.0">
+					<Size>
+						<AbsPoint x="24" y="24" />
+					</Size>
+					<Anchors>
+						<Anchor point="right" relativePoint="left" relativeTo="$parentVictimName">
+							<AbsPoint x="4" y="2" />
+						</Anchor>
+					</Anchors>
+				</DynamicImage>
+
+				<Label name="$parentAbilityName" font="font_chat_text" maxchars="128"
+					   textalign="leftcenter" autoresizewidth="true" handleinput="false" layer="popup">
+					<Size>
+						<AbsPoint x="200" y="24" />
+					</Size>
+					<Anchors>
+						<Anchor point="right" relativePoint="left" relativeTo="$parentAbilityIcon">
+							<AbsPoint x="4" y="0" />
+						</Anchor>
+					</Anchors>
+				</Label>
+			</Windows>
+		</Window>
+
+		<Window name="CustomUIKillTrackerWindow" movable="true" savesettings="true" layer="default">
+			<Size>
+				<AbsPoint x="520" y="80" />
+			</Size>
+			<Anchors>
+				<Anchor point="center" relativePoint="center">
+					<AbsPoint x="0" y="200" />
+				</Anchor>
+			</Anchors>
+			<Windows>
+				<FullResizeImage name="$parentBackground" inherits="EA_FullResizeImage_TintableSolidBackground" alpha="0.35" handleinput="false">
+					<Size>
+						<AbsPoint x="520" y="80" />
+					</Size>
+					<Anchors>
+						<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent" />
+						<Anchor point="bottomright" relativePoint="bottomright" relativeTo="$parent" />
+					</Anchors>
+				</FullResizeImage>
+			</Windows>
+		</Window>
+
+	</Windows>
+</Interface>

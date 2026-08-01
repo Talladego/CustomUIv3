@@ -34,6 +34,10 @@
             <Dependency name="EA_CareerResourcesWindow" />
             <!-- SCT component: ensures stock easystem_eventtext loads first so our overrides apply last. -->
             <Dependency name="EASystem_EventText" />
+            <!-- KillTracker: chat tab LogDisplay filter suppress + Combat TextLog listen. -->
+            <Dependency name="EA_ChatWindow" />
+            <!-- KillTracker / GroupIcons: career icon IDs via Icons.* -->
+            <Dependency name="EATemplate_Icons" />
         </Dependencies>
         <Files>
             <File name="Source/CustomUI.lua" />
@@ -87,6 +91,17 @@
             <File name="Source/Components/SCT/Controller/SCTHandlers.lua" />
             <File name="Source/Components/SCT/Controller/SCTController.lua" />
             <File name="Source/Components/SCT/View/SCT.xml" />
+            <!-- KillTracker component -->
+            <File name="Source/Components/KillTracker/Controller/KillTrackerParser.lua" />
+            <File name="Source/Components/KillTracker/Controller/KillTrackerSession.lua" />
+            <File name="Source/Components/KillTracker/Controller/KillTrackerCareerCache.lua" />
+            <File name="Source/Components/KillTracker/Controller/KillTrackerAbilityMap.lua" />
+            <File name="Source/Components/KillTracker/Controller/KillTrackerFormat.lua" />
+            <File name="Source/Components/KillTracker/Controller/KillTrackerChat.lua" />
+            <File name="Source/Components/KillTracker/Controller/KillTrackerCapture.lua" />
+            <File name="Source/Components/KillTracker/Controller/KillTrackerWindow.lua" />
+            <File name="Source/Components/KillTracker/Controller/KillTrackerController.lua" />
+            <File name="Source/Components/KillTracker/View/KillTracker.xml" />
         </Files>
         <OnInitialize>
             <!-- Component root windows: instantiated in Source/CustomUI.lua (EnsureRootWindowInstances) -->

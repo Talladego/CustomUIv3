@@ -41,8 +41,21 @@ Place **CustomUI** and **CustomUISettingsWindow** under the game’s `Interface\
 | `UnitFrames` | BattlegroupHUD + FloatingScenarioGroup scenario roster frames | ✅ Implemented, `DefaultEnabled = false` |
 | `GroupIcons` | — (career icons on world objects for party / warband / scenario members) | ✅ Implemented, enabled by default on a fresh profile |
 | `SCT` | `easystem_eventtext` combat/point-gain floating text | ✅ Complete, `DefaultEnabled = false` |
+| `KillTracker` | — (RvR Order/Destruction kill feed + chat reformat) | ✅ Implemented, `DefaultEnabled = false` — no settings tab yet |
 
 All registered components default to **disabled** except `GroupIcons`, which currently omits `DefaultEnabled = false` and therefore comes up enabled on a fresh profile. `PlayerPetWindow` is shipped and has full lifecycle code, but it is still owned through `PlayerStatusWindow` rather than being registered as a separate top-level component.
+
+### KillTracker (RvR kill feed + chat)
+
+Controller split: `KillTrackerController.lua` (lifecycle), `KillTrackerCapture.lua` (Combat TextLog `RVR_KILLS_*`), `KillTrackerParser.lua`, `KillTrackerSession.lua` (dual kill/death bags), `KillTrackerCareerCache.lua`, `KillTrackerAbilityMap.lua`, `KillTrackerFormat.lua`, `KillTrackerChat.lua` (suppress stock filters + inject enriched Combat filter lines), `KillTrackerWindow.lua` + `View/KillTracker.xml` (`CustomUIKillTrackerWindow`).
+
+- **Capture:** `TextLogGetUpdateEventId("Combat")` for `RVR_KILLS_ORDER` / `RVR_KILLS_DESTRUCTION`.
+- **Chat:** stock Order/Destruction kill filters are hidden on LogDisplays; reformatted lines use dedicated Combat filters with empty display names (no `KillTracker` prefix). Prefers `TextLogAddEntry` rewrite when available.
+- **Counts:** open-world **RvR** bag persists for the play session (survives zone loads). **Scenario** bag (including city siege) resets on each new instance: scenario/city begin+end, enter/leave via loading, and lobby `PRE_MODE` / fresh `RUNNING` (so back-to-back queues of the same map do not carry totals). `[N]` uses the active context bag. Focus changes print a `[CustomUI]` status line on System General via `CustomUI.PrintMessage`.
+- **Zone:** open-world RvR appends ` in <zone>` from the kill line (or `GetZoneName`); omitted in scenario/city siege.
+- **Feed window:** optional LayoutEditor overlay (`showFeedWindow`, default **off**); chat is the primary output.
+- **Ability icons:** local spellbook + SCT ability-icon cache names + optional Warbuilder if loaded (best-effort; not all abilities resolve).
+- **Settings:** `CustomUI.Settings.KillTracker` defaults only; **CustomUISettingsWindow** tab deferred.
 
 ### GroupIcons (world markers)
 
@@ -124,7 +137,7 @@ Current helper split under `Source/Shared/BuffTracker/`:
 
 A `TargetUnitFrame` subclass used by `TargetWindow` for both hostile and friendly targets. Inherits all stock health-bar, portrait, and `UpdateUnit` logic; adds a `CustomUI.BuffTracker` instance for per-target buff display.
 
-Also creates a `CustomUITargetHealthText` label over the status bar and overrides `UpdateHealth()` to show current HP as an integer percent (from `TargetInfo:UnitHealth`). While HP% is shown, the stock `TierLabel` (Champion / Hero / etc.) is hidden so the two do not overlap.
+Also creates a `CustomUITargetHealthText` label over the status bar and overrides `UpdateHealth()` to show current HP as an integer percent (from `TargetInfo:UnitHealth`). While HP% is shown, the stock `TierLabel` (Champion / Hero / etc.) is hidden so the two do not overlap; tier is shown as stock-style portrait skulls (`UpdateTierSkulls`: 1–3 from `UnitTier`, with `UnitDifficultyMask` fallback).
 
 `TargetHUD` uses the same idea on the built-in `HealthBarBarText` (written from `RefreshHUDFromCache`), not via `TargetFrame`.
 
@@ -266,7 +279,7 @@ CustomUI/
 | `Archetypes.lua` | **Current** | Shared career-to-archetype mapping and RGB helpers used by UnitFrames and GroupIcons. |
 | `BuffTracker/` (`BuffTracker.lua`, `BuffTrackerLayout.lua`, `BuffTrackerRules.lua`, `BuffTrackerGrouping.lua`, `BuffFilterDefaults.lua`, `BuffGroups.lua`, `BuffLists.lua`) | **Current** | Core buff list behavior, helper splits, and shared filter defaults for trackers used by `PlayerStatusWindow`, `TargetWindow` (via `TargetFrame`), `GroupWindow`, and `TargetHUD`. |
 | `TargetPresence.lua` | **Current** | Shared target cache owner for `TargetWindow` + `TargetHUD`, including transient-gap holds and shared refresh coordination. |
-| `UnitFrame/TargetFrame.lua` | **Current** | Stock `TargetUnitFrame` subclass with `CustomUI.BuffTracker` and HP% overlay; used only by **TargetWindow**. |
+| `UnitFrame/TargetFrame.lua` | **Current** | Stock `TargetUnitFrame` subclass with `CustomUI.BuffTracker`, HP% overlay, and tier portrait skulls; used only by **TargetWindow**. |
 
 All of the above are loaded from `CustomUI.mod` on the main path and are required for shipped components.
 

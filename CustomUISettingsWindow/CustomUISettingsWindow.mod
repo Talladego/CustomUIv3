@@ -30,7 +30,7 @@
             <!-- <SavedVariable name="SettingsWindowTabServer.SavedSettings" />			 -->
         </SavedVariables>
         <OnInitialize>
-            <CreateWindow name="CustomUISettingsWindowTabbed" show="true" />
+            <CreateWindow name="CustomUISettingsWindowTabbed" show="false" />
         </OnInitialize>             
     </UiMod>
     

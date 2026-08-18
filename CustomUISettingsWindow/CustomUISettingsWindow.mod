@@ -23,6 +23,7 @@
             <File name="Source/CustomUISettingsWindowTabUnitFrames.xml" />
             <File name="Source/CustomUISettingsWindowTabGroupIcons.xml" />
             <File name="Source/CustomUISettingsWindowTabSCT.xml" />
+            <File name="Source/CustomUISettingsWindowTabKillTracker.xml" />
             <File name="Source/CustomUISettingsWindowTabbed.xml" />
         </Files>
         <SavedVariables>

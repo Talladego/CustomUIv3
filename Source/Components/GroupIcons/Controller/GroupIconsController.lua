@@ -10,13 +10,16 @@
 --     Self is skipped. Crown on group leader (party row or warband grid; scenario roster omits crown); leader slot drawn at 1.5× scale.
 --     Outsider friendly warband leaders (open-party LFG + own warband when applicable): 1.5× scale + Group-Leader-Crown.
 --     Hostile outsiders never use leader visuals (names unavailable). Requires showFriendly.
---     Rings use full archetype (or all-green) tint for every roster member.
+--     Rings: cyan for roster (Party/Warband); realm green/red for Friendly/Hostile outsiders.
+--     Guild/Friends (highlightSocial): gold overrides cyan/realm whenever an icon is shown for that name;
+--     also attaches roster icons for social members when Party/Warband are off, and tracks Friendly-off
+--     mouseover/target allies who are guild/friends (gold instead of green).
 --   • Roster attach requires a live worldObjNum this refresh (party slot / scenario roster optional scenarioWorldObjNum).
 --     Cached ids refine LearnKnown when live wid is 0 (distant / unloaded row); zone change clears caches.
 --     Outsiders: FIFO when full; same AutoMark-style spatial wid probe as roster (below) + window/name checks.
 --     Roster: spatial probe; if wid projects as “gone” for several consecutive ticks, squash+hide (Enemy ObjectWindows) until valid again — mitigates top-left stuck attach without probe-boundary flicker.
 --   • Outsiders (non-own-roster players incl. other scenario parties): hostile / friendly / mouseover PLAYER_TARGET_UPDATED → deferred TargetInfo read;
---     FIFO pool (c_MAX_TRACKED_OUTSIDERS); realm-tint rings in scenario when Scenario checkbox OFF, archetype roster-style rings when ON (+ Friendly/Hostile toggles unchanged).
+--     FIFO pool (c_MAX_TRACKED_OUTSIDERS); realm-tint rings (+ Friendly/Hostile toggles; Guild/Friends can bypass Friendly-off for social names).
 --   • Names: NormalizeNameKey (strip caret grammar, lowercase) for PartyUtils / scenario / roster dedupe.
 --   • Driver + CustomUIGroupIconsWorldProbe: shared AutoMark-style spatial check for outsiders and roster.
 ----------------------------------------------------------------
@@ -103,12 +106,14 @@ local c_ROSTER_SPATIAL_GONE_STREAK = 4
 local c_RING_FRIENDLY     = { 0, 255, 0 }   -- Green
 local c_RING_HOSTILE      = { 255, 0, 0 }   -- Red
 local c_RING_CYAN         = { 0, 255, 255 } -- Cyan (roster when archetypeColors off)
+local c_RING_SOCIAL       = { 255, 215, 0 } -- Gold (Social friends list / guild mates)
 
 
 local c_DEFAULT_SETTINGS = {
     showParty = true,
     showWarband = true,
     archetypeColors = false,
+    highlightSocial = true,
     showFriendly = true,
     showHostile = true,
 }
@@ -127,6 +132,8 @@ local function EnsureSettings()
             s[k] = v
         end
     end
+    -- Archetype colors UI removed: always cyan roster rings.
+    s.archetypeColors = false
     return s
 end
 
@@ -154,13 +161,12 @@ local function RealmRingRgbForCareerLine(careerLine)
 end
 
 local function GroupRingRgbForCareerLine(careerLine)
-    local s = EnsureSettings()
-    if not s.archetypeColors then
-        return c_RING_CYAN[1], c_RING_CYAN[2], c_RING_CYAN[3], "cyan"
-    end
-    local r, g, b = CustomUI.Archetypes.GetColorForCareerLineOrDefault(careerLine, 160, 160, 160)
-    return r, g, b, "archetype"
+    return c_RING_CYAN[1], c_RING_CYAN[2], c_RING_CYAN[3], "cyan"
 end
+
+-- Defined after NormalizeNameKey / social name sets (forward decls for GroupIcon:Attach/Update).
+local RingRgbForPlayer
+local RefreshSocialNameSets
 -- GetIconData atlas cell size in texture pixels for career icons.
 -- Stock uses TexDims 32 (see EA_Image_CareerIcon template); using the wrong value can tile/repeat.
 local c_ATLAS_ICON   = 32
@@ -286,12 +292,7 @@ function GroupIcon:Attach(name, worldObjNum, careerLine, showWarbandCrown, useRe
     DynamicImageSetTextureDimensions(ringWin, c_RING_TEX_DIM, c_RING_TEX_DIM)
 
     local rr, gg, bb
-    if useRealmRingTint then
-        rr, gg, bb = RealmRingRgbForCareerLine(careerLine)
-        self.lastRingTintKey = string.format("realm:%d,%d,%d", rr, gg, bb)
-    else
-        rr, gg, bb, self.lastRingTintKey = GroupRingRgbForCareerLine(careerLine)
-    end
+    rr, gg, bb, self.lastRingTintKey = RingRgbForPlayer(name, careerLine, useRealmRingTint)
     WindowSetTintColor(ringWin, rr, gg, bb)
     self.lastCareerLine = careerLine
     self.lastCareerNamesId = careerNamesId
@@ -404,14 +405,7 @@ function GroupIcon:Update(name, worldObjNum, careerLine, showWarbandCrown, useRe
     useLeaderScale = useLeaderScale == true
     useRealmRingTint = useRealmRingTint == true
     careerNamesId = tonumber(careerNamesId)
-    local wantRingKey = "archetype"
-    if useRealmRingTint then
-        local r, g, b = RealmRingRgbForCareerLine(careerLine)
-        wantRingKey = string.format("realm:%d,%d,%d", r, g, b)
-    else
-        local _, _, _, key = GroupRingRgbForCareerLine(careerLine)
-        wantRingKey = key
-    end
+    local _, _, _, wantRingKey = RingRgbForPlayer(name, careerLine, useRealmRingTint)
     if worldObjNum == 0 then
         self:_detach()
         return
@@ -473,6 +467,10 @@ local m_knownByNameKey = {}
 -- Last known worldObjNum per name (targeting + live party/warband when non-zero). Used when roster row wid is 0.
 -- Cleared on zone change with sticky map.
 local m_stickyRosterWidByKey = {}
+
+-- Social Window friends / guild roster name keys (NormalizeNameKey) for gold ring highlight.
+local m_friendNameKeys = {}
+local m_guildNameKeys = {}
 
 local m_debugLastSig = nil
 
@@ -550,6 +548,61 @@ local function NormalizeNameKey(name)
         s = string.sub(s, 1, caret - 1)
     end
     return string.lower(s)
+end
+
+local function IngestSocialNameList(dest, list)
+    if type(list) ~= "table" then
+        return
+    end
+    for _, entry in pairs(list) do
+        if type(entry) == "table" and entry.name ~= nil then
+            local key = NormalizeNameKey(entry.name)
+            if key ~= nil then
+                dest[key] = true
+            end
+        end
+    end
+end
+
+RefreshSocialNameSets = function()
+    m_friendNameKeys = {}
+    m_guildNameKeys = {}
+    if type(GetFriendsList) == "function" then
+        local ok, list = CustomUI.TryCallQuiet("GroupIcons.GetFriendsList", GetFriendsList)
+        if ok then
+            IngestSocialNameList(m_friendNameKeys, list)
+        end
+    end
+    if type(GetGuildMemberData) == "function" then
+        local ok, list = CustomUI.TryCallQuiet("GroupIcons.GetGuildMemberData", GetGuildMemberData)
+        if ok then
+            IngestSocialNameList(m_guildNameKeys, list)
+        end
+    end
+end
+
+local function IsSocialHighlightedName(name)
+    local s = EnsureSettings()
+    if s.highlightSocial ~= true then
+        return false
+    end
+    local key = NormalizeNameKey(name)
+    if key == nil then
+        return false
+    end
+    return m_friendNameKeys[key] == true or m_guildNameKeys[key] == true
+end
+
+--- Gold for Social friends / guild mates when highlightSocial is on; else realm or group (cyan/archetype).
+RingRgbForPlayer = function(name, careerLine, useRealmRingTint)
+    if IsSocialHighlightedName(name) then
+        return c_RING_SOCIAL[1], c_RING_SOCIAL[2], c_RING_SOCIAL[3], "social"
+    end
+    if useRealmRingTint == true then
+        local r, g, b = RealmRingRgbForCareerLine(careerLine)
+        return r, g, b, string.format("realm:%d,%d,%d", r, g, b)
+    end
+    return GroupRingRgbForCareerLine(careerLine)
 end
 
 local function InvalidatePartyAndWarbandCaches()
@@ -1092,6 +1145,7 @@ local function ConsiderClassificationForTracking(classification)
             ensureSettings = EnsureSettings,
             toWString = ToWString,
             isSelfMember = IsSelfMember,
+            isSocialHighlightedName = IsSocialHighlightedName,
             learnKnownWorldObject = LearnKnownWorldObject,
             maxTrackedOutsiders = c_MAX_TRACKED_OUTSIDERS,
             isGroupWorldObject = function(trackWid) return m_groupWorldObjs[trackWid] == true end,
@@ -1106,13 +1160,6 @@ local function ConsiderClassificationForTracking(classification)
     if ut ~= SystemData.TargetObjectType.ENEMY_PLAYER and ut ~= SystemData.TargetObjectType.ALLY_PLAYER then
         return
     end
-    local s = EnsureSettings()
-    if ut == SystemData.TargetObjectType.ALLY_PLAYER and not s.showFriendly then
-        return
-    end
-    if ut == SystemData.TargetObjectType.ENEMY_PLAYER and not s.showHostile then
-        return
-    end
     local wid = TargetInfo:UnitEntityId(classification)
     if wid == 0 then
         return
@@ -1123,6 +1170,14 @@ local function ConsiderClassificationForTracking(classification)
         return
     end
     if IsSelfMember(pname) then
+        return
+    end
+    local s = EnsureSettings()
+    local socialHighlight = IsSocialHighlightedName(pname)
+    if ut == SystemData.TargetObjectType.ALLY_PLAYER and not s.showFriendly and not socialHighlight then
+        return
+    end
+    if ut == SystemData.TargetObjectType.ENEMY_PLAYER and not s.showHostile then
         return
     end
     local career = TargetInfo:UnitCareer(classification)
@@ -1271,12 +1326,20 @@ local function RosterLiveWorldIdsFullyAttached()
         return true
     end
 
+    local function wantRosterMember(member, partyGate)
+        if partyGate then
+            return true
+        end
+        return member ~= nil and IsSocialHighlightedName(member.name)
+    end
+
     if inScenario then
-        if s.showParty then
+        if s.showParty or s.highlightSocial then
             local data = (type(PartyUtils) == "table" and type(PartyUtils.GetPartyData) == "function") and PartyUtils.GetPartyData() or GetGroupData()
             if type(data) == "table" then
                 for m = 1, c_MAX_MEMBERS do
-                    if not memberLiveAttached(1, m, GetPartySlotMember(m, data)) then
+                    local member = GetPartySlotMember(m, data)
+                    if wantRosterMember(member, s.showParty == true) and not memberLiveAttached(1, m, member) then
                         return false
                     end
                 end
@@ -1298,17 +1361,18 @@ local function RosterLiveWorldIdsFullyAttached()
                         end
                     end
                     local shouldShow = showAll or (showParty1 and p == 1)
-                    if shouldShow and not memberLiveAttached(p, m, member) then
+                    if wantRosterMember(member, shouldShow) and not memberLiveAttached(p, m, member) then
                         return false
                     end
                 end
             end
         end
-    elseif s.showParty then
+    elseif s.showParty or s.highlightSocial then
         local data = (type(PartyUtils) == "table" and type(PartyUtils.GetPartyData) == "function") and PartyUtils.GetPartyData() or GetGroupData()
         if type(data) == "table" then
             for m = 1, c_MAX_MEMBERS do
-                if not memberLiveAttached(1, m, GetPartySlotMember(m, data)) then
+                local member = GetPartySlotMember(m, data)
+                if wantRosterMember(member, s.showParty == true) and not memberLiveAttached(1, m, member) then
                     return false
                 end
             end
@@ -1317,10 +1381,22 @@ local function RosterLiveWorldIdsFullyAttached()
     return sawLive
 end
 
---- True when settings allow party/warband roster world markers (not outsiders-only).
+--- True when settings allow party/warband roster world markers (or Guild/Friends social roster attach).
 local function WantRosterWorldMarkers()
     local s = EnsureSettings()
-    return s.showParty == true or s.showWarband == true
+    return s.showParty == true or s.showWarband == true or s.highlightSocial == true
+end
+
+local function RosterRefreshOpts()
+    local s = EnsureSettings()
+    return {
+        normalizeNameKey = NormalizeNameKey,
+        toWString = ToWString,
+        isSelfMember = IsSelfMember,
+        isSocialHighlightedName = IsSocialHighlightedName,
+        showPartyIcons = s.showParty == true,
+        debugLog = DebugLog,
+    }
 end
 
 local function EnsureGroupIconsDriverShowing()
@@ -1359,13 +1435,20 @@ local function CheckRosterWorldObjChanges()
         return false
     end
 
+    local function wantCheck(member, partyGate)
+        if partyGate then
+            return true
+        end
+        return member ~= nil and IsSocialHighlightedName(member.name)
+    end
+
     if inScenario then
-        if s.showParty then
+        if s.showParty or s.highlightSocial then
             local data = (type(PartyUtils) == "table" and type(PartyUtils.GetPartyData) == "function") and PartyUtils.GetPartyData() or GetGroupData()
             if type(data) == "table" then
                 for m = 1, c_MAX_MEMBERS do
                     local member = GetPartySlotMember(m, data)
-                    if checkMember(1, m, member) then
+                    if wantCheck(member, s.showParty == true) and checkMember(1, m, member) then
                         return true
                     end
                 end
@@ -1387,20 +1470,18 @@ local function CheckRosterWorldObjChanges()
                         end
                     end
                     local shouldShow = showAll or (showParty1 and p == 1)
-                    if shouldShow then
-                        if checkMember(p, m, member) then
-                            return true
-                        end
+                    if wantCheck(member, shouldShow) and checkMember(p, m, member) then
+                        return true
                     end
                 end
             end
         end
-    elseif s.showParty then
+    elseif s.showParty or s.highlightSocial then
         local data = (type(PartyUtils) == "table" and type(PartyUtils.GetPartyData) == "function") and PartyUtils.GetPartyData() or GetGroupData()
         if type(data) == "table" then
             for m = 1, c_MAX_MEMBERS do
                 local member = GetPartySlotMember(m, data)
-                if checkMember(1, m, member) then
+                if wantCheck(member, s.showParty == true) and checkMember(1, m, member) then
                     return true
                 end
             end
@@ -1497,12 +1578,7 @@ end
 -- Refresh from party data (group / solo).
 local function RefreshParty()
     if type(Roster.RefreshParty) == "function" then
-        Roster.RefreshParty(GetRosterState(), {
-            normalizeNameKey = NormalizeNameKey,
-            toWString = ToWString,
-            isSelfMember = IsSelfMember,
-            debugLog = DebugLog,
-        })
+        Roster.RefreshParty(GetRosterState(), RosterRefreshOpts())
         return
     end
     InvalidatePartyAndWarbandCaches()
@@ -1514,13 +1590,16 @@ local function RefreshParty()
         data = GetGroupData()
     end
     if not data then return end
+    local showPartyIcons = EnsureSettings().showParty == true
     local attachable = 0
     local validStickyKeys = {}
     for m = 1, c_MAX_MEMBERS do
         local member = GetPartySlotMember(m, data)
         local icon   = m_icons[1][m]
         local memberName = member and ToWString(member.name)
-        if member and memberName ~= nil and memberName ~= L"" then
+        local socialOnly = member ~= nil and IsSocialHighlightedName(member.name)
+        local wantIcon = showPartyIcons or socialOnly
+        if wantIcon and member and memberName ~= nil and memberName ~= L"" then
             local nk = NormalizeNameKey(member.name)
             if nk ~= nil then
                 validStickyKeys[nk] = true
@@ -1542,7 +1621,8 @@ local function RefreshParty()
         end
     end
     PruneStickyRosterWids(validStickyKeys)
-    DebugLog("RefreshParty: attachableMembers=" .. tostring(attachable))
+    DebugLog("RefreshParty: attachableMembers=" .. tostring(attachable)
+        .. " showPartyIcons=" .. tostring(showPartyIcons))
     -- Disable unused parties.
     for p = 2, c_MAX_PARTIES do
         for m = 1, c_MAX_MEMBERS do
@@ -1554,16 +1634,12 @@ end
 -- Refresh from warband data.
 -- showAll = true  => show every party (full warband roster)
 -- showParty1 = true => show only your own party (party index 1) even while in a warband
--- (Other warband parties must not be RegisterGroupMember when hidden, or outsider realm icons never apply.)
+-- (Other warband parties must not be RegisterGroupMember when hidden, or outsider realm icons never apply —
+--  except Guild/Friends social members, who still get gold roster icons.)
 -- partiesOverride: when non-nil, use instead of GetBattlegroupMemberData().
 local function RefreshWarband(showAll, showParty1, partiesOverride)
     if type(Roster.RefreshWarband) == "function" then
-        Roster.RefreshWarband(GetRosterState(), showAll, showParty1, partiesOverride, {
-            normalizeNameKey = NormalizeNameKey,
-            toWString = ToWString,
-            isSelfMember = IsSelfMember,
-            debugLog = DebugLog,
-        })
+        Roster.RefreshWarband(GetRosterState(), showAll, showParty1, partiesOverride, RosterRefreshOpts())
         return
     end
     InvalidatePartyAndWarbandCaches()
@@ -1586,7 +1662,8 @@ local function RefreshWarband(showAll, showParty1, partiesOverride)
             local icon   = m_icons[p][m]
             local shouldShow = showAll or (showParty1 and p == 1)
             local memberName = member and ToWString(member.name)
-            if shouldShow and member and memberName ~= nil and memberName ~= L"" then
+            local socialOnly = member ~= nil and IsSocialHighlightedName(member.name)
+            if (shouldShow or socialOnly) and member and memberName ~= nil and memberName ~= L"" then
                 local nk = NormalizeNameKey(member.name)
                 if nk ~= nil then
                     validStickyKeys[nk] = true
@@ -1601,8 +1678,7 @@ local function RefreshWarband(showAll, showParty1, partiesOverride)
                     icon:Disable()
                 end
             else
-                -- Party-only warband: members of other parties are not on the roster grid. Do not mark them
-                -- as group roster or outsider tracking will never attach realm-ring icons (blue/red).
+                -- Party-only warband: non-social members of other parties stay off the roster grid.
                 icon:Disable()
             end
         end
@@ -1618,16 +1694,20 @@ RefreshAll = function()
         .. " showWarband=" .. tostring(s.showWarband)
         .. " showFriendly=" .. tostring(s.showFriendly)
         .. " showHostile=" .. tostring(s.showHostile)
+        .. " highlightSocial=" .. tostring(s.highlightSocial)
     )
     RegisterAllPartyWarbandMembersForPruning()
     -- Scenarios use party-only roster icons (row 1); other scenario players rely on outsider tracking.
+    -- Guild/Friends can still attach gold on social party members when Party is off.
     if inScenario then
-        if s.showParty then
+        if s.showParty or s.highlightSocial then
             RefreshParty()
+        else
+            DisableAll()
         end
     elseif IsWarBandActive() then
         RefreshWarband(s.showWarband == true, s.showParty == true, nil)
-    elseif s.showParty then
+    elseif s.showParty or s.highlightSocial then
         RefreshParty()
     else
         -- No roster view in this context; ensure all roster slots are disabled.
@@ -1744,9 +1824,15 @@ function CustomUI.GroupIcons.OnInterfaceReady()
     -- Stock UI commonly rebuilds windows from INTERFACE_RELOADED in addition to LOADING_END.
     -- Driver is CreateWindow(..., false); keep it shown so OnUpdate/warm refresh keep ticking after reload.
     EnsureGroupIconsDriverShowing()
+    RefreshSocialNameSets()
     ScheduleWarmRefreshRosterPolling()
     RequestWarbandLeaderData()
     OnWarbandLeaderListMaybeChanged()
+    m_needsRefreshAll = true
+end
+
+function CustomUI.GroupIcons.OnSocialListsUpdated()
+    RefreshSocialNameSets()
     m_needsRefreshAll = true
 end
 
@@ -1755,6 +1841,7 @@ function CustomUI.GroupIcons.OnZoneChanged()
     m_knownByNameKey = {}
     UntrackAllOutsiders()
     ResetWorldProbeCalibration()
+    RefreshSocialNameSets()
     ScheduleWarmRefreshRosterPolling()
     m_friendlyLeaderPollElapsed = 0
     RequestWarbandLeaderData()
@@ -1831,8 +1918,13 @@ function GroupIconsComponent:Enable()
     WindowRegisterEventHandler("Root", SystemData.Events.SOCIAL_OPENPARTY_UPDATED, "CustomUI.GroupIcons.OnOpenPartyUpdated")
     WindowRegisterEventHandler("Root", SystemData.Events.SOCIAL_OPENPARTY_WORLD_UPDATED, "CustomUI.GroupIcons.OnOpenPartyUpdated")
     WindowRegisterEventHandler("Root", SystemData.Events.SOCIAL_OPENPARTY_NOTIFY, "CustomUI.GroupIcons.OnOpenPartyUpdated")
+    WindowRegisterEventHandler("Root", SystemData.Events.SOCIAL_FRIENDS_UPDATED, "CustomUI.GroupIcons.OnSocialListsUpdated")
+    WindowRegisterEventHandler("Root", SystemData.Events.GUILD_MEMBER_UPDATED, "CustomUI.GroupIcons.OnSocialListsUpdated")
+    WindowRegisterEventHandler("Root", SystemData.Events.GUILD_MEMBER_ADDED, "CustomUI.GroupIcons.OnSocialListsUpdated")
+    WindowRegisterEventHandler("Root", SystemData.Events.GUILD_MEMBER_REMOVED, "CustomUI.GroupIcons.OnSocialListsUpdated")
     EnsureGroupIconsDriverShowing()
     -- First ticks after Enable re-run roster attach until late roster worldObj ids arrive (common after /reloadui).
+    RefreshSocialNameSets()
     m_needsRefreshAll = true
     ScheduleWarmRefreshRosterPolling()
     RequestWarbandLeaderData()
@@ -1865,6 +1957,10 @@ function GroupIconsComponent:Disable()
     WindowUnregisterEventHandler("Root", SystemData.Events.SOCIAL_OPENPARTY_UPDATED)
     WindowUnregisterEventHandler("Root", SystemData.Events.SOCIAL_OPENPARTY_WORLD_UPDATED)
     WindowUnregisterEventHandler("Root", SystemData.Events.SOCIAL_OPENPARTY_NOTIFY)
+    WindowUnregisterEventHandler("Root", SystemData.Events.SOCIAL_FRIENDS_UPDATED)
+    WindowUnregisterEventHandler("Root", SystemData.Events.GUILD_MEMBER_UPDATED)
+    WindowUnregisterEventHandler("Root", SystemData.Events.GUILD_MEMBER_ADDED)
+    WindowUnregisterEventHandler("Root", SystemData.Events.GUILD_MEMBER_REMOVED)
     if DoesWindowExist(c_GROUPICONS_DRIVER) then
         WindowSetShowing(c_GROUPICONS_DRIVER, false)
     end

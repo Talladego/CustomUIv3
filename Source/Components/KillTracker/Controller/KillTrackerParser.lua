@@ -51,6 +51,16 @@ function Parser.NormalizeNameKey(name)
 	return string.lower(s)
 end
 
+--- True when killer and victim are the same player (environmental / self DB lines).
+function Parser.IsSelfKill(parsed)
+	if type(parsed) ~= "table" then
+		return false
+	end
+	local a = Parser.NormalizeNameKey(parsed.killer)
+	local b = Parser.NormalizeNameKey(parsed.victim)
+	return a ~= nil and a == b
+end
+
 --- Parse engine RVR kill line.
 --- Returns table { victim, verb, killer, ability, zone, streak } or nil.
 function Parser.ParseKillLine(msg)

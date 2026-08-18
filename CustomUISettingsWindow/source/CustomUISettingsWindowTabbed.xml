@@ -9,7 +9,7 @@
         <!-- Settings Window -->
         <Window name="CustomUISettingsWindowTabbed" movable="true" savesettings="false" layer="secondary">
             <Size>
-                <AbsPoint x="900" y="800" />
+                <AbsPoint x="1040" y="800" />
             </Size>
             <Anchors>
                 <Anchor point="center" relativePoint="center" />
@@ -116,10 +116,17 @@
                                 </Anchor>
                             </Anchors>
                         </Button>
+                        <Button name="$parentKillTracker" inherits="CustomUI_Templates_SettingsWindowTabButton" id="8">
+                            <Anchors>
+                                <Anchor point="right" relativePoint="left" relativeTo="$parentSCT">
+                                    <AbsPoint x="0" y="0" />
+                                </Anchor>
+                            </Anchors>
+                        </Button>
 
 		                <Window name="$parentSeparatorRight" inherits="EA_Window_TabSeparatorRightSide" layer="background" popable="false">
 		                  <Anchors>
-		                    <Anchor point="bottomright" relativePoint="topleft" relativeTo="$parentSCT">
+		                    <Anchor point="bottomright" relativePoint="topleft" relativeTo="$parentKillTracker">
 		                      <AbsPoint x="0" y="-6" />
 		                    </Anchor>
 		                    <Anchor point="bottomright" relativePoint="bottomright" >
@@ -149,7 +156,8 @@
                 <Window name ="SWTabGroup" inherits ="CustomUISettingsWindowTabGroup"/>
                 <Window name ="SWTabUnitFrames" inherits ="CustomUISettingsWindowTabUnitFrames"/>
                 <Window name ="SWTabGroupIcons" inherits ="CustomUISettingsWindowTabGroupIcons"/>  
-                <Window name ="SWTabSCT" inherits ="CustomUISettingsWindowTabSCT"/>  				
+                <Window name ="SWTabSCT" inherits ="CustomUISettingsWindowTabSCT"/>
+                <Window name ="SWTabKillTracker" inherits ="CustomUISettingsWindowTabKillTracker"/>
                 
                 
                 <Button name="$parentOkayButton" inherits="EA_Button_DefaultResizeable" >

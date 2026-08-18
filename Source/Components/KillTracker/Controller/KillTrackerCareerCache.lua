@@ -4,6 +4,9 @@
 -- Scenario roster uses compact careerId values (Enemy.ScenarioCareerIdToLine /
 -- UnitFramesScenario), not PartyUtils careerLine indices. Resolve via that map
 -- first, then Icons.GetCareerIconIDFromCareerNamesID, then careerLine.
+--
+-- Open RvR: also ingest friends / ignore / guild (Social Window lists) and
+-- infer killer career from unique ability names (AbilityMap).
 ----------------------------------------------------------------
 if not CustomUI then CustomUI = {} end
 CustomUI.KillTracker = CustomUI.KillTracker or {}
@@ -13,6 +16,8 @@ local CareerCache = CustomUI.KillTracker.CareerCache
 
 -- key → { line = careerLine|nil, iconId = number|nil }
 CareerCache.ByName = CareerCache.ByName or {}
+-- Localized career label → careerLine (CareerNames / CareerLinesMale|Female)
+CareerCache._careerNameToLine = CareerCache._careerNameToLine or nil
 
 -- Same table as UnitFramesScenario / ScenarioBalance / Enemy.ScenarioCareerIdToLine.
 local c_SCENARIO_CAREER_ID_TO_LINE = {
@@ -108,6 +113,61 @@ local function CareerLineFromScenarioCareerId(careerId)
 		end
 	end
 	return c_SCENARIO_CAREER_ID_TO_LINE[careerId]
+end
+
+local function NormCareerLabel(label)
+	if label == nil then
+		return nil
+	end
+	local s = tostring(towstring(label))
+	s = string.gsub(s, "%^.", "")
+	s = string.gsub(s, "^%s+", "")
+	s = string.gsub(s, "%s+$", "")
+	if s == "" then
+		return nil
+	end
+	return string.lower(s)
+end
+
+local function EnsureCareerNameIndex()
+	if type(CareerCache._careerNameToLine) == "table" then
+		return CareerCache._careerNameToLine
+	end
+	local map = {}
+	local function Put(label, line)
+		local key = NormCareerLabel(label)
+		line = tonumber(line)
+		if key and line and line > 0 then
+			map[key] = line
+		end
+	end
+	if type(CareerNames) == "table" then
+		for line, data in pairs(CareerNames) do
+			if type(data) == "table" then
+				Put(data.name, line)
+			end
+		end
+	end
+	if type(GameData) == "table" and type(GameData.CareerLine) == "table" and type(GetCareerLine) == "function" then
+		for _, line in pairs(GameData.CareerLine) do
+			line = tonumber(line)
+			if line and line > 0 then
+				Put(GetCareerLine(line, GameData.Gender and GameData.Gender.MALE), line)
+				Put(GetCareerLine(line, GameData.Gender and GameData.Gender.FEMALE), line)
+				Put(GetCareerLine(line, nil), line)
+			end
+		end
+	end
+	CareerCache._careerNameToLine = map
+	return map
+end
+
+local function CareerLineFromCareerName(careerName)
+	local key = NormCareerLabel(careerName)
+	if not key then
+		return nil
+	end
+	return EnsureCareerNameIndex()[key]
 end
 
 local function Remember(name, careerLine, iconId, careerNamesId)
@@ -312,10 +372,90 @@ local function IngestScoreboard()
 	end
 end
 
+--- Friends / ignore / guild — same payloads Social Window uses (careerID / careerName).
+local function IngestSocialListEntry(entry)
+	if type(entry) ~= "table" or not entry.name then
+		return
+	end
+	local careerNamesId = tonumber(entry.careerID) or tonumber(entry.careerId)
+	local careerLine = tonumber(entry.careerLine) or tonumber(entry.career)
+	if (not careerLine or careerLine == 0) then
+		careerLine = CareerLineFromCareerName(entry.careerName or entry.careerString or entry.career)
+	end
+	local iconId = tonumber(entry.careerIcon)
+	Remember(entry.name, careerLine, iconId, careerNamesId)
+end
+
+local function IngestFriendsList()
+	if type(GetFriendsList) ~= "function" then
+		return
+	end
+	local ok, list = CustomUI.TryCallQuiet("KillTracker.GetFriendsList", GetFriendsList)
+	if not ok or type(list) ~= "table" then
+		return
+	end
+	for _, entry in pairs(list) do
+		IngestSocialListEntry(entry)
+	end
+end
+
+local function IngestIgnoreList()
+	if type(GetIgnoreList) ~= "function" then
+		return
+	end
+	local ok, list = CustomUI.TryCallQuiet("KillTracker.GetIgnoreList", GetIgnoreList)
+	if not ok or type(list) ~= "table" then
+		return
+	end
+	for _, entry in pairs(list) do
+		IngestSocialListEntry(entry)
+	end
+end
+
+local function IngestGuildRoster()
+	if type(GetGuildMemberData) ~= "function" then
+		return
+	end
+	local ok, list = CustomUI.TryCallQuiet("KillTracker.GetGuildMemberData", GetGuildMemberData)
+	if not ok or type(list) ~= "table" then
+		return
+	end
+	for _, entry in pairs(list) do
+		IngestSocialListEntry(entry)
+	end
+end
+
+function CareerCache.RefreshSocialLists()
+	IngestFriendsList()
+	IngestIgnoreList()
+	IngestGuildRoster()
+end
+
+--- When the kill ability is unique to one career, cache that line for the killer.
+function CareerCache.InferFromUniqueAbility(playerName, abilityName)
+	if not playerName or not abilityName or abilityName == L"" then
+		return false
+	end
+	if CareerCache.GetCareerLine(playerName) or CareerCache.GetCareerIconId(playerName) then
+		return false
+	end
+	local AbilityMap = CustomUI.KillTracker.AbilityMap
+	if not AbilityMap or type(AbilityMap.GetUniqueCareerLine) ~= "function" then
+		return false
+	end
+	local line = AbilityMap.GetUniqueCareerLine(abilityName)
+	if not line then
+		return false
+	end
+	Remember(playerName, line, nil, nil)
+	return true
+end
+
 function CareerCache.RefreshFromWorld()
 	IngestScenarioPlayers()
 	IngestParty()
 	IngestScoreboard()
+	CareerCache.RefreshSocialLists()
 	IngestTarget("selfhostiletarget")
 	IngestTarget("selffriendlytarget")
 	IngestTarget("mouseovertarget")

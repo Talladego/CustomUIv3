@@ -36,15 +36,13 @@ function KT.OnCombatLogUpdated(updateType, filterType)
 		return
 	end
 
-	-- Already rewritten by TextLogAddEntry hook — do not double-count / inject.
+	-- Already processed via TextLogAddEntry hook (enriched) — skip double count.
 	if KT.Chat and KT.Chat.IsEnrichedText and KT.Chat.IsEnrichedText(msg) then
 		return
 	end
 
-	-- C++ path: stock line is hidden via suppressed RVR_KILLS filters; inject
-	-- reformatted line under KillTracker Order/Destruction filter ids.
-	if KT.Chat and type(KT.Chat.HandleStockKillLine) == "function" then
-		KT.Chat.HandleStockKillLine(msg, filterType)
+	if type(KT.ProcessKillLine) == "function" then
+		KT.ProcessKillLine(msg, filterType)
 	end
 end
 

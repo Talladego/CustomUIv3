@@ -18,7 +18,8 @@ CustomUISettingsWindowTabbed.TABS_GROUP		    = 4
 CustomUISettingsWindowTabbed.TABS_UNITFRAMES	= 5
 CustomUISettingsWindowTabbed.TABS_GROUPICONS	    = 6
 CustomUISettingsWindowTabbed.TABS_SCT		= 7
-CustomUISettingsWindowTabbed.TABS_MAX_NUMBER	= 7
+CustomUISettingsWindowTabbed.TABS_KILLTRACKER	= 8
+CustomUISettingsWindowTabbed.TABS_MAX_NUMBER	= 8
 
 local c_SCT_COLOR_PICKER_DEFAULT_BUTTON = "CustomUISettingsWindowTabbedSctColorPickerHostSctColorPickerDefaultButton"
 
@@ -97,6 +98,9 @@ local function ReapplyComponentsFromSettings()
     if CustomUI.GroupIcons and type(CustomUI.GroupIcons.OnSettingsChanged) == "function" then
         CustomUI.GroupIcons.OnSettingsChanged()
     end
+    if CustomUI.KillTracker and type(CustomUI.KillTracker.OnSettingsChanged) == "function" then
+        CustomUI.KillTracker.OnSettingsChanged()
+    end
     -- SCT reads CustomUI.Settings.SCT; force a settings-changed refresh if available.
     if CustomUI.SCT then
         if type(CustomUI.SCT.NotifySettingsChanged) == "function" then
@@ -127,6 +131,7 @@ CustomUISettingsWindowTabbed.Tabs[ CustomUISettingsWindowTabbed.TABS_GROUP      
 CustomUISettingsWindowTabbed.Tabs[ CustomUISettingsWindowTabbed.TABS_UNITFRAMES ] = { window = "SWTabUnitFrames", name="CustomUISettingsWindowTabbedTabButtonsUnitFrames", label=L"UnitFrames", tabClass=CustomUISettingsWindowTabUnitFrames }
 CustomUISettingsWindowTabbed.Tabs[ CustomUISettingsWindowTabbed.TABS_GROUPICONS ] = { window = "SWTabGroupIcons", name="CustomUISettingsWindowTabbedTabButtonsGroupIcons", label=L"GroupIcons", tabClass=CustomUISettingsWindowTabGroupIcons }
 CustomUISettingsWindowTabbed.Tabs[ CustomUISettingsWindowTabbed.TABS_SCT        ] = { window = "SWTabSCT",        name="CustomUISettingsWindowTabbedTabButtonsSCT",        label=L"SCT",        tabClass=CustomUISettingsWindowTabSCT }
+CustomUISettingsWindowTabbed.Tabs[ CustomUISettingsWindowTabbed.TABS_KILLTRACKER ] = { window = "SWTabKillTracker", name="CustomUISettingsWindowTabbedTabButtonsKillTracker", label=L"Kills", tabClass=CustomUISettingsWindowTabKillTracker }
 
 
 function CustomUISettingsWindowTabbed.OnShow()

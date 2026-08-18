@@ -1,0 +1,246 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../Interface.xsd">
+  <Scripts>
+    <Script file="Source/CustomUISettingsWindowTabKillTracker.lua"/>
+  </Scripts>
+  <Windows>
+
+    <Window name="CustomUISettingsWindowTabKillTracker" movable="false" >
+      <Anchors>
+        <Anchor point="topleft" relativePoint="topleft" relativeTo="CustomUISettingsWindowTabbedSocket">
+          <AbsPoint x="0" y="0"/>
+        </Anchor>
+        <Anchor point="bottomright" relativePoint="bottomright" relativeTo="CustomUISettingsWindowTabbedSocket">
+          <AbsPoint x="0" y="0"/>
+        </Anchor>
+      </Anchors>
+      <EventHandlers>
+        <EventHandler event="OnInitialize" function="CustomUISettingsWindowTabKillTracker.Initialize"/>
+      </EventHandlers>
+      <Windows>
+
+        <ScrollWindow name="$parentContents" childscrollwindow="SWTabKillTrackerContentsScrollChild" scrollbar="SWTabKillTrackerContentsScrollbar" lineheight="18" autoHideScrollBar="true">
+            <Anchors>
+                <Anchor point="topleft" relativePoint="topleft" />
+                <Anchor point="bottomright" relativePoint="bottomright" />
+            </Anchors>
+            <Windows>
+                <VerticalScrollbar name="$parentScrollbar" inherits="EA_ScrollBar_DefaultVerticalChain" layer="popup">
+                    <Anchors>
+                        <Anchor point="topright" relativePoint="topright">
+                            <AbsPoint x="0" y="0"/>
+                        </Anchor>
+                        <Anchor point="bottomright" relativePoint="bottomright">
+                            <AbsPoint x="0" y="0"/>
+                        </Anchor>
+                    </Anchors>
+                </VerticalScrollbar>
+
+                <Window name="$parentScrollChild">
+                    <Anchors>
+                        <Anchor point="topleft" relativePoint="topleft">
+                            <AbsPoint x="0" y="0" />
+                        </Anchor>
+                        <Anchor point="topleft" relativePoint="topright" relativeTo="$parentScrollbar">
+                            <AbsPoint x="0" y="0" />
+                        </Anchor>
+                    </Anchors>
+                    <Windows>
+
+                        <!-- General -->
+                        <Window name="$parentGeneral" >
+                            <Size>
+                                <AbsPoint x="500" y="100" />
+                            </Size>
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft">
+                                  <AbsPoint x="0" y="0"/>
+                                </Anchor>
+                                <Anchor point="topright" relativePoint="topright">
+                                  <AbsPoint x="0" y="0"/>
+                                </Anchor>
+                            </Anchors>
+                            <Windows>
+                                <FullResizeImage name="$parentBackground" inherits="SettingsSectionBackground" />
+                                <Label name="$parentTitle" inherits="EA_Settings_SectionTitle">
+                                    <Size>
+                                        <AbsPoint x="400" y="25" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="10" y="10" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+
+                                <Window name="$parentKillTrackerEnabled" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="40" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabKillTracker.OnToggleEnabled" />
+                                    </EventHandlers>
+                                </Window>
+                            </Windows>
+                        </Window>
+
+                        <!-- Display (Pattern A: y = General 100 + gap 10) -->
+                        <Window name="$parentDisplay" >
+                            <Size>
+                                <AbsPoint x="500" y="300" />
+                            </Size>
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft">
+                                    <AbsPoint x="0" y="110"/>
+                                </Anchor>
+                                <Anchor point="topright" relativePoint="topright">
+                                    <AbsPoint x="0" y="110"/>
+                                </Anchor>
+                            </Anchors>
+                            <Windows>
+                                <FullResizeImage name="$parentBackground" inherits="SettingsSectionBackground" />
+                                <Label name="$parentTitle" inherits="EA_Settings_SectionTitle">
+                                    <Size>
+                                        <AbsPoint x="400" y="25" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="10" y="10" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+
+                                <Label name="$parentFontLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+                                    <Size>
+                                        <AbsPoint x="200" y="20" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="42" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+                                <ComboBox name="$parentFont" inherits="EA_ComboBox_DefaultResizable" handleinput="true">
+                                    <Size>
+                                        <AbsPoint x="320" y="30" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="270" y="38" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnSelChanged" function="CustomUISettingsWindowTabKillTracker.OnFontChanged" />
+                                    </EventHandlers>
+                                </ComboBox>
+
+                                <Label name="$parentVisTimeLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+                                    <Size>
+                                        <AbsPoint x="200" y="20" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="78" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+                                <ComboBox name="$parentVisTime" inherits="EA_ComboBox_DefaultResizable" handleinput="true">
+                                    <Size>
+                                        <AbsPoint x="160" y="30" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="270" y="74" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnSelChanged" function="CustomUISettingsWindowTabKillTracker.OnVisTimeChanged" />
+                                    </EventHandlers>
+                                </ComboBox>
+
+                                <Label name="$parentMaxRowsLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+                                    <Size>
+                                        <AbsPoint x="200" y="20" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="114" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+                                <SliderBar name="$parentMaxRows" inherits="EA_Default_SliderBar" handleinput="true" numticks="9">
+                                    <Size>
+                                        <AbsPoint x="300" y="25" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="270" y="112" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnSlide" function="CustomUISettingsWindowTabKillTracker.OnMaxRowsChanged" />
+                                    </EventHandlers>
+                                </SliderBar>
+
+                                <Window name="$parentCareerIcons" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="151" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabKillTracker.OnToggleCareerIcons" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Window name="$parentAbilityIcons" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="183" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabKillTracker.OnToggleAbilityIcons" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Window name="$parentKillCount" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="215" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabKillTracker.OnToggleKillCount" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Window name="$parentZone" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="247" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabKillTracker.OnToggleZone" />
+                                    </EventHandlers>
+                                </Window>
+                            </Windows>
+                        </Window>
+
+                    </Windows>
+                </Window>
+            </Windows>
+        </ScrollWindow>
+
+      </Windows>
+    </Window>
+  </Windows>
+</Interface>

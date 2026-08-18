@@ -175,14 +175,6 @@ function OutsiderTracker.ConsiderClassification(state, classification, opts)
         return false
     end
 
-    local settings = opts.ensureSettings()
-    if unitType == SystemData.TargetObjectType.ALLY_PLAYER and not settings.showFriendly then
-        return false
-    end
-    if unitType == SystemData.TargetObjectType.ENEMY_PLAYER and not settings.showHostile then
-        return false
-    end
-
     local wid = TargetInfo:UnitEntityId(classification)
     if wid == 0 then
         return false
@@ -194,6 +186,20 @@ function OutsiderTracker.ConsiderClassification(state, classification, opts)
     end
     if opts.isSelfMember(playerName) then
         return false
+    end
+
+    local settings = opts.ensureSettings()
+    local socialHighlight = type(opts.isSocialHighlightedName) == "function"
+        and opts.isSocialHighlightedName(playerName) == true
+    if unitType == SystemData.TargetObjectType.ALLY_PLAYER then
+        -- Guild/Friends gold may track allies even when Friendly outsider icons are off.
+        if not settings.showFriendly and not socialHighlight then
+            return false
+        end
+    elseif unitType == SystemData.TargetObjectType.ENEMY_PLAYER then
+        if not settings.showHostile then
+            return false
+        end
     end
 
     local career = TargetInfo:UnitCareer(classification)

@@ -155,6 +155,89 @@ local function ResetWindowToDefault(windowName)
     end
 end
 
+--- True when LayoutEditor has the window marked user-hidden (Hidden column).
+local function LayoutEditorIsUserHidden(windowName)
+    if type(LayoutEditor) ~= "table" or type(LayoutEditor.windowsList) ~= "table" then
+        return false
+    end
+    local data = LayoutEditor.windowsList[windowName]
+    return data ~= nil and data.isUserHidden == true
+end
+
+--- Hide a stock window while a CustomUI replacement is active.
+--- tracked[windowName] = true  → we hid it (safe to UserShow on restore)
+--- tracked[windowName] = false → already user-hidden (leave hidden on restore)
+--- Call once per enable-cycle per window; later calls only re-assert hide.
+local function HideStockForReplace(windowName, tracked)
+    if type(tracked) ~= "table" or type(windowName) ~= "string" or windowName == "" then
+        return
+    end
+    if type(LayoutEditor) ~= "table" or type(LayoutEditor.windowsList) ~= "table" then
+        if DoesWindowExist(windowName) then
+            WindowSetShowing(windowName, false)
+        end
+        return
+    end
+    if LayoutEditor.windowsList[windowName] == nil then
+        if DoesWindowExist(windowName) then
+            WindowSetShowing(windowName, false)
+        end
+        return
+    end
+
+    if tracked[windowName] ~= nil then
+        if tracked[windowName] == true and not LayoutEditorIsUserHidden(windowName) then
+            LayoutEditor.UserHide(windowName)
+        end
+        return
+    end
+
+    if LayoutEditorIsUserHidden(windowName) then
+        tracked[windowName] = false
+        return
+    end
+
+    LayoutEditor.UserHide(windowName)
+    tracked[windowName] = true
+end
+
+--- Restore stock after CustomUI replace ends. Only UserShow if we hid it.
+--- @return boolean true if the window was UserShown
+local function RestoreStockAfterReplace(windowName, tracked)
+    if type(tracked) ~= "table" or type(windowName) ~= "string" or windowName == "" then
+        return false
+    end
+    local weHid = tracked[windowName]
+    tracked[windowName] = nil
+    if weHid ~= true then
+        return false
+    end
+    if type(LayoutEditor) == "table"
+        and type(LayoutEditor.windowsList) == "table"
+        and LayoutEditor.windowsList[windowName] ~= nil
+    then
+        LayoutEditor.UserShow(windowName)
+        return true
+    elseif DoesWindowExist(windowName) then
+        WindowSetShowing(windowName, true)
+        return true
+    end
+    return false
+end
+
+local function RestoreAllStockAfterReplace(tracked)
+    if type(tracked) ~= "table" then
+        return
+    end
+    local names = {}
+    for windowName in pairs(tracked) do
+        names[#names + 1] = windowName
+    end
+    for i = 1, #names do
+        RestoreStockAfterReplace(names[i], tracked)
+    end
+end
+
 local function CountEnabledComponents()
     local enabledCount = 0
 
@@ -879,6 +962,22 @@ end
 
 function CustomUI.ResetWindowToDefault(windowName)
     ResetWindowToDefault(windowName)
+end
+
+function CustomUI.LayoutEditorIsUserHidden(windowName)
+    return LayoutEditorIsUserHidden(windowName)
+end
+
+function CustomUI.HideStockForReplace(windowName, tracked)
+    HideStockForReplace(windowName, tracked)
+end
+
+function CustomUI.RestoreStockAfterReplace(windowName, tracked)
+    return RestoreStockAfterReplace(windowName, tracked)
+end
+
+function CustomUI.RestoreAllStockAfterReplace(tracked)
+    RestoreAllStockAfterReplace(tracked)
 end
 
 function CustomUI.ResetAllToDefaults()

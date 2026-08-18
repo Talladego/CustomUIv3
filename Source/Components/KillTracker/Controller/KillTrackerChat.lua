@@ -299,43 +299,10 @@ end
 
 local function ProcessAndFormat(rawText, stockFilterId)
 	local KT = CustomUI.KillTracker
-	local Parser = KT.Parser
-	if not Parser or type(Parser.ParseKillLine) ~= "function" then
-		return nil
+	if type(KT.ProcessKillLine) == "function" then
+		return KT.ProcessKillLine(rawText, stockFilterId)
 	end
-	local parsed = Parser.ParseKillLine(rawText)
-	if not parsed then
-		return nil
-	end
-
-	-- Refresh roster/target careers before icon lookup (scenario careerId mapping).
-	if KT.CareerCache and type(KT.CareerCache.RefreshFromWorld) == "function" then
-		KT.CareerCache.RefreshFromWorld()
-	end
-
-	local settings = KT.GetSettings and KT.GetSettings() or {}
-	local killCount = 0
-	local deathCount = 0
-	if KT.Session then
-		if type(KT.Session.IncrementKiller) == "function" then
-			killCount = KT.Session.IncrementKiller(parsed.killer)
-		end
-		if type(KT.Session.IncrementVictim) == "function" then
-			deathCount = KT.Session.IncrementVictim(parsed.victim)
-		end
-	end
-
-	local Format = KT.Format
-	if not Format or type(Format.Build) ~= "function" then
-		return nil
-	end
-	local model = Format.Build(parsed, stockFilterId, killCount, deathCount, settings)
-
-	if settings.showFeedWindow == true and KT.Window and type(KT.Window.PushKill) == "function" then
-		KT.Window.PushKill(model)
-	end
-
-	return model
+	return nil
 end
 
 function Chat.InjectFormattedLine(chatText, stockFilterId)
@@ -358,18 +325,6 @@ function Chat.InjectFormattedLine(chatText, stockFilterId)
 	Chat.ApplySuppressOnly()
 end
 
-function Chat.HandleStockKillLine(rawText, stockFilterId)
-	local settings = CustomUI.KillTracker.GetSettings and CustomUI.KillTracker.GetSettings() or {}
-	if settings.replaceChatKills == false then
-		return
-	end
-	local model = ProcessAndFormat(rawText, stockFilterId)
-	if not model then
-		return
-	end
-	Chat.InjectFormattedLine(model.chatText, stockFilterId)
-end
-
 local function HookedTextLogAddEntry(logName, filterId, text)
 	local original = Chat._originalTextLogAddEntry
 	if type(original) ~= "function" then
@@ -384,19 +339,16 @@ local function HookedTextLogAddEntry(logName, filterId, text)
 	local settings = KT.GetSettings and KT.GetSettings() or {}
 	local enabled = CustomUI.IsComponentEnabled and CustomUI.IsComponentEnabled("KillTracker")
 	if enabled
-		and settings.replaceChatKills ~= false
+		and settings.replaceChatKills == true
 		and logName == "Combat"
 		and IsStockRvrKillFilter(filterId)
 		and not Chat.IsEnrichedText(text)
 	then
+		-- Process (session + feed + inject); drop the stock TextLog entry.
 		local model = ProcessAndFormat(text, filterId)
 		if model and model.chatText then
-			-- Drop stock filter entry; write only the KillTracker-filtered line.
-			Chat._rewriting = true
-			local ok = original(logName, MapToKillTrackerFilter(filterId), model.chatText)
-			Chat._rewriting = false
 			Chat.ApplySuppressOnly()
-			return ok
+			return true
 		end
 	end
 

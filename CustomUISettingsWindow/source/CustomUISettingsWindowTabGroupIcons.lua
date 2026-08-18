@@ -13,7 +13,9 @@ local function EnsureGroupIconsSettings()
     local s = CustomUI.Settings.GroupIcons
     if s.showParty == nil then s.showParty = true end
     if s.showWarband == nil then s.showWarband = true end
-    if s.archetypeColors == nil then s.archetypeColors = false end
+    -- Archetype colors UI removed: always cyan roster rings.
+    s.archetypeColors = false
+    if s.highlightSocial == nil then s.highlightSocial = true end
     if s.showFriendly == nil then s.showFriendly = true end
     if s.showHostile == nil then s.showHostile = true end
     return s
@@ -34,15 +36,15 @@ function CustomUISettingsWindowTabGroupIcons.Initialize()
     LabelSetText( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsTitle", L"Icons" )
     LabelSetText( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsPartyLabel", L"Party" )
     LabelSetText( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsWarbandLabel", L"Warband" )
-    LabelSetText( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsArchetypeColorsLabel", L"Archetype colors" )
     LabelSetText( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsFriendlyLabel", L"Friendly" )
     LabelSetText( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsHostileLabel", L"Hostile" )
+    LabelSetText( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsGoldSocialLabel", L"Guild/Friends" )
 
     ButtonSetCheckButtonFlag( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsPartyButton", true )
     ButtonSetCheckButtonFlag( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsWarbandButton", true )
-    ButtonSetCheckButtonFlag( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsArchetypeColorsButton", true )
     ButtonSetCheckButtonFlag( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsFriendlyButton", true )
     ButtonSetCheckButtonFlag( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsHostileButton", true )
+    ButtonSetCheckButtonFlag( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsGoldSocialButton", true )
 end
 
 function CustomUISettingsWindowTabGroupIcons.UpdateSettings()
@@ -51,9 +53,9 @@ function CustomUISettingsWindowTabGroupIcons.UpdateSettings()
     local s = EnsureGroupIconsSettings()
     ButtonSetPressedFlag( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsPartyButton", s.showParty == true )
     ButtonSetPressedFlag( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsWarbandButton", s.showWarband == true )
-    ButtonSetPressedFlag( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsArchetypeColorsButton", s.archetypeColors == true )
     ButtonSetPressedFlag( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsFriendlyButton", s.showFriendly == true )
     ButtonSetPressedFlag( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsHostileButton", s.showHostile == true )
+    ButtonSetPressedFlag( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsGoldSocialButton", s.highlightSocial == true )
 end
 
 function CustomUISettingsWindowTabGroupIcons.ApplyCurrent()
@@ -64,9 +66,10 @@ function CustomUISettingsWindowTabGroupIcons.ApplyCurrent()
     local c = CustomUISettingsWindowTabGroupIcons.contentsName
     s.showParty = ButtonGetPressedFlag( c.."IconsPartyButton" ) == true
     s.showWarband = ButtonGetPressedFlag( c.."IconsWarbandButton" ) == true
-    s.archetypeColors = ButtonGetPressedFlag( c.."IconsArchetypeColorsButton" ) == true
+    s.archetypeColors = false
     s.showFriendly = ButtonGetPressedFlag( c.."IconsFriendlyButton" ) == true
     s.showHostile = ButtonGetPressedFlag( c.."IconsHostileButton" ) == true
+    s.highlightSocial = ButtonGetPressedFlag( c.."IconsGoldSocialButton" ) == true
     ApplyGroupIconsSettings()
 end
 
@@ -85,14 +88,14 @@ function CustomUISettingsWindowTabGroupIcons.OnToggleWarband()
     EA_LabelCheckButton.Toggle()
 end
 
-function CustomUISettingsWindowTabGroupIcons.OnToggleArchetypeColors()
-    EA_LabelCheckButton.Toggle()
-end
-
 function CustomUISettingsWindowTabGroupIcons.OnToggleFriendly()
     EA_LabelCheckButton.Toggle()
 end
 
 function CustomUISettingsWindowTabGroupIcons.OnToggleHostile()
+    EA_LabelCheckButton.Toggle()
+end
+
+function CustomUISettingsWindowTabGroupIcons.OnToggleGoldSocial()
     EA_LabelCheckButton.Toggle()
 end

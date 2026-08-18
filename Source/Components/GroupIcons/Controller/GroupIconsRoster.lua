@@ -246,13 +246,18 @@ function Roster.RefreshParty(state, opts)
         return
     end
 
+    local showPartyIcons = opts.showPartyIcons == true
     local attachable = 0
     local validStickyKeys = {}
     for m = 1, c_MAX_MEMBERS do
         local member = GetPartySlotMember(m, data)
         local icon = state.icons[1][m]
         local memberName = member and opts.toWString(member.name)
-        if member and memberName ~= nil and memberName ~= L"" then
+        local socialOnly = member ~= nil
+            and type(opts.isSocialHighlightedName) == "function"
+            and opts.isSocialHighlightedName(member.name) == true
+        local wantIcon = showPartyIcons or socialOnly
+        if wantIcon and member and memberName ~= nil and memberName ~= L"" then
             local nk = opts.normalizeNameKey(member.name)
             if nk ~= nil then
                 validStickyKeys[nk] = true
@@ -274,7 +279,8 @@ function Roster.RefreshParty(state, opts)
 
     PruneStickyRosterWids(state, validStickyKeys)
     if type(opts.debugLog) == "function" then
-        opts.debugLog("RefreshParty: attachableMembers=" .. tostring(attachable))
+        opts.debugLog("RefreshParty: attachableMembers=" .. tostring(attachable)
+            .. " showPartyIcons=" .. tostring(showPartyIcons))
     end
 
     for p = 2, c_MAX_PARTIES do
@@ -312,7 +318,11 @@ function Roster.RefreshWarband(state, showAll, showParty1, partiesOverride, opts
             local icon = state.icons[p][m]
             local shouldShow = showAll or (showParty1 and p == 1)
             local memberName = member and opts.toWString(member.name)
-            if shouldShow and member and memberName ~= nil and memberName ~= L"" then
+            local socialOnly = member ~= nil
+                and type(opts.isSocialHighlightedName) == "function"
+                and opts.isSocialHighlightedName(member.name) == true
+            -- Party/Warband toggles gate the row; Guild/Friends can still attach gold on social members.
+            if (shouldShow or socialOnly) and member and memberName ~= nil and memberName ~= L"" then
                 local nk = opts.normalizeNameKey(member.name)
                 if nk ~= nil then
                     validStickyKeys[nk] = true
@@ -327,6 +337,7 @@ function Roster.RefreshWarband(state, showAll, showParty1, partiesOverride, opts
                     icon:Disable()
                 end
             else
+                -- Hidden non-social warband rows stay unregistered so Friendly outsider rings can apply.
                 icon:Disable()
             end
         end

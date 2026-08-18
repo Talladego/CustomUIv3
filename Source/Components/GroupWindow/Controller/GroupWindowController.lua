@@ -48,8 +48,8 @@ local c_OFFLINE_LABEL_TEXT = GetString(StringTables.Default.LABEL_PARTY_MEMBER_O
 ----------------------------------------------------------------
 
 local m_enabled                  = false
-local m_stockGroupRegistered     = false
 local m_stockGroupUnhooked       = false
+local m_stockReplaceTracked      = {} -- [windowName] = true if we hid, false if already user-hidden
 local m_groupData                = nil
 local m_hasWorldGroup            = false
 local m_handlersRegistered       = false
@@ -783,29 +783,53 @@ local function UpdateMemberRows()
     end
 end
 
-local function EnsureStockGroupWindowRegistered()
-    if m_stockGroupRegistered then
-        return true
-    end
+--- Stock GroupWindow is registered by ea_groupwindow as "Party Members".
+--- Keep that LayoutEditor name always. Never UnregisterWindow.
+--- While CustomUI Group is enabled: UserHide only if not already user-hidden;
+--- on Disable: UserShow only if we were the ones who hid it.
+local function EnsureStockGroupInLayoutEditor()
+	if type(LayoutEditor) ~= "table" or type(LayoutEditor.windowsList) ~= "table" then
+		return false
+	end
+	if not DoesWindowExist(c_STOCK_WINDOW_NAME) then
+		return false
+	end
+	if LayoutEditor.windowsList[c_STOCK_WINDOW_NAME] == nil
+		and type(LayoutEditor.RegisterWindow) == "function"
+	then
+		local name = L"Party Members"
+		local desc = L""
+		if type(GetStringFromTable) == "function"
+			and StringTables
+			and StringTables.HUD
+			and StringTables.HUD.LABEL_HUD_EDIT_PARTY_MEMBERS_NAME
+		then
+			name = GetStringFromTable("HUDStrings", StringTables.HUD.LABEL_HUD_EDIT_PARTY_MEMBERS_NAME)
+			if StringTables.HUD.LABEL_HUD_EDIT_PARTY_MEMBERS_DESC then
+				desc = GetStringFromTable("HUDStrings", StringTables.HUD.LABEL_HUD_EDIT_PARTY_MEMBERS_DESC)
+			end
+		end
+		LayoutEditor.RegisterWindow(c_STOCK_WINDOW_NAME, name, desc, false, false, true, nil)
+	end
+	return LayoutEditor.windowsList[c_STOCK_WINDOW_NAME] ~= nil
+end
 
-    if not DoesWindowExist(c_STOCK_WINDOW_NAME) then
-        return false
-    end
+local function HideStockGroupInLayoutEditor()
+	EnsureStockGroupInLayoutEditor()
+	if type(CustomUI.HideStockForReplace) == "function" then
+		CustomUI.HideStockForReplace(c_STOCK_WINDOW_NAME, m_stockReplaceTracked)
+	elseif DoesWindowExist(c_STOCK_WINDOW_NAME) then
+		WindowSetShowing(c_STOCK_WINDOW_NAME, false)
+	end
+end
 
-    if LayoutEditor.windowsList[c_STOCK_WINDOW_NAME] == nil then
-        LayoutEditor.RegisterWindow(
-            c_STOCK_WINDOW_NAME,
-            L"Group Window (stock)",
-            L"Stock group window hidden while CustomUI GroupWindow is enabled.",
-            false,
-            false,
-            true,
-            nil
-        )
-    end
-
-    m_stockGroupRegistered = (LayoutEditor.windowsList[c_STOCK_WINDOW_NAME] ~= nil)
-    return m_stockGroupRegistered
+local function ShowStockGroupInLayoutEditor()
+	EnsureStockGroupInLayoutEditor()
+	if type(CustomUI.RestoreStockAfterReplace) == "function" then
+		CustomUI.RestoreStockAfterReplace(c_STOCK_WINDOW_NAME, m_stockReplaceTracked)
+	elseif DoesWindowExist(c_STOCK_WINDOW_NAME) then
+		WindowSetShowing(c_STOCK_WINDOW_NAME, true)
+	end
 end
 
 RefreshGroupState = function()
@@ -1104,9 +1128,7 @@ function GroupWindowComponent:Enable()
     m_enabled = true
     RegisterHandlers()
 
-    if EnsureStockGroupWindowRegistered() then
-        LayoutEditor.UserHide(c_STOCK_WINDOW_NAME)
-    end
+    HideStockGroupInLayoutEditor()
     UnhookStockGroupWindowHandlers()
 
     LayoutEditor.UserShow(self.WindowName)
@@ -1159,11 +1181,9 @@ function GroupWindowComponent:Disable()
     end
 
     RehookStockGroupWindowHandlers()
-    if EnsureStockGroupWindowRegistered() then
-        LayoutEditor.UserShow(c_STOCK_WINDOW_NAME)
-        LayoutEditor.UnregisterWindow(c_STOCK_WINDOW_NAME)
-        m_stockGroupRegistered = false
-    end
+    -- Restore stock visibility only if we hid it (respect prior LayoutEditor Hidden).
+    -- Never UnregisterWindow — stock owns registration as "Party Members".
+    ShowStockGroupInLayoutEditor()
 
     -- Force stock to rebuild roster + buffs immediately after rehook/show.
     if type(GroupWindow) == "table" and type(GroupWindow.OnGroupUpdated) == "function" then

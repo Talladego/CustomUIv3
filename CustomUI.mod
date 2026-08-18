@@ -34,7 +34,7 @@
             <Dependency name="EA_CareerResourcesWindow" />
             <!-- SCT component: ensures stock easystem_eventtext loads first so our overrides apply last. -->
             <Dependency name="EASystem_EventText" />
-            <!-- KillTracker: chat tab LogDisplay filter suppress + Combat TextLog listen. -->
+            <!-- KillTracker: Combat TextLog listen + LayoutEditor feed. -->
             <Dependency name="EA_ChatWindow" />
             <!-- KillTracker / GroupIcons: career icon IDs via Icons.* -->
             <Dependency name="EATemplate_Icons" />

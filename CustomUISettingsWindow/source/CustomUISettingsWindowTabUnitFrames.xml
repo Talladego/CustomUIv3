@@ -108,11 +108,11 @@
                             </Windows>
                         </Window>
 
-                        <!-- Appearance: group visibility toggles + AP bar -->
+                        <!-- Appearance: group visibility + HP bar style + role sort -->
                         <!-- Pattern A (README §1): pin to ScrollChild; y = General(100) + gap(10) — same as CustomUISettingsWindowTabPlayer. -->
                         <Window name="$parentAppearance" >
                             <Size>
-                                <AbsPoint x="500" y="256" />
+                                <AbsPoint x="500" y="190" />
                             </Size>
                             <Anchors>
                                 <Anchor point="topleft" relativePoint="topleft">
@@ -172,22 +172,9 @@
                                     </EventHandlers>
                                 </Window>
 
-                                <!-- Party bottom → AP row top (same point/relativePoint convention). -->
-                                <Window name="$parentShowActionPointsBar" inherits="EA_LabelCheckButton">
-                                    <Anchors>
-                                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentParty">
-                                            <AbsPoint x="0" y="10" />
-                                        </Anchor>
-                                    </Anchors>
-                                    <EventHandlers>
-                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
-                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabUnitFrames.OnToggleShowActionPointsBar" />
-                                    </EventHandlers>
-                                </Window>
-
                                 <Window name="$parentTargetHudHpBarStyle" inherits="EA_LabelCheckButton">
                                     <Anchors>
-                                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentShowActionPointsBar">
+                                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentParty">
                                             <AbsPoint x="0" y="10" />
                                         </Anchor>
                                     </Anchors>
@@ -197,21 +184,9 @@
                                     </EventHandlers>
                                 </Window>
 
-                                <Window name="$parentCareerRingArchetypeColors" inherits="EA_LabelCheckButton">
-                                    <Anchors>
-                                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentTargetHudHpBarStyle">
-                                            <AbsPoint x="0" y="10" />
-                                        </Anchor>
-                                    </Anchors>
-                                    <EventHandlers>
-                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
-                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabUnitFrames.OnToggleCareerRingArchetypeColors" />
-                                    </EventHandlers>
-                                </Window>
-
                                 <Window name="$parentSortPartyMembersByRole" inherits="EA_LabelCheckButton">
                                     <Anchors>
-                                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentCareerRingArchetypeColors">
+                                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentTargetHudHpBarStyle">
                                             <AbsPoint x="0" y="10" />
                                         </Anchor>
                                     </Anchors>

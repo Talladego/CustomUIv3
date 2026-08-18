@@ -24,8 +24,10 @@ Most feature tabs only flip checkboxes until Apply/Okay. SCT may write live for
 preview; Cancel/Reset still undo those via the baseline.
 
 **Tabs (load order in `CustomUISettingsWindow.mod`):** Player → Target →
-TargetHUD → Group → UnitFrames → GroupIcons → SCT, plus the shared
+TargetHUD → Group → UnitFrames → GroupIcons → SCT → Kills, plus the shared
 `CustomUISettingsWindowTabbed` chrome.
+
+Shell size is **1040×800** so eight 124px tab buttons fit.
 
 Most of the tab XML follows the stock `EA_SettingsWindow` pattern: a
 `ScrollWindow` whose `ScrollChild` contains one or more sibling "section" windows
@@ -287,6 +289,7 @@ CustomUISettingsWindow/
     CustomUISettingsWindowTabUnitFrames.xml
     CustomUISettingsWindowTabGroupIcons.xml
     CustomUISettingsWindowTabSCT.xml
+    CustomUISettingsWindowTabKillTracker.xml
 ```
 
 When adding a new tab:

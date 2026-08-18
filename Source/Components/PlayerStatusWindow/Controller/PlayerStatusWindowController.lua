@@ -63,6 +63,7 @@ local prevMoraleLevel         = 0
 local prevHitpointLevel       = 1
 local m_handlersRegistered    = false
 local m_stockPlayerUnhooked   = false
+local m_stockReplaceTracked   = {} -- PlayerWindow: true if we hid, false if already user-hidden
 
 local function RegisterHandlers()
     if m_handlersRegistered then return end
@@ -686,8 +687,10 @@ local PlayerStatusWindowComponent = {
 function PlayerStatusWindowComponent:Enable()
     RegisterHandlers()
     CustomUI.PlayerStatusWindow.ApplyAppearance()
-    if LayoutEditor.windowsList["PlayerWindow"] then
-        LayoutEditor.UserHide( "PlayerWindow" )
+    if type(CustomUI.HideStockForReplace) == "function" then
+        CustomUI.HideStockForReplace("PlayerWindow", m_stockReplaceTracked)
+    elseif LayoutEditor.windowsList["PlayerWindow"] then
+        LayoutEditor.UserHide("PlayerWindow")
     end
     UnhookStockPlayerWindowHandlers()
     -- Stock PlayerWindow keeps a live BuffTracker that won't receive updates while unhooked; clear it to avoid stale timers on restore.
@@ -737,32 +740,43 @@ function PlayerStatusWindowComponent:Disable()
         LayoutEditor.UserHide("CustomUIPlayerStatusWindow")
     end
     RehookStockPlayerWindowHandlers()
-    if LayoutEditor.windowsList["PlayerWindow"] then
-        LayoutEditor.UserShow( "PlayerWindow" )
+    local stockShown = false
+    if type(CustomUI.RestoreStockAfterReplace) == "function" then
+        stockShown = CustomUI.RestoreStockAfterReplace("PlayerWindow", m_stockReplaceTracked) == true
+    elseif LayoutEditor.windowsList["PlayerWindow"] then
+        LayoutEditor.UserShow("PlayerWindow")
+        stockShown = true
     end
     -- Engine does not replay HP/AP events when handing back to stock; push a refresh so bars render immediately.
+    -- BuffTracker is anchored to Root (not a child of PlayerWindow) — OnShown/OnHidden must match
+    -- whether the stock status window is actually shown, or buffs leak while portrait stays hidden.
     if type(PlayerWindow) == "table" then
-        if type(PlayerWindow.UpdateMaximumHitPoints) == "function" then
-            PlayerWindow.UpdateMaximumHitPoints()
-        end
-        if type(PlayerWindow.UpdateCurrentHitPoints) == "function" then
-            PlayerWindow.UpdateCurrentHitPoints()
-        end
-        if type(PlayerWindow.UpdateMaximumActionPoints) == "function" then
-            PlayerWindow.UpdateMaximumActionPoints()
-        end
-        if type(PlayerWindow.UpdateCurrentActionPoints) == "function" then
-            PlayerWindow.UpdateCurrentActionPoints()
-        end
-        if type(PlayerWindow.UpdateBasedOnUserSettings) == "function" then
-            PlayerWindow.UpdateBasedOnUserSettings()
-        end
-        if type(PlayerWindow.OnShown) == "function" then
-            PlayerWindow.OnShown()
-        end
-        -- Force a full buff refresh: while CustomUI owned the UI, stock PlayerWindow.playerBuffs was unhooked and can strand stale entries.
-        if PlayerWindow.playerBuffs ~= nil and type(PlayerWindow.playerBuffs.Refresh) == "function" then
-            PlayerWindow.playerBuffs:Refresh()
+        if stockShown then
+            if type(PlayerWindow.UpdateMaximumHitPoints) == "function" then
+                PlayerWindow.UpdateMaximumHitPoints()
+            end
+            if type(PlayerWindow.UpdateCurrentHitPoints) == "function" then
+                PlayerWindow.UpdateCurrentHitPoints()
+            end
+            if type(PlayerWindow.UpdateMaximumActionPoints) == "function" then
+                PlayerWindow.UpdateMaximumActionPoints()
+            end
+            if type(PlayerWindow.UpdateCurrentActionPoints) == "function" then
+                PlayerWindow.UpdateCurrentActionPoints()
+            end
+            if type(PlayerWindow.UpdateBasedOnUserSettings) == "function" then
+                PlayerWindow.UpdateBasedOnUserSettings()
+            end
+            if type(PlayerWindow.OnShown) == "function" then
+                PlayerWindow.OnShown()
+            end
+            if PlayerWindow.playerBuffs ~= nil and type(PlayerWindow.playerBuffs.Refresh) == "function" then
+                PlayerWindow.playerBuffs:Refresh()
+            end
+        elseif type(PlayerWindow.OnHidden) == "function" then
+            PlayerWindow.OnHidden()
+        elseif PlayerWindow.playerBuffs ~= nil and type(PlayerWindow.playerBuffs.Show) == "function" then
+            PlayerWindow.playerBuffs:Show(false)
         end
     end
     return true

@@ -41,21 +41,35 @@ Place **CustomUI** and **CustomUISettingsWindow** under the game’s `Interface\
 | `UnitFrames` | BattlegroupHUD + FloatingScenarioGroup scenario roster frames | ✅ Implemented, `DefaultEnabled = false` |
 | `GroupIcons` | — (career icons on world objects for party / warband / scenario members) | ✅ Implemented, enabled by default on a fresh profile |
 | `SCT` | `easystem_eventtext` combat/point-gain floating text | ✅ Complete, `DefaultEnabled = false` |
-| `KillTracker` | — (RvR Order/Destruction kill feed + chat reformat) | ✅ Implemented, `DefaultEnabled = false` — no settings tab yet |
+| `KillTracker` | — (RvR Order/Destruction kill feed) | ✅ Implemented, `DefaultEnabled = false`; `/cui` → **Kills** tab |
 
 All registered components default to **disabled** except `GroupIcons`, which currently omits `DefaultEnabled = false` and therefore comes up enabled on a fresh profile. `PlayerPetWindow` is shipped and has full lifecycle code, but it is still owned through `PlayerStatusWindow` rather than being registered as a separate top-level component.
 
-### KillTracker (RvR kill feed + chat)
+### KillTracker (RvR kill feed)
 
-Controller split: `KillTrackerController.lua` (lifecycle), `KillTrackerCapture.lua` (Combat TextLog `RVR_KILLS_*`), `KillTrackerParser.lua`, `KillTrackerSession.lua` (dual kill/death bags), `KillTrackerCareerCache.lua`, `KillTrackerAbilityMap.lua`, `KillTrackerFormat.lua`, `KillTrackerChat.lua` (suppress stock filters + inject enriched Combat filter lines), `KillTrackerWindow.lua` + `View/KillTracker.xml` (`CustomUIKillTrackerWindow`).
+Enriched Order/Destruction kill lines from the Combat TextLog (`RVR_KILLS_ORDER` / `RVR_KILLS_DESTRUCTION`). Primary output is a transparent, click-through LayoutEditor feed; stock chat filters are left alone unless legacy chat rewrite is enabled in code (`replaceChatKills`, off by default).
 
-- **Capture:** `TextLogGetUpdateEventId("Combat")` for `RVR_KILLS_ORDER` / `RVR_KILLS_DESTRUCTION`.
-- **Chat:** stock Order/Destruction kill filters are hidden on LogDisplays; reformatted lines use dedicated Combat filters with empty display names (no `KillTracker` prefix). Prefers `TextLogAddEntry` rewrite when available.
-- **Counts:** open-world **RvR** bag persists for the play session (survives zone loads). **Scenario** bag (including city siege) resets on each new instance: scenario/city begin+end, enter/leave via loading, and lobby `PRE_MODE` / fresh `RUNNING` (so back-to-back queues of the same map do not carry totals). `[N]` uses the active context bag. Focus changes print a `[CustomUI]` status line on System General via `CustomUI.PrintMessage`.
-- **Zone:** open-world RvR appends ` in <zone>` from the kill line (or `GetZoneName`); omitted in scenario/city siege.
-- **Feed window:** optional LayoutEditor overlay (`showFeedWindow`, default **off**); chat is the primary output.
-- **Ability icons:** local spellbook + SCT ability-icon cache names + optional Warbuilder if loaded (best-effort; not all abilities resolve).
-- **Settings:** `CustomUI.Settings.KillTracker` defaults only; **CustomUISettingsWindow** tab deferred.
+**Module split** (`Source/Components/KillTracker/`):
+
+| File | Role |
+|------|------|
+| `KillTrackerController.lua` | Component adapter, settings, world events, `ProcessKillLine` |
+| `KillTrackerCapture.lua` | Combat TextLog listener (`TextLogGetUpdateEventId`) |
+| `KillTrackerParser.lua` | Parse stock kill grammar into `{ killer, victim, ability, zone, … }` |
+| `KillTrackerSession.lua` | Dual kill/death bags: open-world RvR (session) vs scenario/siege (per instance) |
+| `KillTrackerCareerCache.lua` | Name → career icon (party, warband, scenario roster, social lists, target, unique-ability inference) |
+| `KillTrackerAbilityMap.lua` | Ability name → icon (Warbuilder, local spellbook, SCT cache; career disambiguation) |
+| `KillTrackerFormat.lua` | Shared row/chat model, realm colors, local-zone tint (`FixString` wstring compare) |
+| `KillTrackerWindow.lua` + `View/KillTracker.xml` | Feed UI (`CustomUIKillTrackerWindow`), row template, fade/expiry |
+| `KillTrackerChat.lua` | Optional chat rewrite hook + custom TextLog filters (legacy, off by default) |
+
+**Feed row layout:** `[killerIcon] Killer[k] killed [victimIcon] Victim[d] with [abilityIcon] Ability in Zone` — connector words stay white; ability names gold; zone name green when it matches the player's current area (cmap-style `GameData.Player.area.name` / zone / `MapGetPlayerLocationMaps`). Open-world RvR only; scenario and city siege omit the zone suffix.
+
+**Counts:** `[N]` brackets are combat-log tallies only (not Scenario Summary). RvR bag persists across zone loads; scenario/siege bag resets on `SCENARIO_BEGIN` (and on `LOADING_END` for city siege / missed begin / `PRE_MODE` rematch). After `POST_MODE` / `SCENARIO_END` the bag is kept for the scoreboard, then cleared on leave. Focus changes announce on System General.
+
+**Settings:** `/cui` → **Kills** tab (`CustomUISettingsWindowTabKillTracker.*`) — enable, chat font, visible time (1–5 min), max rows, career/ability icons, kill/death counts, zone suffix toggle.
+
+**Diagnostics:** `CustomUI.KillTracker.DebugZone = true` logs local-zone match decisions to chat/`uilog.log`.
 
 ### GroupIcons (world markers)
 
@@ -269,6 +283,20 @@ CustomUI/
 					SCTAbilityIcon.xml
 					SCT.xml                       ← CustomUISCTWindow + OnUpdate
 					(settings tab: CustomUISettingsWindowTabSCT.* — not in this mod)
+			KillTracker/
+				Controller/
+					KillTrackerParser.lua
+					KillTrackerSession.lua
+					KillTrackerCareerCache.lua
+					KillTrackerAbilityMap.lua
+					KillTrackerFormat.lua
+					KillTrackerChat.lua           ← optional legacy chat rewrite
+					KillTrackerCapture.lua
+					KillTrackerWindow.lua
+					KillTrackerController.lua     ← RegisterComponent adapter
+				View/
+					KillTracker.xml               ← CustomUIKillTrackerWindow + row template
+					(settings tab: CustomUISettingsWindowTabKillTracker.* — not in this mod)
 ```
 
 ### `Source/Shared` (what is current)

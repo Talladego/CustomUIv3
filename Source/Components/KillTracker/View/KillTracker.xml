@@ -1,7 +1,7 @@
 <Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 	<Windows>
 
-		<!-- Compact: [killerIcon] Killer[k] killed [victimIcon] Victim[d] with [abilityIcon] Ability -->
+		<!-- Compact: [killerIcon] Killer[k] killed [victimIcon] Victim[d] with [abilityIcon] Ability [in Zone] -->
 		<Window name="CustomUIKillTrackerRow" movable="false" savesettings="false" handleinput="false">
 			<Size>
 				<AbsPoint x="512" y="28" />
@@ -18,10 +18,10 @@
 					</Anchors>
 				</DynamicImage>
 
-				<Label name="$parentKillerName" font="font_chat_text" maxchars="40"
-					   textalign="leftcenter" autoresizewidth="true" handleinput="false" layer="popup">
+				<Label name="$parentKillerName" font="font_chat_text" maxchars="128"
+					   textalign="leftcenter" handleinput="false" layer="popup">
 					<Size>
-						<AbsPoint x="100" y="24" />
+						<AbsPoint x="160" y="24" />
 					</Size>
 					<Anchors>
 						<Anchor point="right" relativePoint="left" relativeTo="$parentKillerCareer">
@@ -30,13 +30,25 @@
 					</Anchors>
 				</Label>
 
-				<Label name="$parentText" font="font_chat_text" maxchars="16"
-					   textalign="leftcenter" autoresizewidth="true" handleinput="false" layer="popup">
+				<Label name="$parentKillerCount" font="font_chat_text" maxchars="16"
+					   textalign="leftcenter" handleinput="false" layer="popup">
 					<Size>
-						<AbsPoint x="48" y="24" />
+						<AbsPoint x="40" y="24" />
 					</Size>
 					<Anchors>
 						<Anchor point="right" relativePoint="left" relativeTo="$parentKillerName">
+							<AbsPoint x="0" y="0" />
+						</Anchor>
+					</Anchors>
+				</Label>
+
+				<Label name="$parentText" font="font_chat_text" maxchars="32"
+					   textalign="leftcenter" handleinput="false" layer="popup">
+					<Size>
+						<AbsPoint x="64" y="24" />
+					</Size>
+					<Anchors>
+						<Anchor point="right" relativePoint="left" relativeTo="$parentKillerCount">
 							<AbsPoint x="2" y="0" />
 						</Anchor>
 					</Anchors>
@@ -53,13 +65,37 @@
 					</Anchors>
 				</DynamicImage>
 
-				<Label name="$parentVictimName" font="font_chat_text" maxchars="40"
-					   textalign="leftcenter" autoresizewidth="true" handleinput="false" layer="popup">
+				<Label name="$parentVictimName" font="font_chat_text" maxchars="128"
+					   textalign="leftcenter" handleinput="false" layer="popup">
 					<Size>
-						<AbsPoint x="100" y="24" />
+						<AbsPoint x="160" y="24" />
 					</Size>
 					<Anchors>
 						<Anchor point="right" relativePoint="left" relativeTo="$parentVictimCareer">
+							<AbsPoint x="4" y="0" />
+						</Anchor>
+					</Anchors>
+				</Label>
+
+				<Label name="$parentVictimCount" font="font_chat_text" maxchars="16"
+					   textalign="leftcenter" handleinput="false" layer="popup">
+					<Size>
+						<AbsPoint x="40" y="24" />
+					</Size>
+					<Anchors>
+						<Anchor point="right" relativePoint="left" relativeTo="$parentVictimName">
+							<AbsPoint x="0" y="0" />
+						</Anchor>
+					</Anchors>
+				</Label>
+
+				<Label name="$parentWith" font="font_chat_text" maxchars="16"
+					   textalign="leftcenter" handleinput="false" layer="popup">
+					<Size>
+						<AbsPoint x="48" y="24" />
+					</Size>
+					<Anchors>
+						<Anchor point="right" relativePoint="left" relativeTo="$parentVictimCount">
 							<AbsPoint x="4" y="0" />
 						</Anchor>
 					</Anchors>
@@ -70,16 +106,16 @@
 						<AbsPoint x="24" y="24" />
 					</Size>
 					<Anchors>
-						<Anchor point="right" relativePoint="left" relativeTo="$parentVictimName">
-							<AbsPoint x="4" y="2" />
+						<Anchor point="right" relativePoint="left" relativeTo="$parentWith">
+							<AbsPoint x="2" y="2" />
 						</Anchor>
 					</Anchors>
 				</DynamicImage>
 
-				<Label name="$parentAbilityName" font="font_chat_text" maxchars="128"
-					   textalign="leftcenter" autoresizewidth="true" handleinput="false" layer="popup">
+				<Label name="$parentAbilityName" font="font_chat_text" maxchars="256"
+					   textalign="leftcenter" handleinput="false" layer="popup">
 					<Size>
-						<AbsPoint x="200" y="24" />
+						<AbsPoint x="320" y="24" />
 					</Size>
 					<Anchors>
 						<Anchor point="right" relativePoint="left" relativeTo="$parentAbilityIcon">
@@ -87,29 +123,47 @@
 						</Anchor>
 					</Anchors>
 				</Label>
+
+				<!-- " in " stays white; area name is green when local. -->
+				<Label name="$parentZoneIn" font="font_chat_text" maxchars="16"
+					   textalign="leftcenter" handleinput="false" layer="popup">
+					<Size>
+						<AbsPoint x="32" y="24" />
+					</Size>
+					<Anchors>
+						<Anchor point="right" relativePoint="left" relativeTo="$parentAbilityName">
+							<AbsPoint x="0" y="0" />
+						</Anchor>
+					</Anchors>
+				</Label>
+
+				<Label name="$parentZone" font="font_chat_text" maxchars="128"
+					   textalign="leftcenter" handleinput="false" layer="popup">
+					<Size>
+						<AbsPoint x="200" y="24" />
+					</Size>
+					<Anchors>
+						<Anchor point="right" relativePoint="left" relativeTo="$parentZoneIn">
+							<AbsPoint x="0" y="0" />
+						</Anchor>
+					</Anchors>
+				</Label>
 			</Windows>
 		</Window>
 
-		<Window name="CustomUIKillTrackerWindow" movable="true" savesettings="true" layer="default">
+		<!-- Transparent, click-through feed; LayoutEditor owns move/resize. -->
+		<Window name="CustomUIKillTrackerWindow" movable="true" savesettings="true" layer="default" handleinput="false">
 			<Size>
-				<AbsPoint x="520" y="80" />
+				<AbsPoint x="720" y="80" />
 			</Size>
 			<Anchors>
 				<Anchor point="center" relativePoint="center">
 					<AbsPoint x="0" y="200" />
 				</Anchor>
 			</Anchors>
-			<Windows>
-				<FullResizeImage name="$parentBackground" inherits="EA_FullResizeImage_TintableSolidBackground" alpha="0.35" handleinput="false">
-					<Size>
-						<AbsPoint x="520" y="80" />
-					</Size>
-					<Anchors>
-						<Anchor point="topleft" relativePoint="topleft" relativeTo="$parent" />
-						<Anchor point="bottomright" relativePoint="bottomright" relativeTo="$parent" />
-					</Anchors>
-				</FullResizeImage>
-			</Windows>
+			<EventHandlers>
+				<EventHandler event="OnUpdate" function="CustomUI.KillTracker.Window.OnUpdate" />
+			</EventHandlers>
 		</Window>
 
 	</Windows>

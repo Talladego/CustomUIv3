@@ -41,10 +41,11 @@ local m_hostileFrame = nil
 local m_friendlyFrame = nil
 local m_initialized = false
 local m_handlersRegistered = false
--- True until both stock target layout windows are registered with LayoutEditor and UserHide has been applied.
+-- True until both stock target layout windows are registered with LayoutEditor and hide has been applied.
 local m_stockTargetHidePending = false
 local m_stockTargetUnhookPending = false
 local m_stockTargetUnhooked = false
+local m_stockReplaceTracked = {} -- Primary/Secondary layout: true if we hid, false if already user-hidden
 
 ----------------------------------------------------------------
 -- Local helpers
@@ -240,10 +241,18 @@ local function TryHideStockTargetWindows()
     local haveSecondary = LayoutEditor.windowsList[c_STOCK_SECONDARY_TARGET_LAYOUT] ~= nil
 
     if havePrimary then
-        LayoutEditor.UserHide(c_STOCK_PRIMARY_TARGET_LAYOUT)
+        if type(CustomUI.HideStockForReplace) == "function" then
+            CustomUI.HideStockForReplace(c_STOCK_PRIMARY_TARGET_LAYOUT, m_stockReplaceTracked)
+        else
+            LayoutEditor.UserHide(c_STOCK_PRIMARY_TARGET_LAYOUT)
+        end
     end
     if haveSecondary then
-        LayoutEditor.UserHide(c_STOCK_SECONDARY_TARGET_LAYOUT)
+        if type(CustomUI.HideStockForReplace) == "function" then
+            CustomUI.HideStockForReplace(c_STOCK_SECONDARY_TARGET_LAYOUT, m_stockReplaceTracked)
+        else
+            LayoutEditor.UserHide(c_STOCK_SECONDARY_TARGET_LAYOUT)
+        end
     end
 
     -- Retry after reload / load-order races until stock TargetWindow.Initialize() has registered both.
@@ -255,6 +264,12 @@ end
 
 local function ShowStockTargetWindows()
     m_stockTargetHidePending = false
+
+    if type(CustomUI.RestoreStockAfterReplace) == "function" then
+        CustomUI.RestoreStockAfterReplace(c_STOCK_PRIMARY_TARGET_LAYOUT, m_stockReplaceTracked)
+        CustomUI.RestoreStockAfterReplace(c_STOCK_SECONDARY_TARGET_LAYOUT, m_stockReplaceTracked)
+        return
+    end
 
     if type(LayoutEditor) ~= "table" or type(LayoutEditor.windowsList) ~= "table" then
         return

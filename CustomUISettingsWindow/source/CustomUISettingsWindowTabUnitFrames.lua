@@ -20,12 +20,9 @@ local function EnsureUnitFramesGroupsSettings()
     if s.groupsScenario == nil then
         s.groupsScenario = true
     end
-    if s.showActionPointsBar == nil then
-        s.showActionPointsBar = false
-    end
-    if s.colorCareerIconRingByArchetype == nil then
-        s.colorCareerIconRingByArchetype = (s.colorMemberNamesByArchetype == true)
-    end
+    -- AP bar UI removed: always off. Archetype career rings UI removed: always on.
+    s.showActionPointsBar = false
+    s.colorCareerIconRingByArchetype = true
     s.colorMemberNamesByArchetype = nil
     if s.sortPartyMembersByRole == nil then
         s.sortPartyMembersByRole = false
@@ -57,14 +54,8 @@ function CustomUISettingsWindowTabUnitFrames.Initialize()
     ButtonSetCheckButtonFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceWarbandButton", true )
     ButtonSetCheckButtonFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceScenarioButton", true )
 
-    LabelSetText( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceShowActionPointsBarLabel", L"AP bar" )
-    ButtonSetCheckButtonFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceShowActionPointsBarButton", false )
-
-    LabelSetText( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceTargetHudHpBarStyleLabel", L"Target HUD HP bar" )
+    LabelSetText( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceTargetHudHpBarStyleLabel", L"Archetype HP Bar" )
     ButtonSetCheckButtonFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceTargetHudHpBarStyleButton", false )
-
-    LabelSetText( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceCareerRingArchetypeColorsLabel", L"Archetype ring colors" )
-    ButtonSetCheckButtonFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceCareerRingArchetypeColorsButton", false )
 
     LabelSetText( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceSortPartyMembersByRoleLabel", L"Sort party by role" )
     ButtonSetCheckButtonFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceSortPartyMembersByRoleButton", false )
@@ -77,9 +68,7 @@ function CustomUISettingsWindowTabUnitFrames.UpdateSettings()
     ButtonSetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearancePartyButton", s.groupsParty == true )
     ButtonSetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceWarbandButton", s.groupsWarband == true )
     ButtonSetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceScenarioButton", s.groupsScenario == true )
-    ButtonSetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceShowActionPointsBarButton", s.showActionPointsBar == true )
     ButtonSetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceTargetHudHpBarStyleButton", s.useTargetHudHpBarTexture == true )
-    ButtonSetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceCareerRingArchetypeColorsButton", s.colorCareerIconRingByArchetype == true )
     ButtonSetPressedFlag( CustomUISettingsWindowTabUnitFrames.contentsName.."AppearanceSortPartyMembersByRoleButton", s.sortPartyMembersByRole == true )
 end
 
@@ -89,9 +78,9 @@ function CustomUISettingsWindowTabUnitFrames.ApplyCurrent()
 
     local s = EnsureUnitFramesGroupsSettings()
     local c = CustomUISettingsWindowTabUnitFrames.contentsName
-    s.showActionPointsBar = ButtonGetPressedFlag( c.."AppearanceShowActionPointsBarButton" ) == true
+    s.showActionPointsBar = false
+    s.colorCareerIconRingByArchetype = true
     s.useTargetHudHpBarTexture = ButtonGetPressedFlag( c.."AppearanceTargetHudHpBarStyleButton" ) == true
-    s.colorCareerIconRingByArchetype = ButtonGetPressedFlag( c.."AppearanceCareerRingArchetypeColorsButton" ) == true
     s.sortPartyMembersByRole = ButtonGetPressedFlag( c.."AppearanceSortPartyMembersByRoleButton" ) == true
     s.groupsParty = ButtonGetPressedFlag( c.."AppearancePartyButton" ) == true
     s.groupsWarband = ButtonGetPressedFlag( c.."AppearanceWarbandButton" ) == true
@@ -106,15 +95,7 @@ function CustomUISettingsWindowTabUnitFrames.OnToggleUnitFrames()
     EA_LabelCheckButton.Toggle()
 end
 
-function CustomUISettingsWindowTabUnitFrames.OnToggleShowActionPointsBar()
-    EA_LabelCheckButton.Toggle()
-end
-
 function CustomUISettingsWindowTabUnitFrames.OnToggleTargetHudHpBarStyle()
-    EA_LabelCheckButton.Toggle()
-end
-
-function CustomUISettingsWindowTabUnitFrames.OnToggleCareerRingArchetypeColors()
     EA_LabelCheckButton.Toggle()
 end
 

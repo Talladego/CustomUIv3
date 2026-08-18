@@ -72,17 +72,17 @@
         </Windows>
     </Window>
 
-    <!-- Narrow checkbox+label for compact rows (EA_LabelCheckButton is 280px wide). -->
+    <!-- Icons row checkboxes — wide enough for Warband / Guild/Friends without clipping. -->
     <Window name="CustomUI_LabelCheckButtonNarrow" inherits="EA_LabelCheckButton">
         <Size>
-            <AbsPoint x="140" y="32" />
+            <AbsPoint x="150" y="32" />
         </Size>
         <Windows>
             <!-- Re-declare children (EA_LabelCheckButton children are replaced by this block). -->
             <Button name="$parentButton" inherits="EA_CheckButtonButton" />
-            <Label name="$parentLabel" inherits="EA_CheckButtonLabel" handleinput="false" textAutoFitMinScale="0.5">
+            <Label name="$parentLabel" inherits="EA_CheckButtonLabel" font="font_chat_text" handleinput="false" wordwrap="false" autoresize="false">
                 <Size>
-                    <AbsPoint x="115" y="16" />
+                    <AbsPoint x="125" y="18" />
                 </Size>
             </Label>
         </Windows>
@@ -181,7 +181,7 @@
                         <!-- Icons -->
                         <Window name="$parentIcons" >
                             <Size>
-                                <AbsPoint x="500" y="150" />
+                                <AbsPoint x="500" y="100" />
                             </Size>
                             <!-- Pattern A: pin to ScrollChild; y = General(100) + gap(10) — matches CustomUISettingsWindowTabPlayer (no sibling relativeTo). -->
                             <Anchors>
@@ -208,7 +208,7 @@
                                 <Window name="$parentParty" inherits="CustomUI_LabelCheckButtonNarrow">
                                     <Anchors>
                                         <Anchor point="topleft" relativePoint="topleft">
-                                            <AbsPoint x="45" y="40" />
+                                            <AbsPoint x="20" y="40" />
                                         </Anchor>
                                     </Anchors>
                                     <EventHandlers>
@@ -220,7 +220,7 @@
                                 <Window name="$parentWarband" inherits="CustomUI_LabelCheckButtonNarrow">
                                     <Anchors>
                                         <Anchor point="right" relativePoint="left" relativeTo="$parentParty">
-                                            <AbsPoint x="0" y="0" />
+                                            <AbsPoint x="20" y="0" />
                                         </Anchor>
                                     </Anchors>
                                     <EventHandlers>
@@ -229,22 +229,10 @@
                                     </EventHandlers>
                                 </Window>
 
-                                <Window name="$parentArchetypeColors" inherits="CustomUI_LabelCheckButtonNarrow">
-                                    <Anchors>
-                                        <Anchor point="right" relativePoint="left" relativeTo="$parentWarband">
-                                            <AbsPoint x="0" y="0" />
-                                        </Anchor>
-                                    </Anchors>
-                                    <EventHandlers>
-                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
-                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabGroupIcons.OnToggleArchetypeColors" />
-                                    </EventHandlers>
-                                </Window>
-
                                 <Window name="$parentFriendly" inherits="CustomUI_LabelCheckButtonNarrow">
                                     <Anchors>
-                                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentParty">
-                                            <AbsPoint x="0" y="10" />
+                                        <Anchor point="right" relativePoint="left" relativeTo="$parentWarband">
+                                            <AbsPoint x="20" y="0" />
                                         </Anchor>
                                     </Anchors>
                                     <EventHandlers>
@@ -256,12 +244,24 @@
                                 <Window name="$parentHostile" inherits="CustomUI_LabelCheckButtonNarrow">
                                     <Anchors>
                                         <Anchor point="right" relativePoint="left" relativeTo="$parentFriendly">
-                                            <AbsPoint x="0" y="0" />
+                                            <AbsPoint x="20" y="0" />
                                         </Anchor>
                                     </Anchors>
                                     <EventHandlers>
                                         <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
                                         <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabGroupIcons.OnToggleHostile" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Window name="$parentGoldSocial" inherits="CustomUI_LabelCheckButtonNarrow">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="$parentHostile">
+                                            <AbsPoint x="20" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabGroupIcons.OnToggleGoldSocial" />
                                     </EventHandlers>
                                 </Window>
                             </Windows>

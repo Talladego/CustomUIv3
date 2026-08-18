@@ -5,7 +5,7 @@
 -- Load order: CustomUI.mod loads UnitFramesEvents → UnitFramesArchetypes → UnitFramesSort → UnitFramesRoster → UnitFramesScenario → UnitFramesWarband → this file → XML.
 --
 -- Runtime behavior:
---   • Layout: showActionPointsBar (default false); useTargetHudHpBarTexture (EA_StatusBar_DefaultTintable strip like TargetHUD — tint archetype); colorCareerIconRingByArchetype (career rings — archetype vs grey); sortPartyMembersByRole (default false — reorder party/warband/scenario rows; scenario keeps rosterSlot for hits/HP merge).
+--   • Layout: showActionPointsBar always false; useTargetHudHpBarTexture (EA_StatusBar_DefaultTintable strip like TargetHUD — tint archetype); colorCareerIconRingByArchetype always true; sortPartyMembersByRole (default false — reorder party/warband/scenario rows; scenario keeps rosterSlot for hits/HP merge).
 --   • Display modes (CustomUI.Settings.UnitFrames groupsParty / groupsWarband / groupsScenario): scenario roster,
 --     open-world warband (4×6), warband-own-party-only (player's battlegroup party via IsPlayerInWarband, no GetPartyData), plain party (Enemy slot order),
 --     or idle — hides custom frames and restores stock
@@ -93,12 +93,9 @@ local function EnsureUnitFramesGroupsSettings()
     if s.groupsScenario == nil then
         s.groupsScenario = true
     end
-    if s.showActionPointsBar == nil then
-        s.showActionPointsBar = false
-    end
-    if s.colorCareerIconRingByArchetype == nil then
-        s.colorCareerIconRingByArchetype = (s.colorMemberNamesByArchetype == true)
-    end
+    -- AP bar UI removed: always off. Archetype career rings UI removed: always on.
+    s.showActionPointsBar = false
+    s.colorCareerIconRingByArchetype = true
     s.colorMemberNamesByArchetype = nil
     if s.sortPartyMembersByRole == nil then
         s.sortPartyMembersByRole = false
@@ -128,7 +125,7 @@ local function ShouldSortPartyMembersByRole()
 end
 
 local function ShouldColorUnitFramesCareerRingByArchetype()
-    return EnsureUnitFramesGroupsSettings().colorCareerIconRingByArchetype == true
+    return true
 end
 
 local function UnitFramesCareerRingRgbForCareerLine(careerLine)
@@ -184,7 +181,7 @@ local function UnitFramesCareerRingRgbForPlayer(playerName, careerLine)
 end
 
 local function ShouldShowUnitFramesActionPointsBar()
-    return EnsureUnitFramesGroupsSettings().showActionPointsBar == true
+    return false
 end
 
 local function ApplyUnitFramesApBarWindowShowing(memberWindow)
@@ -270,6 +267,7 @@ local SafeLayoutUserHide
 local m_stockOnMenuClickSetBackgroundOpacity = nil
 local m_stockOnOpacitySlide = nil
 local m_stockRoRGroupScoreboardPacket = nil
+local m_stockReplaceTracked = {} -- stock warband/scenario windows we hid for replace
 local m_grpStatsPacketCallback = nil
 local m_eventsRegistered = false
 local m_debugLastMode = nil
@@ -809,8 +807,15 @@ end
 
 local function HideAllStockWindows()
     local windowSets = GetWindowSets()
-    ForEachWindow(windowSets.stockWarband, SafeLayoutUserHide)
-    ForEachWindow(windowSets.stockScenario, SafeLayoutUserHide)
+    local function hideOne(windowName)
+        if type(CustomUI.HideStockForReplace) == "function" then
+            CustomUI.HideStockForReplace(windowName, m_stockReplaceTracked)
+        else
+            SafeLayoutUserHide(windowName)
+        end
+    end
+    ForEachWindow(windowSets.stockWarband, hideOne)
+    ForEachWindow(windowSets.stockScenario, hideOne)
 end
 
 local function HideAllCustomWindows()
@@ -1048,9 +1053,15 @@ local function SetMemberHpBarValues(memberWindow, maxVal, curVal)
     if maxVal == nil or curVal == nil then
         return
     end
+    local snap = (tonumber(curVal) or 0) <= 0
     for _, suffix in ipairs({ "HPBar", "HPBarTargetHud" }) do
         local w = memberWindow .. suffix
         if DoesWindowExist(w) then
+            -- interpolate="true" on both HP templates: without StopInterpolating, a jump to 0
+            -- (dead) can leave the bar visually full while SkullIcon already shows.
+            if snap and type(StatusBarStopInterpolating) == "function" then
+                StatusBarStopInterpolating(w)
+            end
             StatusBarSetMaximumValue(w, maxVal)
             StatusBarSetCurrentValue(w, curVal)
         end
@@ -1505,10 +1516,15 @@ local function RefreshCareerRankLabelsOnVisibleMemberRows()
 end
 
 --- Force empty HP/AP when dead so skull cannot sit on a stale full (archetype-tinted) bar.
+--- Must StatusBarStopInterpolating: both HP bars use interpolate="true"; SetCurrentValue(0) alone
+--- can leave the fill at the previous visual value (skull + full green).
 local function ForceMemberBarsDead(memberWindow)
     SetMemberHpBarValues(memberWindow, 100, 0)
     local apBar = tostring(memberWindow or "") .. "APBar"
     if DoesWindowExist(apBar) then
+        if type(StatusBarStopInterpolating) == "function" then
+            StatusBarStopInterpolating(apBar)
+        end
         StatusBarSetMaximumValue(apBar, 100)
         StatusBarSetCurrentValue(apBar, 0)
     end
@@ -1989,6 +2005,12 @@ local function HideCustomShowStock()
     local windowSets = GetWindowSets()
 
     HideAllCustomWindows()
+    if type(CustomUI.RestoreAllStockAfterReplace) == "function" then
+        -- Restore only windows we hid; also clear tracking for any stock we never touched.
+        CustomUI.RestoreAllStockAfterReplace(m_stockReplaceTracked)
+        -- Any stock still user-hidden by the player stays hidden (not in tracked-as-we-hid).
+        return
+    end
     ForEachWindow(windowSets.stockWarband, SafeLayoutUserShow)
     ForEachWindow(windowSets.stockScenario, SafeLayoutUserShow)
 end

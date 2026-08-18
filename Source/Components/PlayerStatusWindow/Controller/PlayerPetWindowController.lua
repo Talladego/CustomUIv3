@@ -27,6 +27,7 @@ local petFrame = nil
 local m_enabled = false
 
 local g_petHealthRegistered = false
+local m_stockReplaceTracked = {} -- PetHealthWindow: true if we hid / registered-for-replace
 local m_stockUpdatePetProxy = nil
 --- Our Lua replacement for `PetWindow.UpdatePet` (C functions cannot hold custom fields — do not index `UpdatePet[...]`).
 local g_ourUpdatePetWrapper = nil
@@ -35,6 +36,22 @@ local function HideStockPetHealthWindow()
     if DoesWindowExist("PetHealthWindow") then
         WindowSetShowing("PetHealthWindow", false)
     end
+end
+
+local function EnsurePetHealthWindowRegistered()
+    if g_petHealthRegistered then return end
+    if not DoesWindowExist("PetHealthWindow") then return end
+    -- Stock never LayoutEditor-registers PetHealthWindow; use a plain name (no "(stock)").
+    LayoutEditor.RegisterWindow(
+        "PetHealthWindow",
+        L"Pet Health",
+        L"Pet health window.",
+        false,
+        false,
+        true,
+        nil
+    )
+    g_petHealthRegistered = true
 end
 
 local function InstallPetProxyHook()
@@ -73,16 +90,6 @@ local function RestorePetProxyHook()
     end
     g_ourUpdatePetWrapper = nil
     m_stockUpdatePetProxy = nil
-end
-
-local function EnsurePetHealthWindowRegistered()
-    if g_petHealthRegistered then return end
-    if not DoesWindowExist( "PetHealthWindow" ) then return end
-    LayoutEditor.RegisterWindow( "PetHealthWindow",
-                                 L"Pet Health (stock)",
-                                 L"Stock pet health window — hidden while CustomUI: Player Pet is enabled.",
-                                 false, false, true, nil )
-    g_petHealthRegistered = true
 end
 
 ----------------------------------------------------------------
@@ -160,8 +167,10 @@ function CustomUI.PlayerPetWindow.OnPetUpdated()
         -- calls FadeInComponent(m_UnitFrame) which un-hides PetHealthWindow.
         if m_enabled then
             EnsurePetHealthWindowRegistered()
-            if LayoutEditor.windowsList and LayoutEditor.windowsList["PetHealthWindow"] then
-                LayoutEditor.UserHide( "PetHealthWindow" )
+            if type(CustomUI.HideStockForReplace) == "function" then
+                CustomUI.HideStockForReplace("PetHealthWindow", m_stockReplaceTracked)
+            elseif LayoutEditor.windowsList and LayoutEditor.windowsList["PetHealthWindow"] then
+                LayoutEditor.UserHide("PetHealthWindow")
             end
             HideStockPetHealthWindow()
         end
@@ -194,6 +203,11 @@ function PlayerPetWindowComponent:Enable()
     InstallPetProxyHook()
     LayoutEditor.UserShow( self.WindowName )
     EnsurePetHealthWindowRegistered()
+    if type(CustomUI.HideStockForReplace) == "function" then
+        CustomUI.HideStockForReplace("PetHealthWindow", m_stockReplaceTracked)
+    elseif LayoutEditor.windowsList and LayoutEditor.windowsList["PetHealthWindow"] then
+        LayoutEditor.UserHide("PetHealthWindow")
+    end
     HideStockPetHealthWindow()
     CustomUI.PlayerPetWindow.OnPetUpdated()
     return true
@@ -206,10 +220,11 @@ function PlayerPetWindowComponent:Disable()
     if DoesWindowExist( self.WindowName ) then
         WindowSetShowing( self.WindowName, false )
     end
-    if LayoutEditor.windowsList["PetHealthWindow"] then
-        LayoutEditor.UserShow( "PetHealthWindow" )
-        LayoutEditor.UnregisterWindow( "PetHealthWindow" )
-        g_petHealthRegistered = false
+    -- Restore visibility only if we hid it; keep "Pet Health" registered (stock has no LE entry of its own).
+    if type(CustomUI.RestoreStockAfterReplace) == "function" then
+        CustomUI.RestoreStockAfterReplace("PetHealthWindow", m_stockReplaceTracked)
+    elseif LayoutEditor.windowsList and LayoutEditor.windowsList["PetHealthWindow"] then
+        LayoutEditor.UserShow("PetHealthWindow")
     end
     return true
 end

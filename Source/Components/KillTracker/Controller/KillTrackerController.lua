@@ -9,9 +9,8 @@ local KT = CustomUI.KillTracker
 local c_DEFAULT_SETTINGS = {
 	replaceChatKills = false,
 	showZone = true,
-	showCareerIcons = true,
-	showAbilityIcons = true,
 	showKillCount = true,
+	showKillMessages = true,
 	maxVisibleRows = 10,
 	fontName = "font_clear_small", -- Myriad Pro - Small (stock chat fonts)
 	visibleTimeMinutes = 5, -- feed line lifetime (1–5), same options as stock chat
@@ -80,15 +79,8 @@ function KT.ProcessKillLine(rawText, stockFilterId)
 		return nil
 	end
 
-	if KT.CareerCache and type(KT.CareerCache.RefreshFromWorld) == "function" then
-		KT.CareerCache.RefreshFromWorld()
-	end
 	if KT.Format and type(KT.Format.UpdateLocalAreaCache) == "function" then
 		KT.Format.UpdateLocalAreaCache()
-	end
-	-- Open RvR: unique abilities imply killer career when Social/target cache missed them.
-	if KT.CareerCache and type(KT.CareerCache.InferFromUniqueAbility) == "function" then
-		KT.CareerCache.InferFromUniqueAbility(parsed.killer, parsed.ability)
 	end
 
 	-- Pick RvR vs scenario bag once before counting (sync can clear on enter/leave).
@@ -97,20 +89,24 @@ function KT.ProcessKillLine(rawText, stockFilterId)
 	end
 
 	local settings = KT.GetSettings()
-	local killCount = 0
-	local deathCount = 0
+	local killerKills = 0
+	local victimKills = 0
 	local selfKill = Parser.IsSelfKill and Parser.IsSelfKill(parsed)
 	if KT.Session then
-		-- Self-inflicted / same-name lines: show in feed, count death only (not a DB kill).
+		-- Self-inflicted / same-name lines: show in feed, do not count as a DB kill.
 		if selfKill then
 			if type(KT.Session.GetKillerCount) == "function" then
-				killCount = KT.Session.GetKillerCount(parsed.killer)
+				killerKills = KT.Session.GetKillerCount(parsed.killer)
+				victimKills = killerKills
 			end
 		elseif type(KT.Session.IncrementKiller) == "function" then
-			killCount = KT.Session.IncrementKiller(parsed.killer)
+			killerKills = KT.Session.IncrementKiller(parsed.killer)
+			if type(KT.Session.GetKillerCount) == "function" then
+				victimKills = KT.Session.GetKillerCount(parsed.victim)
+			end
 		end
-		if type(KT.Session.IncrementVictim) == "function" then
-			deathCount = KT.Session.IncrementVictim(parsed.victim)
+		if selfKill ~= true and type(KT.Session.IncrementFactionKill) == "function" then
+			KT.Session.IncrementFactionKill(stockFilterId, parsed.killer)
 		end
 	end
 
@@ -118,7 +114,7 @@ function KT.ProcessKillLine(rawText, stockFilterId)
 	if not Format or type(Format.Build) ~= "function" then
 		return nil
 	end
-	local model = Format.Build(parsed, stockFilterId, killCount, deathCount, settings)
+	local model = Format.Build(parsed, stockFilterId, killerKills, victimKills, settings)
 	if model and selfKill then
 		model.isSelfKill = true
 	end
@@ -159,7 +155,6 @@ local function WorldEventHandlers()
 		return nil
 	end
 	return {
-		{ events.PLAYER_TARGET_UPDATED, "CustomUI.KillTracker.OnTargetUpdated" },
 		{ events.GROUP_UPDATED, "CustomUI.KillTracker.OnRosterUpdated" },
 		{ events.BATTLEGROUP_UPDATED, "CustomUI.KillTracker.OnRosterUpdated" },
 		{ events.SCENARIO_BEGIN, "CustomUI.KillTracker.OnScenarioBegin" },
@@ -171,13 +166,7 @@ local function WorldEventHandlers()
 		{ events.SCENARIO_PLAYER_HITS_UPDATED, "CustomUI.KillTracker.OnRosterUpdated" },
 		{ events.LOADING_END, "CustomUI.KillTracker.OnLoadingEnd" },
 		{ events.PLAYER_ZONE_CHANGED, "CustomUI.KillTracker.OnZoneChanged" },
-		{ events.PLAYER_AREA_NAME_CHANGED, "CustomUI.KillTracker.OnZoneChanged" },
-		{ events.SOCIAL_FRIENDS_UPDATED, "CustomUI.KillTracker.OnSocialListsUpdated" },
-		{ events.SOCIAL_IGNORE_UPDATED, "CustomUI.KillTracker.OnSocialListsUpdated" },
-		{ events.GUILD_ROSTER_INIT, "CustomUI.KillTracker.OnSocialListsUpdated" },
-		{ events.GUILD_MEMBER_UPDATED, "CustomUI.KillTracker.OnSocialListsUpdated" },
-		{ events.GUILD_MEMBER_ADDED, "CustomUI.KillTracker.OnSocialListsUpdated" },
-		{ events.GUILD_MEMBER_REMOVED, "CustomUI.KillTracker.OnSocialListsUpdated" },
+		{ events.PLAYER_AREA_NAME_CHANGED, "CustomUI.KillTracker.OnAreaNameChanged" },
 	}
 end
 
@@ -222,28 +211,11 @@ local function UnregisterWorldEvents()
 	KT._eventsRegistered = false
 end
 
-function KT.OnTargetUpdated()
-	if KT.CareerCache and KT.CareerCache.OnTargetUpdated then
-		KT.CareerCache.OnTargetUpdated()
-	end
-end
-
 function KT.OnRosterUpdated()
-	if KT.CareerCache and KT.CareerCache.RefreshFromWorld then
-		KT.CareerCache.RefreshFromWorld()
-	end
 	-- ScenarioGroupWindow: list updates after leave can arrive when flags are
 	-- already clear — force-end a stale scenario bag.
 	if KT.Session and type(KT.Session.OnPossiblyLeftMatch) == "function" then
 		KT.Session.OnPossiblyLeftMatch()
-	end
-end
-
-function KT.OnSocialListsUpdated()
-	if KT.CareerCache and type(KT.CareerCache.RefreshSocialLists) == "function" then
-		KT.CareerCache.RefreshSocialLists()
-	elseif KT.CareerCache and KT.CareerCache.RefreshFromWorld then
-		KT.CareerCache.RefreshFromWorld()
 	end
 end
 
@@ -283,6 +255,19 @@ function KT.OnScenarioPostMode()
 end
 
 function KT.OnZoneChanged()
+	-- Map zone id change only. Sub-area name uses OnAreaNameChanged.
+	if KT.Session and type(KT.Session.OnPlayerZoneChanged) == "function" then
+		KT.Session.OnPlayerZoneChanged()
+	end
+	if KT.Format and type(KT.Format.UpdateLocalAreaCache) == "function" then
+		KT.Format.UpdateLocalAreaCache()
+	end
+	if KT.Window and type(KT.Window.Reflow) == "function" then
+		KT.Window.Reflow()
+	end
+end
+
+function KT.OnAreaNameChanged()
 	-- Refresh cached area name (kill lines use sub-zone; area.name can be briefly empty).
 	if KT.Format and type(KT.Format.UpdateLocalAreaCache) == "function" then
 		KT.Format.UpdateLocalAreaCache()
@@ -305,12 +290,6 @@ function KT.OnLoadingEnd()
 	end
 	if action == "begin" and KT.Window and KT.Window.Clear then
 		KT.Window.Clear()
-	end
-	if KT.CareerCache and KT.CareerCache.RefreshFromWorld then
-		KT.CareerCache.RefreshFromWorld()
-	end
-	if KT.AbilityMap and KT.AbilityMap.Rebuild then
-		KT.AbilityMap.Rebuild()
 	end
 	-- Re-tint zone labels (green when kill zone == current local zone).
 	if KT.Window and type(KT.Window.Reflow) == "function" then
@@ -338,14 +317,8 @@ end
 
 function KillTrackerComponent:Enable()
 	KT.EnsureSettings()
-	if KT.AbilityMap and KT.AbilityMap.EnsureBuilt then
-		KT.AbilityMap.EnsureBuilt()
-	end
 	if KT.Format and type(KT.Format.UpdateLocalAreaCache) == "function" then
 		KT.Format.UpdateLocalAreaCache()
-	end
-	if KT.CareerCache and KT.CareerCache.RefreshFromWorld then
-		KT.CareerCache.RefreshFromWorld()
 	end
 
 	local s = KT.GetSettings()

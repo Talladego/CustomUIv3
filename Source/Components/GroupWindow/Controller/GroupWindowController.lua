@@ -27,9 +27,21 @@ local c_MEMBER_BUFF_ICON_SCALE = 0.85
 local c_MEMBER_HEALTH_TEXT_WIDTH = 132
 local c_MEMBER_HEALTH_TEXT_HEIGHT = 21
 local c_MEMBER_HEALTH_TEXT_SCALE = 0.9
-local c_MEMBER_RVR_OFFSET_X = 0
-local c_MEMBER_RVR_OFFSET_Y = 25
+-- Career badge on portrait top-left (PortraitCareerBadge); name row uses stock left inset.
+local c_MEMBER_NAME_WIDTH = 180
+local c_MEMBER_NAME_HEIGHT = 23
+-- GroupMember PortraitFrame is 85x90; RvR Y scales from PlayerStatus full frame.
+local c_MEMBER_PORTRAIT_FRAME_H = 90
 local c_MEMBER_RVR_RELATIVE_SCALE = 0.55
+
+local function MemberRvrTopYOffset()
+    local Badge = CustomUI.PortraitCareerBadge
+    if Badge then
+        return Badge.ScaleYOffsetForPortraitFrame(c_MEMBER_PORTRAIT_FRAME_H, Badge.RVR_TOP_Y)
+    end
+    return 9
+end
+
 local c_FADE_OUT_ANIM_DELAY = 2
 local c_STATUS_POLL_INTERVAL = 0.25
 
@@ -65,6 +77,7 @@ local m_isFadeIn                 = {}
 local m_isMouseOverMember        = {}
 local m_memberHealthTextLayoutApplied = {}
 local m_statusPollElapsed        = 0
+local m_containerShown           = false
 
 local function RegisterHandlers()
     if m_handlersRegistered then return end
@@ -74,6 +87,7 @@ local function RegisterHandlers()
     WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.GROUP_STATUS_UPDATED, "CustomUI.GroupWindow.OnStatusUpdated")
     WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.GROUP_EFFECTS_UPDATED, "CustomUI.GroupWindow.OnEffectsUpdated")
     WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.PLAYER_HEALTH_FADE_UPDATED, "CustomUI.GroupWindow.OnHealthFadeUpdated")
+    WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.PLAYER_RVR_FLAG_UPDATED, "CustomUI.GroupWindow.OnRvRFlagUpdated")
     WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.SCENARIO_BEGIN, "CustomUI.GroupWindow.OnScenarioBegin")
     WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.CITY_SCENARIO_BEGIN, "CustomUI.GroupWindow.OnScenarioBegin")
     WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.SCENARIO_END, "CustomUI.GroupWindow.OnScenarioEnd")
@@ -90,6 +104,7 @@ local function UnregisterHandlers()
     WindowUnregisterEventHandler(c_WINDOW_NAME, e.GROUP_STATUS_UPDATED)
     WindowUnregisterEventHandler(c_WINDOW_NAME, e.GROUP_EFFECTS_UPDATED)
     WindowUnregisterEventHandler(c_WINDOW_NAME, e.PLAYER_HEALTH_FADE_UPDATED)
+    WindowUnregisterEventHandler(c_WINDOW_NAME, e.PLAYER_RVR_FLAG_UPDATED)
     WindowUnregisterEventHandler(c_WINDOW_NAME, e.SCENARIO_BEGIN)
     WindowUnregisterEventHandler(c_WINDOW_NAME, e.CITY_SCENARIO_BEGIN)
     WindowUnregisterEventHandler(c_WINDOW_NAME, e.SCENARIO_END)
@@ -211,8 +226,24 @@ local function MemberGroupLeaderCrownName(index)
     return MemberRowName(index) .. "GroupLeaderCrown"
 end
 
-local function MemberMainAssistCrownName(index)
-    return MemberRowName(index) .. "MainAssistCrown"
+-- Stock GroupMemberUnitFrame uses green Group-Leader-Crown; match UnitFrames/GroupIcons gold.
+-- Slice-based DynamicImages ignore DynamicImageSetTexture UV — must set the slice name.
+local c_LEADER_CROWN_GOLD_SLICE = "Warband-Leader-Crown"
+
+local m_memberLeaderCrownGoldApplied = {}
+
+local function EnsureMemberGroupLeaderCrownGold(index)
+    if m_memberLeaderCrownGoldApplied[index] == true then
+        return
+    end
+    local crown = MemberGroupLeaderCrownName(index)
+    if not DoesWindowExist(crown) then
+        return
+    end
+    if type(DynamicImageSetTextureSlice) == "function" then
+        DynamicImageSetTextureSlice(crown, c_LEADER_CROWN_GOLD_SLICE)
+    end
+    m_memberLeaderCrownGoldApplied[index] = true
 end
 
 local function MemberWarbandLeaderCrownName(index)
@@ -227,8 +258,74 @@ local function MemberCareerIconName(index)
     return MemberRowName(index) .. "CareerIcon"
 end
 
+local function MemberCareerIconBackgroundName(index)
+    return MemberRowName(index) .. "CareerIconBackground"
+end
+
+local function MemberLevelBackgroundName(index)
+    return MemberRowName(index) .. "LevelBackground"
+end
+
 local function MemberPortraitFrameName(index)
     return MemberRowName(index) .. "PortraitFrame"
+end
+
+--- Party status can omit isRVRFlagged in scenarios; fall back to local player flags for self.
+local function ResolveMemberIsRvrFlagged(member)
+    if member == nil then
+        return false
+    end
+    if member.isRVRFlagged == true then
+        return true
+    end
+    if GameData == nil or GameData.Player == nil then
+        return false
+    end
+    if member.name == nil or GameData.Player.name == nil then
+        return false
+    end
+    if member.name ~= GameData.Player.name then
+        return false
+    end
+    return GameData.Player.rvrPermaFlagged == true or GameData.Player.rvrZoneFlagged == true
+end
+
+local function ApplyMemberRvrIndicatorLayout(index, indicator)
+    if indicator == nil or type(indicator.SetAnchor) ~= "function" then
+        return
+    end
+    local Badge = CustomUI.PortraitCareerBadge
+    local portraitFrame = MemberPortraitFrameName(index)
+    local axisX = Badge and Badge.AxisXForPortraitFrame(portraitFrame) or 0
+    indicator:SetAnchor({
+        Point = "top",
+        RelativePoint = "top",
+        RelativeTo = portraitFrame,
+        XOffset = axisX,
+        YOffset = MemberRvrTopYOffset(),
+    })
+    indicator:SetRelativeScale(c_MEMBER_RVR_RELATIVE_SCALE)
+
+    local indicatorName = MemberRowName(index) .. "RvRFlagIndicator"
+    if Badge and DoesWindowExist(indicatorName) then
+        WindowSetDimensions(indicatorName, Badge.RVR_W, Badge.RVR_H)
+        if type(WindowSetLayer) == "function" then
+            WindowSetLayer(indicatorName, Window.Layers.POPUP)
+        end
+    end
+end
+
+local function LayoutMemberLeaderCrowns(index)
+    local Badge = CustomUI.PortraitCareerBadge
+    local portrait = MemberPortraitFrameName(index)
+    if Badge == nil or not DoesWindowExist(portrait) then
+        return
+    end
+    for _, crownWin in ipairs({ MemberGroupLeaderCrownName(index), MemberWarbandLeaderCrownName(index) }) do
+        if DoesWindowExist(crownWin) then
+            Badge.LayoutTopCenter(crownWin, portrait, 0, Badge.CROWN_W, Badge.CROWN_H)
+        end
+    end
 end
 
 local function MemberBuffWindowNamePrefix(index)
@@ -281,19 +378,18 @@ local function EnsureMemberRvrIndicator(index)
         return nil
     end
 
-    indicator = RvRIndicator:Create(MemberRowName(index) .. "RvRFlagIndicator", MemberRowName(index))
+    local indicatorName = MemberRowName(index) .. "RvRFlagIndicator"
+    -- Recover from a prior partial init (Create succeeded, layout failed before cache).
+    if DoesWindowExist(indicatorName) and type(DestroyWindow) == "function" then
+        DestroyWindow(indicatorName)
+    end
+
+    indicator = RvRIndicator:Create(indicatorName, MemberRowName(index))
     if indicator == nil then
         return nil
     end
 
-    indicator:SetAnchor({
-        Point = "top",
-        RelativePoint = "center",
-        RelativeTo = MemberPortraitName(index),
-        XOffset = c_MEMBER_RVR_OFFSET_X,
-        YOffset = c_MEMBER_RVR_OFFSET_Y,
-    })
-    indicator:SetRelativeScale(c_MEMBER_RVR_RELATIVE_SCALE)
+    ApplyMemberRvrIndicatorLayout(index, indicator)
     indicator:SetTargetType(SystemData.TargetObjectType.ALLY_PLAYER)
 
     m_memberRvrIndicators[index] = indicator
@@ -303,13 +399,7 @@ end
 local function SetMemberRvrIndicatorShowing(index, isShowing)
     local indicator = EnsureMemberRvrIndicator(index)
     if indicator ~= nil then
-        indicator:SetAnchor({
-            Point = "top",
-            RelativePoint = "center",
-            RelativeTo = MemberPortraitName(index),
-            XOffset = c_MEMBER_RVR_OFFSET_X,
-            YOffset = c_MEMBER_RVR_OFFSET_Y,
-        })
+        ApplyMemberRvrIndicatorLayout(index, indicator)
         indicator:SetTargetType(SystemData.TargetObjectType.ALLY_PLAYER)
         indicator:Show(isShowing == true)
     end
@@ -636,12 +726,49 @@ local function ApplyMemberHealthTextLayoutOverride(index)
     WindowAddAnchor(healthText, "center", MemberHealthBarFrameName(index), "center", 0, 0)
 end
 
+-- Career badge top-left + career rank bottom-left (PlayerStatus / Target friendly layout).
+local function LayoutMemberRankBadge(index)
+    local Badge = CustomUI.PortraitCareerBadge
+    local portraitFrame = MemberPortraitFrameName(index)
+    local levelBg = MemberLevelBackgroundName(index)
+    if Badge == nil or not DoesWindowExist(levelBg) or not DoesWindowExist(portraitFrame) then
+        return
+    end
+    Badge.LayoutTargetRankBadge(levelBg, portraitFrame, true)
+end
+
+local function ApplyMemberCareerIconLayoutOverride(index)
+    local rowWindow = MemberRowName(index)
+    local portraitFrame = MemberPortraitFrameName(index)
+    local careerIcon = MemberCareerIconName(index)
+    local careerBg = MemberCareerIconBackgroundName(index)
+    local nameLabel = MemberNameLabelName(index)
+    local healthBarFrame = MemberHealthBarFrameName(index)
+    local Badge = CustomUI.PortraitCareerBadge
+
+    if Badge == nil
+        or not DoesWindowExist(careerIcon)
+        or not DoesWindowExist(nameLabel)
+        or not DoesWindowExist(healthBarFrame) then
+        return
+    end
+
+    Badge.EnsureBackgroundTopLeft(careerBg, rowWindow, portraitFrame)
+    Badge.LayoutIcon(careerIcon, careerBg)
+    LayoutMemberRankBadge(index)
+
+    WindowSetDimensions(nameLabel, c_MEMBER_NAME_WIDTH, c_MEMBER_NAME_HEIGHT)
+    WindowClearAnchors(nameLabel)
+    WindowAddAnchor(nameLabel, "topleft", healthBarFrame, "topleft", 4, -20)
+end
+
 local function EnsureMemberHealthTextLayoutOverride(index)
     if m_memberHealthTextLayoutApplied[index] == true then
         return
     end
 
     ApplyMemberHealthTextLayoutOverride(index)
+    ApplyMemberCareerIconLayoutOverride(index)
     m_memberHealthTextLayoutApplied[index] = true
 end
 
@@ -658,7 +785,6 @@ local function UpdateMemberRow(index)
     local deathPortrait = MemberDeathPortraitName(index)
     local portrait = MemberPortraitName(index)
     local groupLeaderCrown = MemberGroupLeaderCrownName(index)
-    local mainAssistCrown = MemberMainAssistCrownName(index)
     local warbandLeaderCrown = MemberWarbandLeaderCrownName(index)
     local moraleMini = MemberMoraleMiniName(index)
     local careerIcon = MemberCareerIconName(index)
@@ -683,6 +809,11 @@ local function UpdateMemberRow(index)
     EnsureMemberHealthTextLayoutOverride(index)
     LabelSetText(nameLabel, member.name)
     LabelSetText(levelLabel, towstring(level))
+    local rankColor = (DefaultColor and DefaultColor.COLOR_EXPERIENCE_GAIN) or { r = 255, g = 170, b = 0 }
+    LabelSetTextColor(levelLabel, rankColor.r, rankColor.g, rankColor.b )
+    local showRankBadge = CustomUI.GroupWindow.IsBadgeEnabled("rank")
+    WindowSetShowing(levelLabel, showRankBadge)
+    WindowSetShowing(MemberLevelBackgroundName(index), showRankBadge)
     WindowSetGameActionData(rowWindow, GameData.PlayerActions.SET_TARGET, 0, member.name)
     LabelSetText(offlineText, c_OFFLINE_LABEL_TEXT)
     LabelSetText(distantText, c_DISTANT_LABEL_TEXT)
@@ -745,19 +876,33 @@ local function UpdateMemberRow(index)
     WindowSetShowing(deathPortrait, isDead)
     WindowSetShowing(portrait, not isDead)
 
+    EnsureMemberGroupLeaderCrownGold(index)
+    LayoutMemberLeaderCrowns(index)
     WindowSetShowing(groupLeaderCrown, member.isGroupLeader == true)
-    WindowSetShowing(mainAssistCrown, member.isMainAssist == true)
     WindowSetShowing(warbandLeaderCrown, member.isWarbandLeader == true)
-    SetMemberRvrIndicatorShowing(index, member.isRVRFlagged == true)
+    SetMemberRvrIndicatorShowing(index, ResolveMemberIsRvrFlagged(member))
 
-    if member.careerLine ~= nil then
-        local iconId = Icons.GetCareerIconIDFromCareerLine(member.careerLine)
-        if iconId ~= nil then
-            local iconTexture, iconX, iconY = GetIconData(iconId)
-            DynamicImageSetTexture(careerIcon, iconTexture, iconX, iconY)
-        end
+    local Badge = CustomUI.PortraitCareerBadge
+    local careerBg = MemberCareerIconBackgroundName(index)
+    local portraitFrame = MemberPortraitFrameName(index)
+    if CustomUI.GroupWindow.IsBadgeEnabled("rank") then
+        LayoutMemberRankBadge(index)
     end
-    WindowSetShowing(careerIcon, not IsWarBandActive())
+    local showCareerBadge = CustomUI.GroupWindow.IsBadgeEnabled("career") and not IsWarBandActive()
+    if showCareerBadge and Badge then
+        showCareerBadge = Badge.LayoutAndApplyTopLeft(
+            careerIcon,
+            careerBg,
+            rowWindow,
+            portraitFrame,
+            member.careerLine
+        )
+    elseif Badge then
+        Badge.SetShowing(careerIcon, careerBg, false)
+    else
+        WindowSetShowing(careerIcon, false)
+        WindowSetShowing(careerBg, false)
+    end
 
     if moraleLevel >= 1 and moraleLevel <= 4 then
         DynamicImageSetTextureSlice(moraleMini, c_MORALE_SLICE_BY_LEVEL[moraleLevel])
@@ -856,6 +1001,7 @@ end
 local function UpdateContainerVisibility()
     local shouldShow = ShouldShowContainer()
     WindowSetShowing(c_WINDOW_NAME, shouldShow)
+    m_containerShown = shouldShow
 
     if shouldShow then
         UpdateMemberRows()
@@ -875,6 +1021,8 @@ end
 ----------------------------------------------------------------
 
 function CustomUI.GroupWindow.Initialize()
+    ShutdownMemberRvrIndicators()
+
     LayoutEditor.RegisterWindow(
         c_WINDOW_NAME,
         L"CustomUI: Group Window",
@@ -898,7 +1046,12 @@ function CustomUI.GroupWindow.Initialize()
         m_isFadeIn[index] = false
         m_isMouseOverMember[index] = false
         m_memberHealthTextLayoutApplied[index] = false
+        m_memberLeaderCrownGoldApplied[index] = false
         m_memberStatusSnapshot[index] = nil
+        local mainAssistCrown = MemberRowName(index) .. "MainAssistCrown"
+        if DoesWindowExist(mainAssistCrown) then
+            WindowSetShowing(mainAssistCrown, false)
+        end
         DestroyStaleMemberBuffWindows(index)
     end
 
@@ -922,12 +1075,14 @@ function CustomUI.GroupWindow.Shutdown()
     m_isFadeIn = {}
     m_isMouseOverMember = {}
     m_memberHealthTextLayoutApplied = {}
+    m_memberLeaderCrownGoldApplied = {}
     m_memberStatusSnapshot = {}
     m_memberStatusSource = {}
     m_memberRvrIndicators = {}
     m_lastRosterNames = {}
     m_lastRosterSignature = nil
     m_statusPollElapsed = 0
+    m_containerShown = false
 
 end
 
@@ -995,6 +1150,13 @@ function CustomUI.GroupWindow.OnHealthFadeUpdated()
     end
 end
 
+function CustomUI.GroupWindow.OnRvRFlagUpdated()
+    if not m_enabled then
+        return
+    end
+    UpdateMemberRows()
+end
+
 function CustomUI.GroupWindow.OnScenarioBegin()
     UpdateContainerVisibility()
 end
@@ -1009,15 +1171,24 @@ function CustomUI.GroupWindow.Update(elapsedTime)
         return
     end
 
+    local show = ShouldShowContainer()
+    if show ~= m_containerShown then
+        if show then
+            RefreshAllMemberStatuses()
+        end
+        UpdateContainerVisibility()
+        m_statusPollElapsed = 0
+    end
+
+    if not show then
+        return
+    end
+
     m_statusPollElapsed = m_statusPollElapsed + (elapsedTime or 0)
     if m_statusPollElapsed >= c_STATUS_POLL_INTERVAL then
         m_statusPollElapsed = 0
         RefreshAllMemberStatuses()
-        if ShouldShowContainer() then
-            UpdateMemberRows()
-        else
-            UpdateContainerVisibility()
-        end
+        UpdateMemberRows()
     end
 
     for index = 1, c_MAX_GROUP_MEMBERS do
@@ -1037,6 +1208,7 @@ function CustomUI.GroupWindow.Update(elapsedTime)
 
         local tracker = m_memberBuffTrackers[index]
         if tracker ~= nil then
+            CustomUI.PerfCount("groupWindowTrackerUpdates")
             tracker:Update(elapsedTime)
         end
     end
@@ -1072,7 +1244,7 @@ function CustomUI.GroupWindow.OnMemberMouseOver()
         tooltipLine = tooltipLine + 1
     end
 
-    if player.isRVRFlagged then
+    if ResolveMemberIsRvrFlagged(player) then
         Tooltips.SetTooltipText(tooltipLine, 1, GetStringFromTable("HUDStrings", StringTables.HUD.LABEL_PLAYER_IS_RVR_FLAGGED))
     end
 
@@ -1171,6 +1343,7 @@ function GroupWindowComponent:Disable()
     m_lastRosterNames = {}
     m_lastRosterSignature = nil
     m_statusPollElapsed = 0
+    m_containerShown = false
 
     for index = 1, c_MAX_GROUP_MEMBERS do
         m_hitPointAlerts[index] = false
@@ -1232,7 +1405,22 @@ function CustomUI.GroupWindow.GetSettings()
             v.buffs[k] = defs[k]
         end
     end
+    v.badges = v.badges or {}
+    if v.badges.career == nil then
+        v.badges.career = true
+    end
+    if v.badges.rank == nil then
+        v.badges.rank = true
+    end
     return v
+end
+
+function CustomUI.GroupWindow.IsBadgeEnabled(badgeKey)
+    local badges = CustomUI.GroupWindow.GetSettings().badges
+    if type(badges) ~= "table" then
+        return true
+    end
+    return badges[badgeKey] ~= false
 end
 
 function CustomUI.GroupWindow.ApplyBuffSettings()
@@ -1244,4 +1432,9 @@ function CustomUI.GroupWindow.ApplyBuffSettings()
         end
     end
 end
+
+function CustomUI.GroupWindow.ApplyBadgeSettings()
+    UpdateMemberRows()
+end
+
 CustomUI.RegisterComponent("GroupWindow", GroupWindowComponent)

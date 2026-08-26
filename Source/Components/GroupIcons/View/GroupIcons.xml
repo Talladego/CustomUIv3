@@ -50,6 +50,28 @@
                                 </Anchor>
                             </Anchors>
                         </DynamicImage>
+                        <!-- Dead: EA_HUD_01 PartyMarker-Skull (30x33). -->
+                        <DynamicImage name="$parentDeathMark" handleinput="false" layer="secondary" popable="false" textureScale="1.0" filtering="true" show="false">
+                            <Size>
+                                <AbsPoint x="16" y="18" />
+                            </Size>
+                            <Anchors>
+                                <Anchor point="bottomright" relativePoint="bottomright">
+                                    <AbsPoint x="-1" y="-1" />
+                                </Anchor>
+                            </Anchors>
+                        </DynamicImage>
+                        <!-- Scoreboard stat: EA_ScenarioSummary01_d8 highlighted slices; UV set in Lua. -->
+                        <DynamicImage name="$parentStatMark" handleinput="false" layer="secondary" popable="false" textureScale="1.0" filtering="true" show="false">
+                            <Size>
+                                <AbsPoint x="16" y="18" />
+                            </Size>
+                            <Anchors>
+                                <Anchor point="bottomright" relativePoint="bottomright">
+                                    <AbsPoint x="-1" y="-1" />
+                                </Anchor>
+                            </Anchors>
+                        </DynamicImage>
                     </Windows>
                 </Window>
             </Windows>

@@ -88,6 +88,20 @@
         </Windows>
     </Window>
 
+    <Window name="CustomUI_LabelCheckButtonWide" inherits="EA_LabelCheckButton">
+        <Size>
+            <AbsPoint x="240" y="32" />
+        </Size>
+        <Windows>
+            <Button name="$parentButton" inherits="EA_CheckButtonButton" />
+            <Label name="$parentLabel" inherits="EA_CheckButtonLabel" font="font_chat_text" handleinput="false" wordwrap="false" autoresize="false">
+                <Size>
+                    <AbsPoint x="215" y="18" />
+                </Size>
+            </Label>
+        </Windows>
+    </Window>
+
     <!--*******************************************************************-->
     <!--                      Whole Window Definition                      -->
     <!--*******************************************************************-->
@@ -181,7 +195,7 @@
                         <!-- Icons -->
                         <Window name="$parentIcons" >
                             <Size>
-                                <AbsPoint x="500" y="100" />
+                                <AbsPoint x="500" y="180" />
                             </Size>
                             <!-- Pattern A: pin to ScrollChild; y = General(100) + gap(10) — matches CustomUISettingsWindowTabPlayer (no sibling relativeTo). -->
                             <Anchors>
@@ -208,7 +222,7 @@
                                 <Window name="$parentParty" inherits="CustomUI_LabelCheckButtonNarrow">
                                     <Anchors>
                                         <Anchor point="topleft" relativePoint="topleft">
-                                            <AbsPoint x="20" y="40" />
+                                            <AbsPoint x="45" y="40" />
                                         </Anchor>
                                     </Anchors>
                                     <EventHandlers>
@@ -262,6 +276,41 @@
                                     <EventHandlers>
                                         <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
                                         <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabGroupIcons.OnToggleGoldSocial" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Label name="$parentDecorationsTitle" inherits="EA_Settings_SectionTitle">
+                                    <Size>
+                                        <AbsPoint x="400" y="25" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="10" y="76" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+
+                                <Window name="$parentDeathSkulls" inherits="CustomUI_LabelCheckButtonNarrow">
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="106" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabGroupIcons.OnToggleDeathSkulls" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Window name="$parentScenarioThreat" inherits="CustomUI_LabelCheckButtonWide">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="$parentDeathSkulls">
+                                            <AbsPoint x="20" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabGroupIcons.OnToggleScenarioThreat" />
                                     </EventHandlers>
                                 </Window>
                             </Windows>

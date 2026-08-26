@@ -144,13 +144,11 @@ function CustomUISettingsWindowTabKillTracker.Initialize()
 		LabelSetText(c .. "DisplayVisTimeLabel", L"Visible Time")
 	end
 	LabelSetText(c .. "DisplayMaxRowsLabel", L"Max visible rows")
-	LabelSetText(c .. "DisplayCareerIconsLabel", L"Career icons")
-	LabelSetText(c .. "DisplayAbilityIconsLabel", L"Ability icons")
-	LabelSetText(c .. "DisplayKillCountLabel", L"Kill / death counts")
+	LabelSetText(c .. "DisplayKillMessagesLabel", L"Kill messages")
+	LabelSetText(c .. "DisplayKillCountLabel", L"Kill counts")
 	LabelSetText(c .. "DisplayZoneLabel", L"Zone (open RvR)")
 
-	ButtonSetCheckButtonFlag(c .. "DisplayCareerIconsButton", true)
-	ButtonSetCheckButtonFlag(c .. "DisplayAbilityIconsButton", true)
+	ButtonSetCheckButtonFlag(c .. "DisplayKillMessagesButton", true)
 	ButtonSetCheckButtonFlag(c .. "DisplayKillCountButton", true)
 	ButtonSetCheckButtonFlag(c .. "DisplayZoneButton", true)
 
@@ -171,8 +169,7 @@ function CustomUISettingsWindowTabKillTracker.UpdateSettings()
 	if DoesWindowExist(c .. "DisplayMaxRows") then
 		SliderBarSetCurrentPosition(c .. "DisplayMaxRows", RowsSliderPosFromCount(s.maxVisibleRows))
 	end
-	ButtonSetPressedFlag(c .. "DisplayCareerIconsButton", s.showCareerIcons ~= false)
-	ButtonSetPressedFlag(c .. "DisplayAbilityIconsButton", s.showAbilityIcons ~= false)
+	ButtonSetPressedFlag(c .. "DisplayKillMessagesButton", s.showKillMessages ~= false)
 	ButtonSetPressedFlag(c .. "DisplayKillCountButton", s.showKillCount ~= false)
 	ButtonSetPressedFlag(c .. "DisplayZoneButton", s.showZone ~= false)
 end
@@ -213,8 +210,7 @@ function CustomUISettingsWindowTabKillTracker.ApplyCurrent()
 	if DoesWindowExist(c .. "DisplayMaxRows") then
 		s.maxVisibleRows = RowsCountFromSliderPos(SliderBarGetCurrentPosition(c .. "DisplayMaxRows"))
 	end
-	s.showCareerIcons = ButtonGetPressedFlag(c .. "DisplayCareerIconsButton") == true
-	s.showAbilityIcons = ButtonGetPressedFlag(c .. "DisplayAbilityIconsButton") == true
+	s.showKillMessages = ButtonGetPressedFlag(c .. "DisplayKillMessagesButton") == true
 	s.showKillCount = ButtonGetPressedFlag(c .. "DisplayKillCountButton") == true
 	s.showZone = ButtonGetPressedFlag(c .. "DisplayZoneButton") == true
 	s.replaceChatKills = false
@@ -229,11 +225,7 @@ function CustomUISettingsWindowTabKillTracker.OnToggleEnabled()
 	EA_LabelCheckButton.Toggle()
 end
 
-function CustomUISettingsWindowTabKillTracker.OnToggleCareerIcons()
-	EA_LabelCheckButton.Toggle()
-end
-
-function CustomUISettingsWindowTabKillTracker.OnToggleAbilityIcons()
+function CustomUISettingsWindowTabKillTracker.OnToggleKillMessages()
 	EA_LabelCheckButton.Toggle()
 end
 

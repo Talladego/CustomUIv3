@@ -97,7 +97,7 @@
                         <!-- Buff Tracker — Hostile target -->
                         <Window name="$parentBuffTrackerHostile" >
                             <Size>
-                                <AbsPoint x="500" y="240" />
+                                <AbsPoint x="500" y="270" />
                             </Size>
                             <!-- README Pattern A: do not use relativeTo="$parentGeneral" — sibling anchors are unreliable. -->
                             <Anchors>
@@ -121,6 +121,30 @@
                                     </Anchors>
                                 </Label>
 
+                                <Window name="$parentShowHealthBar" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="40" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabTargetHUD.OnSideToggleChanged" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Window name="$parentShowBuffTracker" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="$parentShowHealthBar">
+                                            <AbsPoint x="0" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabTargetHUD.OnSideToggleChanged" />
+                                    </EventHandlers>
+                                </Window>
+
                                 <!-- Category sub-header -->
                                 <Label name="$parentCategoryLabel" inherits="EA_Settings_ItemTitle">
                                     <Size>
@@ -128,7 +152,7 @@
                                     </Size>
                                     <Anchors>
                                         <Anchor point="topleft" relativePoint="topleft">
-                                            <AbsPoint x="45" y="40" />
+                                            <AbsPoint x="45" y="70" />
                                         </Anchor>
                                     </Anchors>
                                 </Label>
@@ -254,15 +278,15 @@
                         <!-- Buff Tracker — Friendly target -->
                         <Window name="$parentBuffTrackerFriendly" >
                             <Size>
-                                <AbsPoint x="500" y="240" />
+                                <AbsPoint x="500" y="270" />
                             </Size>
-                            <!-- y = General(100) + gap(10) + Hostile(240) + gap(10). README Pattern A — no sibling relativeTo. -->
+                            <!-- y = General(100) + gap(10) + Hostile(270) + gap(10). README Pattern A — no sibling relativeTo. -->
                             <Anchors>
                                 <Anchor point="topleft" relativePoint="topleft">
-                                    <AbsPoint x="0" y="360" />
+                                    <AbsPoint x="0" y="390" />
                                 </Anchor>
                                 <Anchor point="topright" relativePoint="topright">
-                                    <AbsPoint x="0" y="360" />
+                                    <AbsPoint x="0" y="390" />
                                 </Anchor>
                             </Anchors>
                             <Windows>
@@ -278,13 +302,37 @@
                                     </Anchors>
                                 </Label>
 
+                                <Window name="$parentShowHealthBar" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="40" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabTargetHUD.OnSideToggleChanged" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Window name="$parentShowBuffTracker" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="$parentShowHealthBar">
+                                            <AbsPoint x="0" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabTargetHUD.OnSideToggleChanged" />
+                                    </EventHandlers>
+                                </Window>
+
                                 <Label name="$parentCategoryLabel" inherits="EA_Settings_ItemTitle">
                                     <Size>
                                         <AbsPoint x="250" y="16" />
                                     </Size>
                                     <Anchors>
                                         <Anchor point="topleft" relativePoint="topleft">
-                                            <AbsPoint x="45" y="40" />
+                                            <AbsPoint x="45" y="70" />
                                         </Anchor>
                                     </Anchors>
                                 </Label>
@@ -397,6 +445,176 @@
 
                             </Windows>
                         </Window><!-- end BuffTrackerFriendly -->
+
+                        <!-- Buff Tracker — Self -->
+                        <Window name="$parentBuffTrackerSelf" >
+                            <Size>
+                                <AbsPoint x="500" y="270" />
+                            </Size>
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft">
+                                    <AbsPoint x="0" y="670" />
+                                </Anchor>
+                                <Anchor point="topright" relativePoint="topright">
+                                    <AbsPoint x="0" y="670" />
+                                </Anchor>
+                            </Anchors>
+                            <Windows>
+                                <FullResizeImage name="$parentBackground" inherits="SettingsSectionBackground" />
+                                <Label name="$parentTitle" inherits="EA_Settings_SectionTitle">
+                                    <Size>
+                                        <AbsPoint x="400" y="25" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="10" y="10" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+
+                                <Window name="$parentShowHealthBar" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="40" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabTargetHUD.OnSideToggleChanged" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Window name="$parentShowBuffTracker" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="$parentShowHealthBar">
+                                            <AbsPoint x="0" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabTargetHUD.OnSideToggleChanged" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Label name="$parentCategoryLabel" inherits="EA_Settings_ItemTitle">
+                                    <Size>
+                                        <AbsPoint x="250" y="16" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="70" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+
+                                <Window name="$parentBuffs" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentCategoryLabel">
+                                            <AbsPoint x="0" y="8" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabTargetHUD.OnBuffFilterChanged" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Window name="$parentDebuffs" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="$parentBuffs">
+                                            <AbsPoint x="0" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabTargetHUD.OnBuffFilterChanged" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Window name="$parentNeutral" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="$parentDebuffs">
+                                            <AbsPoint x="0" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabTargetHUD.OnBuffFilterChanged" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Label name="$parentDurationLabel" inherits="EA_Settings_ItemTitle">
+                                    <Size>
+                                        <AbsPoint x="250" y="16" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentBuffs">
+                                            <AbsPoint x="0" y="8" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+
+                                <Window name="$parentShort" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentDurationLabel">
+                                            <AbsPoint x="0" y="4" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabTargetHUD.OnBuffFilterChanged" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Window name="$parentLong" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="$parentShort">
+                                            <AbsPoint x="0" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabTargetHUD.OnBuffFilterChanged" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Window name="$parentPermanent" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="$parentLong">
+                                            <AbsPoint x="0" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabTargetHUD.OnBuffFilterChanged" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Label name="$parentSourceLabel" inherits="EA_Settings_ItemTitle">
+                                    <Size>
+                                        <AbsPoint x="250" y="16" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentShort">
+                                            <AbsPoint x="0" y="8" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+
+                                <Window name="$parentPlayerCastOnly" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentSourceLabel">
+                                            <AbsPoint x="0" y="4" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabTargetHUD.OnBuffFilterChanged" />
+                                    </EventHandlers>
+                                </Window>
+
+                            </Windows>
+                        </Window><!-- end BuffTrackerSelf -->
 
                                 
                     </Windows>

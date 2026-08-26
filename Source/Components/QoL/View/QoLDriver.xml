@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <Windows>
+        <Window name="CustomUIQoLDriver" handleinput="false" layer="background" parent="Root" movable="false">
+            <Size>
+                <AbsPoint x="1" y="1" />
+            </Size>
+            <Anchors>
+                <Anchor point="topleft" relativePoint="topleft" relativeTo="Root" />
+            </Anchors>
+            <EventHandlers>
+                <EventHandler event="OnUpdate" function="CustomUI.QoL.OnUpdate" />
+            </EventHandlers>
+        </Window>
+    </Windows>
+</Interface>

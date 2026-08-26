@@ -66,6 +66,35 @@ local c_STATUS_ANCHOR_FRIENDLY =
     YOffset       = -4,
 }
 
+-- Portrait corner layout matches PlayerStatus (career top, rank bottom); hostile mirrors horizontally.
+local c_NAME_LABEL_HEIGHT = 23
+local c_NAME_LABEL_WIDTH_FRIENDLY = 150
+local c_NAME_LABEL_WIDTH_HOSTILE = 150
+
+local function LayoutTargetPortraitDecor(windowName, portraitWindow, isFriendly)
+    local Badge = CustomUI.PortraitCareerBadge
+    if Badge == nil or not DoesWindowExist(portraitWindow) then
+        return
+    end
+
+    local careerIconWindow = windowName .. "CareerIcon"
+    local careerBgWindow = windowName .. "CareerIconBackground"
+    local levelBackground = windowName .. "LevelBackground"
+
+    if DoesWindowExist(careerIconWindow) then
+        if isFriendly then
+            Badge.EnsureBackgroundTopLeft(careerBgWindow, windowName, portraitWindow)
+        else
+            Badge.EnsureBackgroundTopRight(careerBgWindow, windowName, portraitWindow)
+        end
+        Badge.LayoutIcon(careerIconWindow, careerBgWindow)
+    end
+
+    if DoesWindowExist(levelBackground) then
+        Badge.LayoutTargetRankBadge(levelBackground, portraitWindow, isFriendly)
+    end
+end
+
 -- Stock TargetUnitFrame skull layouts (eatemplate_unitframes targetunitframe.lua).
 -- ThreatLevel N = N skulls on the portrait (Champion/Hero/Lord + special).
 local c_TIER_SKULL_ANCHORS =
@@ -120,16 +149,12 @@ function CustomUI.TargetFrame:Create( windowName, unitId,
     newFrame.m_IsThePlayer         = false
     newFrame.m_IsFriendly          = ( unitId == "selffriendlytarget" )
 
-    local portraitWindow  = windowName .. "PortraitFrame"
-    local careerIconWindow = windowName .. "CareerIcon"
+    local portraitWindow = windowName .. "PortraitFrame"
 
-    -- Mirror portrait + career icon for the friendly side.
+    -- Mirror portrait for the friendly side.
     if newFrame.m_IsFriendly then
         WindowClearAnchors( portraitWindow )
         WindowAddAnchor( portraitWindow, "topleft", windowName, "topleft", 0, 0 )
-
-        WindowClearAnchors( careerIconWindow )
-        WindowAddAnchor( careerIconWindow, "topleft", portraitWindow, "topleft", 0, 56 )
     else
         -- Sigil button (hostile only).
         local sigilButtonName = windowName .. "SigilButton"
@@ -148,6 +173,26 @@ function CustomUI.TargetFrame:Create( windowName, unitId,
 
     newFrame.m_StatusFrame = TargetUnitFrameStatus:Create(
         windowName .. "Status", windowName, statusAnchor, newFrame.m_IsFriendly )
+
+    -- Career badge top corner; rank badge bottom corner (PlayerStatus layout).
+    local statusName = windowName .. "StatusName"
+    local healthBarBG = windowName .. "StatusHealthBarBG"
+    local nameWidth = newFrame.m_IsFriendly and c_NAME_LABEL_WIDTH_FRIENDLY or c_NAME_LABEL_WIDTH_HOSTILE
+    LayoutTargetPortraitDecor(windowName, portraitWindow, newFrame.m_IsFriendly)
+    if DoesWindowExist(statusName) and DoesWindowExist(healthBarBG) then
+        WindowSetDimensions(statusName, nameWidth, c_NAME_LABEL_HEIGHT)
+        WindowClearAnchors(statusName)
+        WindowAddAnchor(statusName, "topleft", healthBarBG, "bottomleft", 10, 4)
+        WindowAddAnchor(statusName, "topright", healthBarBG, "bottomright", -10, 0)
+    end
+
+    -- Hostile: keep stock ConLabel placement (below HP bar); nudge X toward the portrait.
+    -- Stock TargetUnitFrameStatus: left → HealthBarBG right @ (147, 26).
+    local conLabel = windowName .. "StatusConLabel"
+    if not newFrame.m_IsFriendly and DoesWindowExist(conLabel) and DoesWindowExist(healthBarBG) then
+        WindowClearAnchors(conLabel)
+        WindowAddAnchor(conLabel, "left", healthBarBG, "right", 170, 26)
+    end
 
     -- HP% label over the dynamically created HealthPercentBar (stock status
     -- container has TierLabel on the bar, but no HealthText like PlayerWindow).
@@ -185,28 +230,18 @@ function CustomUI.TargetFrame:Create( windowName, unitId,
         return nil
     end
 
-    newFrame.m_RvRFrame:SetAnchor( { Point        = "top",
-                                     RelativePoint = "center",
-                                     RelativeTo    = portraitWindow,
-                                     XOffset       = 0, YOffset = 25 } )
+    newFrame.m_RvRFrame:SetAnchor({
+        Point = "top",
+        RelativePoint = "top",
+        RelativeTo = portraitWindow,
+        XOffset = CustomUI.PortraitCareerBadge and CustomUI.PortraitCareerBadge.AxisXForPortraitFrame(portraitWindow) or 0,
+        YOffset = CustomUI.PortraitCareerBadge and CustomUI.PortraitCareerBadge.RVR_TOP_Y or 11,
+    })
 
-    -- Name label colour and alignment.
-    local nameInfo = newFrame.m_IsFriendly
-                     and { color = DefaultColor.NAME_COLOR_PLAYER, align = "leftcenter" }
-                     or  { color = DefaultColor.NAME_COLOR_THREAT, align = "rightcenter" }
-
-    LabelSetTextColor(  windowName .. "StatusName",
-                        nameInfo.color.r, nameInfo.color.g, nameInfo.color.b )
-    LabelSetTextAlign(  windowName .. "StatusName", nameInfo.align )
-
-    -- Level circle anchor.
-    local levelAnchorInfo = newFrame.m_IsFriendly
-                            and { point = "topleft",   relPoint = "topleft",   xo = 0,    yo = 3  }
-                            or  { point = "topright",  relPoint = "center",    xo = -103, yo = 66 }
-    WindowClearAnchors( windowName .. "LevelBackground" )
-    WindowAddAnchor( windowName .. "LevelBackground",
-                     levelAnchorInfo.point, portraitWindow,
-                     levelAnchorInfo.relPoint, levelAnchorInfo.xo, levelAnchorInfo.yo )
+    -- Name label colour; left-align so the career icon sits cleanly in front of the text.
+    local nameColor = newFrame.m_IsFriendly and DefaultColor.NAME_COLOR_PLAYER or DefaultColor.NAME_COLOR_THREAT
+    LabelSetTextColor(windowName .. "StatusName", nameColor.r, nameColor.g, nameColor.b)
+    LabelSetTextAlign(windowName .. "StatusName", "leftcenter")
 
     -- Mirror health-bar frame texture for hostile target.
     DynamicImageSetTextureOrientation( windowName .. "StatusHealthBarFrame",
@@ -231,17 +266,34 @@ function CustomUI.TargetFrame:Create( windowName, unitId,
     return newFrame
 end
 
--- TargetWindow level display should always show true career rank.
+-- TargetWindow level: friendly matches PlayerStatus XP-orange rank text; hostile keeps
+-- black text on the con/difficulty tinted Rank-Circle (LevelBackgroundTint).
 function CustomUI.TargetFrame:UpdateLevel(level, battleLevel, conColor)
     local windowName = self:GetName()
-    local levelColor = self.m_IsFriendly and DefaultColor.WHITE or DefaultColor.BLACK
+    local showRank = true
+    if type(CustomUI.TargetWindow) == "table" and type(CustomUI.TargetWindow.IsBadgeEnabled) == "function" then
+        showRank = CustomUI.TargetWindow.IsBadgeEnabled("rank")
+    end
+    if not showRank or self.m_IsAStaticObject == true then
+        WindowSetShowing(windowName .. "LevelBackgroundTint", false)
+        WindowSetShowing(windowName .. "LevelText", false)
+        WindowSetShowing(windowName .. "LevelBackground", false)
+        return
+    end
+
+    local levelColor
+    if self.m_IsFriendly then
+        levelColor = (DefaultColor and DefaultColor.COLOR_EXPERIENCE_GAIN) or { r = 255, g = 170, b = 0 }
+    else
+        levelColor = DefaultColor.BLACK
+    end
 
     LabelSetText(windowName .. "LevelText", L"" .. level)
     LabelSetTextColor(windowName .. "LevelText", levelColor.r, levelColor.g, levelColor.b)
     WindowSetTintColor(windowName .. "LevelBackgroundTint", conColor.r, conColor.g, conColor.b)
     WindowSetShowing(windowName .. "LevelBackgroundTint", not self.m_IsFriendly)
-    WindowSetShowing(windowName .. "LevelText", self.m_IsAStaticObject == false)
-    WindowSetShowing(windowName .. "LevelBackground", self.m_IsAStaticObject == false)
+    WindowSetShowing(windowName .. "LevelText", true)
+    WindowSetShowing(windowName .. "LevelBackground", true)
 end
 
 -- Portrait skulls for Champion / Hero / Lord (stock TierLabel text is hidden for HP%).
@@ -267,6 +319,49 @@ local function ResolveTierSkullCount(unitId)
         count = 4
     end
     return count
+end
+
+-- Trim career atlas cell; badge chrome is applied in Create().
+function CustomUI.TargetFrame:SetCareerIcon(careerLine)
+    local windowName = self:GetName()
+    local showCareer = true
+    if type(CustomUI.TargetWindow) == "table" and type(CustomUI.TargetWindow.IsBadgeEnabled) == "function" then
+        showCareer = CustomUI.TargetWindow.IsBadgeEnabled("career")
+    end
+    if not showCareer then
+        self:ShowCareerIcon(false)
+        return
+    end
+    local Badge = CustomUI.PortraitCareerBadge
+    if Badge then
+        local layoutFn = self.m_IsFriendly and Badge.LayoutAndApplyTopLeft or Badge.LayoutAndApplyTopRight
+        layoutFn(
+            windowName .. "CareerIcon",
+            windowName .. "CareerIconBackground",
+            windowName,
+            windowName .. "PortraitFrame",
+            careerLine
+        )
+        return
+    end
+    local careerIcon = windowName .. "CareerIcon"
+    local texture, x, y = GetIconData(Icons.GetCareerIconIDFromCareerLine(careerLine))
+    DynamicImageSetTexture(careerIcon, texture, x, y)
+end
+
+function CustomUI.TargetFrame:ShowCareerIcon(show)
+    local windowName = self:GetName()
+    local Badge = CustomUI.PortraitCareerBadge
+    local showCareer = true
+    if type(CustomUI.TargetWindow) == "table" and type(CustomUI.TargetWindow.IsBadgeEnabled) == "function" then
+        showCareer = CustomUI.TargetWindow.IsBadgeEnabled("career")
+    end
+    local showBadge = show == true and showCareer and ResolveTierSkullCount(self.m_UnitId) == 0
+    if Badge then
+        Badge.SetShowing(windowName .. "CareerIcon", windowName .. "CareerIconBackground", showBadge)
+        return
+    end
+    WindowSetShowing(windowName .. "CareerIcon", showBadge)
 end
 
 function CustomUI.TargetFrame:UpdateTierSkulls()
@@ -296,6 +391,10 @@ function CustomUI.TargetFrame:UpdateTierSkulls()
                 )
             end
         end
+    end
+
+    if skullCount > 0 then
+        self:ShowCareerIcon(false)
     end
 end
 

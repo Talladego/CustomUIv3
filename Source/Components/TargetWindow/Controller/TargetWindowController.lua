@@ -725,7 +725,14 @@ function CustomUI.TargetWindow.GetSettings()
     CustomUI.Settings.TargetWindow = CustomUI.Settings.TargetWindow or {}
     local v = CustomUI.Settings.TargetWindow
     if type(CustomUI.BuffTracker.EnsurePairedFilterSettings) == "function" then
-        return CustomUI.BuffTracker.EnsurePairedFilterSettings(v)
+        v = CustomUI.BuffTracker.EnsurePairedFilterSettings(v)
+    end
+    v.badges = v.badges or {}
+    if v.badges.career == nil then
+        v.badges.career = true
+    end
+    if v.badges.rank == nil then
+        v.badges.rank = true
     end
     return v
 end
@@ -737,6 +744,14 @@ end
 
 function CustomUI.TargetWindow.GetBuffFilterFriendly()
     return CustomUI.TargetWindow.GetSettings().buffsFriendly
+end
+
+function CustomUI.TargetWindow.IsBadgeEnabled(badgeKey)
+    local badges = CustomUI.TargetWindow.GetSettings().badges
+    if type(badges) ~= "table" then
+        return true
+    end
+    return badges[badgeKey] ~= false
 end
 
 function CustomUI.TargetWindow.ApplyBuffSettings()
@@ -754,5 +769,14 @@ function CustomUI.TargetWindow.ApplyBuffSettings()
     end
     if m_friendlyFrame and m_friendlyFrame.m_BuffTracker then
         m_friendlyFrame.m_BuffTracker:SetFilter(s.buffsFriendly)
+    end
+end
+
+function CustomUI.TargetWindow.ApplyBadgeSettings()
+    if m_hostileFrame and type(m_hostileFrame.UpdateUnit) == "function" then
+        m_hostileFrame:UpdateUnit()
+    end
+    if m_friendlyFrame and type(m_friendlyFrame.UpdateUnit) == "function" then
+        m_friendlyFrame:UpdateUnit()
     end
 end

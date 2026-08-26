@@ -19,7 +19,9 @@ CustomUISettingsWindowTabbed.TABS_UNITFRAMES	= 5
 CustomUISettingsWindowTabbed.TABS_GROUPICONS	    = 6
 CustomUISettingsWindowTabbed.TABS_SCT		= 7
 CustomUISettingsWindowTabbed.TABS_KILLTRACKER	= 8
-CustomUISettingsWindowTabbed.TABS_MAX_NUMBER	= 8
+CustomUISettingsWindowTabbed.TABS_AUTOFPS	= 9
+CustomUISettingsWindowTabbed.TABS_QOL	= 10
+CustomUISettingsWindowTabbed.TABS_MAX_NUMBER	= 10
 
 local c_SCT_COLOR_PICKER_DEFAULT_BUTTON = "CustomUISettingsWindowTabbedSctColorPickerHostSctColorPickerDefaultButton"
 
@@ -83,14 +85,23 @@ local function ReapplyComponentsFromSettings()
     if CustomUI.PlayerStatusWindow and type(CustomUI.PlayerStatusWindow.ApplyBuffSettings) == "function" then
         CustomUI.PlayerStatusWindow.ApplyBuffSettings()
     end
+    if CustomUI.PlayerStatusWindow and type(CustomUI.PlayerStatusWindow.ApplyBadgeSettings) == "function" then
+        CustomUI.PlayerStatusWindow.ApplyBadgeSettings()
+    end
     if CustomUI.TargetWindow and type(CustomUI.TargetWindow.ApplyBuffSettings) == "function" then
         CustomUI.TargetWindow.ApplyBuffSettings()
+    end
+    if CustomUI.TargetWindow and type(CustomUI.TargetWindow.ApplyBadgeSettings) == "function" then
+        CustomUI.TargetWindow.ApplyBadgeSettings()
     end
     if CustomUI.TargetHUD and type(CustomUI.TargetHUD.ApplyBuffSettings) == "function" then
         CustomUI.TargetHUD.ApplyBuffSettings()
     end
     if CustomUI.GroupWindow and type(CustomUI.GroupWindow.ApplyBuffSettings) == "function" then
         CustomUI.GroupWindow.ApplyBuffSettings()
+    end
+    if CustomUI.GroupWindow and type(CustomUI.GroupWindow.ApplyBadgeSettings) == "function" then
+        CustomUI.GroupWindow.ApplyBadgeSettings()
     end
     if CustomUI.UnitFrames and type(CustomUI.UnitFrames.OnGroupsSettingsChanged) == "function" then
         CustomUI.UnitFrames.OnGroupsSettingsChanged()
@@ -100,6 +111,12 @@ local function ReapplyComponentsFromSettings()
     end
     if CustomUI.KillTracker and type(CustomUI.KillTracker.OnSettingsChanged) == "function" then
         CustomUI.KillTracker.OnSettingsChanged()
+    end
+    if CustomUI.AutoFPS and type(CustomUI.AutoFPS.OnSettingsChanged) == "function" then
+        CustomUI.AutoFPS.OnSettingsChanged()
+    end
+    if CustomUI.QoL and type(CustomUI.QoL.OnSettingsChanged) == "function" then
+        CustomUI.QoL.OnSettingsChanged()
     end
     -- SCT reads CustomUI.Settings.SCT; force a settings-changed refresh if available.
     if CustomUI.SCT then
@@ -132,6 +149,8 @@ CustomUISettingsWindowTabbed.Tabs[ CustomUISettingsWindowTabbed.TABS_UNITFRAMES 
 CustomUISettingsWindowTabbed.Tabs[ CustomUISettingsWindowTabbed.TABS_GROUPICONS ] = { window = "SWTabGroupIcons", name="CustomUISettingsWindowTabbedTabButtonsGroupIcons", label=L"GroupIcons", tabClass=CustomUISettingsWindowTabGroupIcons }
 CustomUISettingsWindowTabbed.Tabs[ CustomUISettingsWindowTabbed.TABS_SCT        ] = { window = "SWTabSCT",        name="CustomUISettingsWindowTabbedTabButtonsSCT",        label=L"SCT",        tabClass=CustomUISettingsWindowTabSCT }
 CustomUISettingsWindowTabbed.Tabs[ CustomUISettingsWindowTabbed.TABS_KILLTRACKER ] = { window = "SWTabKillTracker", name="CustomUISettingsWindowTabbedTabButtonsKillTracker", label=L"Kills", tabClass=CustomUISettingsWindowTabKillTracker }
+CustomUISettingsWindowTabbed.Tabs[ CustomUISettingsWindowTabbed.TABS_AUTOFPS ] = { window = "SWTabAutoFPS", name="CustomUISettingsWindowTabbedTabButtonsAutoFPS", label=L"FPS", tabClass=CustomUISettingsWindowTabAutoFPS }
+CustomUISettingsWindowTabbed.Tabs[ CustomUISettingsWindowTabbed.TABS_QOL ] = { window = "SWTabQoL", name="CustomUISettingsWindowTabbedTabButtonsQoL", label=L"QoL", tabClass=CustomUISettingsWindowTabQoL }
 
 
 function CustomUISettingsWindowTabbed.OnShow()

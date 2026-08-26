@@ -1,0 +1,244 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../Interface.xsd">
+  <Scripts>
+    <Script file="Source/CustomUISettingsWindowTabQoL.lua"/>
+  </Scripts>
+  <Windows>
+    <Window name="CustomUISettingsWindowTabQoL" movable="false" >
+      <Anchors>
+        <Anchor point="topleft" relativePoint="topleft" relativeTo="CustomUISettingsWindowTabbedSocket">
+          <AbsPoint x="0" y="0"/>
+        </Anchor>
+        <Anchor point="bottomright" relativePoint="bottomright" relativeTo="CustomUISettingsWindowTabbedSocket">
+          <AbsPoint x="0" y="0"/>
+        </Anchor>
+      </Anchors>
+      <EventHandlers>
+        <EventHandler event="OnInitialize" function="CustomUISettingsWindowTabQoL.Initialize"/>
+      </EventHandlers>
+      <Windows>
+        <ScrollWindow name="$parentContents" childscrollwindow="SWTabQoLContentsScrollChild" scrollbar="SWTabQoLContentsScrollbar" lineheight="18" autoHideScrollBar="true">
+            <Anchors>
+                <Anchor point="topleft" relativePoint="topleft" />
+                <Anchor point="bottomright" relativePoint="bottomright" />
+            </Anchors>
+            <Windows>
+                <VerticalScrollbar name="$parentScrollbar" inherits="EA_ScrollBar_DefaultVerticalChain" layer="popup">
+                    <Anchors>
+                        <Anchor point="topright" relativePoint="topright">
+                            <AbsPoint x="0" y="0"/>
+                        </Anchor>
+                        <Anchor point="bottomright" relativePoint="bottomright">
+                            <AbsPoint x="0" y="0"/>
+                        </Anchor>
+                    </Anchors>
+                </VerticalScrollbar>
+                <Window name="$parentScrollChild">
+                    <Anchors>
+                        <Anchor point="topleft" relativePoint="topleft">
+                            <AbsPoint x="0" y="0" />
+                        </Anchor>
+                        <Anchor point="topleft" relativePoint="topright" relativeTo="$parentScrollbar">
+                            <AbsPoint x="0" y="0" />
+                        </Anchor>
+                    </Anchors>
+                    <Windows>
+
+                        <Window name="$parentRedAlert" >
+                            <Size><AbsPoint x="500" y="200" /></Size>
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft"><AbsPoint x="0" y="0"/></Anchor>
+                                <Anchor point="topright" relativePoint="topright"><AbsPoint x="0" y="0"/></Anchor>
+                            </Anchors>
+                            <Windows>
+                                <FullResizeImage name="$parentBackground" inherits="SettingsSectionBackground" />
+                                <Label name="$parentTitle" inherits="EA_Settings_SectionTitle">
+                                    <Size><AbsPoint x="400" y="25" /></Size>
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="10" y="10" /></Anchor></Anchors>
+                                </Label>
+                                <Window name="$parentEnabled" inherits="EA_LabelCheckButton">
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="45" y="40" /></Anchor></Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabQoL.OnToggleRedAlertEnabled" />
+                                    </EventHandlers>
+                                </Window>
+                                <Window name="$parentCenterMessage" inherits="EA_LabelCheckButton">
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="45" y="72" /></Anchor></Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabQoL.OnToggleRedAlertMessage" />
+                                    </EventHandlers>
+                                </Window>
+                                <Label name="$parentThresholdLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+                                    <Size><AbsPoint x="180" y="20" /></Size>
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="45" y="108" /></Anchor></Anchors>
+                                </Label>
+                                <ComboBox name="$parentThreshold" inherits="EA_ComboBox_DefaultResizable" handleinput="true">
+                                    <Size><AbsPoint x="120" y="30" /></Size>
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="240" y="104" /></Anchor></Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnSelChanged" function="CustomUISettingsWindowTabQoL.OnComboChanged" />
+                                    </EventHandlers>
+                                </ComboBox>
+                                <Button name="$parentTestButton" inherits="EA_Button_Default">
+                                    <Size><AbsPoint x="120" y="28" /></Size>
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="45" y="150" /></Anchor></Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabQoL.OnRedAlertTest" />
+                                    </EventHandlers>
+                                </Button>
+                            </Windows>
+                        </Window>
+
+                        <Window name="$parentAutoSurrender" >
+                            <Size><AbsPoint x="500" y="250" /></Size>
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft"><AbsPoint x="0" y="210"/></Anchor>
+                                <Anchor point="topright" relativePoint="topright"><AbsPoint x="0" y="210"/></Anchor>
+                            </Anchors>
+                            <Windows>
+                                <FullResizeImage name="$parentBackground" inherits="SettingsSectionBackground" />
+                                <Label name="$parentTitle" inherits="EA_Settings_SectionTitle">
+                                    <Size><AbsPoint x="400" y="25" /></Size>
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="10" y="10" /></Anchor></Anchors>
+                                </Label>
+                                <Window name="$parentEnabled" inherits="EA_LabelCheckButton">
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="45" y="40" /></Anchor></Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabQoL.OnToggleAutoSurrenderEnabled" />
+                                    </EventHandlers>
+                                </Window>
+                                <Window name="$parentStatusMessages" inherits="EA_LabelCheckButton">
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="45" y="72" /></Anchor></Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabQoL.OnToggleAutoSurrenderStatus" />
+                                    </EventHandlers>
+                                </Window>
+                                <Window name="$parentKillRule" inherits="EA_LabelCheckButton">
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="45" y="104" /></Anchor></Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabQoL.OnToggleAutoSurrenderKills" />
+                                    </EventHandlers>
+                                </Window>
+                                <Label name="$parentScoreDiffLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+                                    <Size><AbsPoint x="180" y="20" /></Size>
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="45" y="140" /></Anchor></Anchors>
+                                </Label>
+                                <ComboBox name="$parentScoreDiff" inherits="EA_ComboBox_DefaultResizable" handleinput="true">
+                                    <Size><AbsPoint x="120" y="30" /></Size>
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="240" y="136" /></Anchor></Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnSelChanged" function="CustomUISettingsWindowTabQoL.OnComboChanged" />
+                                    </EventHandlers>
+                                </ComboBox>
+                                <Label name="$parentPreStartLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+                                    <Size><AbsPoint x="180" y="20" /></Size>
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="45" y="176" /></Anchor></Anchors>
+                                </Label>
+                                <ComboBox name="$parentPreStart" inherits="EA_ComboBox_DefaultResizable" handleinput="true">
+                                    <Size><AbsPoint x="120" y="30" /></Size>
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="240" y="172" /></Anchor></Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnSelChanged" function="CustomUISettingsWindowTabQoL.OnComboChanged" />
+                                    </EventHandlers>
+                                </ComboBox>
+                            </Windows>
+                        </Window>
+
+                        <Window name="$parentRezzAccept" >
+                            <Size><AbsPoint x="500" y="100" /></Size>
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft"><AbsPoint x="0" y="470"/></Anchor>
+                                <Anchor point="topright" relativePoint="topright"><AbsPoint x="0" y="470"/></Anchor>
+                            </Anchors>
+                            <Windows>
+                                <FullResizeImage name="$parentBackground" inherits="SettingsSectionBackground" />
+                                <Label name="$parentTitle" inherits="EA_Settings_SectionTitle">
+                                    <Size><AbsPoint x="400" y="25" /></Size>
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="10" y="10" /></Anchor></Anchors>
+                                </Label>
+                                <Window name="$parentEnabled" inherits="EA_LabelCheckButton">
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="45" y="40" /></Anchor></Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabQoL.OnToggleRezzAcceptEnabled" />
+                                    </EventHandlers>
+                                </Window>
+                                <Label name="$parentInfo" font="font_default_text_small" wordwrap="true" textalign="left" maxchars="256">
+                                    <Size><AbsPoint x="420" y="40" /></Size>
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="45" y="72" /></Anchor></Anchors>
+                                </Label>
+                            </Windows>
+                        </Window>
+
+                        <Window name="$parentAltTracker" >
+                            <Size><AbsPoint x="500" y="280" /></Size>
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft"><AbsPoint x="0" y="580"/></Anchor>
+                                <Anchor point="topright" relativePoint="topright"><AbsPoint x="0" y="580"/></Anchor>
+                            </Anchors>
+                            <Windows>
+                                <FullResizeImage name="$parentBackground" inherits="SettingsSectionBackground" />
+                                <Label name="$parentTitle" inherits="EA_Settings_SectionTitle">
+                                    <Size><AbsPoint x="400" y="25" /></Size>
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="10" y="10" /></Anchor></Anchors>
+                                </Label>
+                                <Window name="$parentEnabled" inherits="EA_LabelCheckButtonWide">
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="45" y="40" /></Anchor></Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabQoL.OnToggleAltTrackerEnabled" />
+                                    </EventHandlers>
+                                </Window>
+                                <Window name="$parentTrackGold" inherits="EA_LabelCheckButtonWide">
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="45" y="72" /></Anchor></Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabQoL.OnToggleAltTrackerGold" />
+                                    </EventHandlers>
+                                </Window>
+                                <Window name="$parentIncludeBank" inherits="EA_LabelCheckButtonWide">
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="45" y="104" /></Anchor></Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabQoL.OnToggleAltTrackerBank" />
+                                    </EventHandlers>
+                                </Window>
+                                <Window name="$parentCrossFaction" inherits="EA_LabelCheckButtonWide">
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="45" y="136" /></Anchor></Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabQoL.OnToggleAltTrackerCrossFaction" />
+                                    </EventHandlers>
+                                </Window>
+                                <Label name="$parentPruneDaysLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+                                    <Size><AbsPoint x="200" y="20" /></Size>
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="45" y="168" /></Anchor></Anchors>
+                                </Label>
+                                <EditBox name="$parentPruneDaysEdit" inherits="EA_EditBox_DefaultFrame" input="numbers" maxchars="4" handleinput="true">
+                                    <Size><AbsPoint x="56" y="26" /></Size>
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="250" y="164" /></Anchor></Anchors>
+                                </EditBox>
+                                <Label name="$parentPruneDaysSuffix" font="font_default_text" wordwrap="false" textalign="left" maxchars="32">
+                                    <Size><AbsPoint x="160" y="20" /></Size>
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="312" y="168" /></Anchor></Anchors>
+                                </Label>
+                                <Label name="$parentInfo" font="font_default_text_small" wordwrap="true" textalign="left" maxchars="256">
+                                    <Size><AbsPoint x="430" y="64" /></Size>
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="45" y="198" /></Anchor></Anchors>
+                                </Label>
+                            </Windows>
+                        </Window>
+
+                    </Windows>
+                </Window>
+            </Windows>
+        </ScrollWindow>
+      </Windows>
+    </Window>
+  </Windows>
+</Interface>

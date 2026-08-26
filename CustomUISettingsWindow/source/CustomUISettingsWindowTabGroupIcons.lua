@@ -18,6 +18,8 @@ local function EnsureGroupIconsSettings()
     if s.highlightSocial == nil then s.highlightSocial = true end
     if s.showFriendly == nil then s.showFriendly = true end
     if s.showHostile == nil then s.showHostile = true end
+    if s.showDeathSkull == nil then s.showDeathSkull = true end
+    if s.showScenarioThreat == nil then s.showScenarioThreat = true end
     return s
 end
 
@@ -34,17 +36,22 @@ function CustomUISettingsWindowTabGroupIcons.Initialize()
 
     EnsureGroupIconsSettings()
     LabelSetText( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsTitle", L"Icons" )
+    LabelSetText( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsDecorationsTitle", L"Decorations" )
     LabelSetText( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsPartyLabel", L"Party" )
     LabelSetText( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsWarbandLabel", L"Warband" )
     LabelSetText( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsFriendlyLabel", L"Friendly" )
     LabelSetText( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsHostileLabel", L"Hostile" )
     LabelSetText( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsGoldSocialLabel", L"Guild/Friends" )
+    LabelSetText( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsDeathSkullsLabel", L"Death skulls" )
+    LabelSetText( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsScenarioThreatLabel", L"Scenario stats" )
 
     ButtonSetCheckButtonFlag( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsPartyButton", true )
     ButtonSetCheckButtonFlag( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsWarbandButton", true )
     ButtonSetCheckButtonFlag( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsFriendlyButton", true )
     ButtonSetCheckButtonFlag( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsHostileButton", true )
     ButtonSetCheckButtonFlag( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsGoldSocialButton", true )
+    ButtonSetCheckButtonFlag( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsDeathSkullsButton", true )
+    ButtonSetCheckButtonFlag( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsScenarioThreatButton", true )
 end
 
 function CustomUISettingsWindowTabGroupIcons.UpdateSettings()
@@ -56,6 +63,8 @@ function CustomUISettingsWindowTabGroupIcons.UpdateSettings()
     ButtonSetPressedFlag( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsFriendlyButton", s.showFriendly == true )
     ButtonSetPressedFlag( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsHostileButton", s.showHostile == true )
     ButtonSetPressedFlag( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsGoldSocialButton", s.highlightSocial == true )
+    ButtonSetPressedFlag( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsDeathSkullsButton", s.showDeathSkull == true )
+    ButtonSetPressedFlag( CustomUISettingsWindowTabGroupIcons.contentsName.."IconsScenarioThreatButton", s.showScenarioThreat == true )
 end
 
 function CustomUISettingsWindowTabGroupIcons.ApplyCurrent()
@@ -70,6 +79,8 @@ function CustomUISettingsWindowTabGroupIcons.ApplyCurrent()
     s.showFriendly = ButtonGetPressedFlag( c.."IconsFriendlyButton" ) == true
     s.showHostile = ButtonGetPressedFlag( c.."IconsHostileButton" ) == true
     s.highlightSocial = ButtonGetPressedFlag( c.."IconsGoldSocialButton" ) == true
+    s.showDeathSkull = ButtonGetPressedFlag( c.."IconsDeathSkullsButton" ) == true
+    s.showScenarioThreat = ButtonGetPressedFlag( c.."IconsScenarioThreatButton" ) == true
     ApplyGroupIconsSettings()
 end
 
@@ -97,5 +108,13 @@ function CustomUISettingsWindowTabGroupIcons.OnToggleHostile()
 end
 
 function CustomUISettingsWindowTabGroupIcons.OnToggleGoldSocial()
+    EA_LabelCheckButton.Toggle()
+end
+
+function CustomUISettingsWindowTabGroupIcons.OnToggleDeathSkulls()
+    EA_LabelCheckButton.Toggle()
+end
+
+function CustomUISettingsWindowTabGroupIcons.OnToggleScenarioThreat()
     EA_LabelCheckButton.Toggle()
 end

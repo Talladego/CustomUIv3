@@ -35,14 +35,14 @@
                         <EventHandler event="OnRButtonUp" function="CustomUI.PlayerStatusWindow.OnRButtonUp" />
                     </EventHandlers>
                 </Window>
-                <!-- Player's Name -->
+                <!-- Player's Name — tucked toward portrait (career badge is on the frame, not beside the name). -->
                 <Label name="$parentPlayerName" font="font_heading_unitframe_large_name" maxchars="15" textalign="bottomleft" layer="default">
                     <Size>
-                        <AbsPoint x="180" y="23" />
+                        <AbsPoint x="155" y="23" />
                     </Size>
                     <Anchors>
                         <Anchor point="topleft" relativePoint="topleft" relativeTo="CustomUIPlayerStatusWindow">
-                            <AbsPoint x="95" y="8" />
+                            <AbsPoint x="98" y="8" />
                         </Anchor>
                     </Anchors>
                     <EventHandlers>
@@ -100,15 +100,20 @@
                     </Anchors>
                 </DynamicImage>
 
-                <!-- Career Icon -->
-                <DynamicImage name="$parentCareerIcon" textureScale="1.1" handleinput="true" layer="secondary" popable="false">
-                    <Size>
-                        <AbsPoint x="36" y="36" />
-                    </Size>
+                <!-- Career badge: top-left portrait corner (Rank-Circle chrome). -->
+                <DynamicImage name="$parentCareerIconBackground" inherits="LevelBackgroundTemplate" handleinput="false" popable="false" layer="popup">
                     <Anchors>
                         <Anchor point="topleft" relativePoint="topleft" relativeTo="$parentPortraitFrame">
-                            <AbsPoint x="0" y="68" />
+                            <AbsPoint x="0" y="3" />
                         </Anchor>
+                    </Anchors>
+                </DynamicImage>
+                <DynamicImage name="$parentCareerIcon" textureScale="1.0" handleinput="true" layer="popup" popable="false">
+                    <Size>
+                        <AbsPoint x="20" y="20" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="center" relativePoint="center" relativeTo="$parentCareerIconBackground" />
                     </Anchors>
                     <EventHandlers>
                         <EventHandler event="OnMouseOver" function="CustomUI.PlayerStatusWindow.MouseOverCareerIcon" />
@@ -164,21 +169,27 @@
                 
                 
 
-                <!-- Level Background -->
-                <DynamicImage name="$parentLevelBackground" inherits="LevelBackgroundTemplate" handleinput="false" popable="false" layer="secondary">
+                <!-- Career rank badge: bottom-left portrait corner. -->
+                <DynamicImage name="$parentLevelBackground" inherits="LevelBackgroundTemplate" handleinput="true" popable="false" layer="secondary">
                     <Anchors>
-                        <Anchor point="topleft" relativePoint="topleft" relativeTo="">
-                            <AbsPoint x="0" y="3" />
+                        <Anchor point="topleft" relativePoint="topleft" relativeTo="$parentPortraitFrame">
+                            <AbsPoint x="0" y="70" />
                         </Anchor>
                     </Anchors>
+                    <EventHandlers>
+                        <EventHandler event="OnMouseOver" function="CustomUI.PlayerStatusWindow.MouseOverLevel" />
+                    </EventHandlers>
                 </DynamicImage>                
                 
 
-                <!-- RVR Information -->
-                <DynamicImage name="$parentRvRFlagIndicator" inherits="RvRFlagIndicator" popable="false" handleinput="true" layer="secondary">
+                <!-- RVR flag: portrait top center (same vertical axis as leader crowns). -->
+                <DynamicImage name="$parentRvRFlagIndicator" inherits="RvRFlagIndicator" textureScale="0.55" popable="false" handleinput="true" layer="popup">
+                    <Size>
+                        <AbsPoint x="23" y="29" />
+                    </Size>
                     <Anchors>
-                        <Anchor point="topleft" relativePoint="topleft" relativeTo="">
-                            <AbsPoint x="-6" y="14" />
+                        <Anchor point="top" relativePoint="top" relativeTo="$parentPortraitFrame">
+                            <AbsPoint x="0" y="11" />
                         </Anchor>
                     </Anchors>
                     <EventHandlers>
@@ -214,7 +225,7 @@
                 
                 
                 <!-- Level Text -->
-                <Label name="$parentLevelText" font="font_heading_rank" maxchars="10" textalign="center" autoresize="false" popable="false" layer="popup">
+                <Label name="$parentLevelText" font="font_heading_rank" maxchars="10" textalign="center" autoresize="false" popable="false" layer="popup" handleinput="true">
                     <Size>
                         <AbsPoint x="31" y="32" />
                     </Size>
@@ -229,31 +240,95 @@
                 </Label>
                 
                 
-                <!-- Advancement Indicator -->
+                <!-- Yellow nag (left of badge): unspent career advancement points. -->
                 <DynamicImage name="$parentAdvancementIndicator" inherits="AdvancementIndicator" handleinput="false" popable="false" layer="popup">
                     <Anchors>
-                        <Anchor point="topleft" relativePoint="topleft" relativeTo="">
-                            <AbsPoint x="23" y="4" />
+                        <Anchor point="topleft" relativePoint="topleft" relativeTo="$parentLevelBackground">
+                            <AbsPoint x="-6" y="1" />
                         </Anchor>
                     </Anchors>
                 </DynamicImage>
                 
                 
-                <!-- Renown Indicator -->
-                <DynamicImage name="$parentRenownIndicator" inherits="RenownIndicator" handleinput="false" popable="false" layer="popup">
+                <!-- Renown rank badge: bottom-right, mirrored from career rank at bottom-left. -->
+                <DynamicImage name="$parentRenownRankBackground" inherits="LevelBackgroundTemplate" handleinput="true" popable="false" layer="secondary">
                     <Anchors>
-                        <Anchor point="topleft" relativePoint="topleft" relativeTo="">
-                            <AbsPoint x="-6" y="4" />
+                        <Anchor point="topright" relativePoint="topright" relativeTo="$parentPortraitFrame">
+                            <AbsPoint x="0" y="70" />
+                        </Anchor>
+                    </Anchors>
+                    <EventHandlers>
+                        <EventHandler event="OnMouseOver" function="CustomUI.PlayerStatusWindow.MouseOverRenownRank" />
+                    </EventHandlers>
+                </DynamicImage>
+                <Label name="$parentRenownRankText" font="font_heading_rank" maxchars="10" textalign="center" autoresize="false" warnOnTextCropped="false" popable="false" layer="popup">
+                    <Size>
+                        <AbsPoint x="31" y="32" />
+                    </Size>
+                    <Anchors>
+                        <!-- Rank-Circle slice includes shadow; -1 X optically centers text in the visible ring. -->
+                        <Anchor point="center" relativePoint="center" relativeTo="$parentRenownRankBackground">
+                            <AbsPoint x="-1" y="0" />
+                        </Anchor>
+                    </Anchors>
+                    <EventHandlers>
+                        <EventHandler event="OnMouseOver" function="CustomUI.PlayerStatusWindow.MouseOverRenownRank" />
+                    </EventHandlers>
+                </Label>
+
+                <!-- Influence badge: bottom-center between career rank and renown (0–3 tiers).
+                     Same Rank-Circle chrome as career/renown rank; unclaimed highlight TBD later. -->
+                <DynamicImage name="$parentInfluenceBadgeBackground" inherits="LevelBackgroundTemplate" handleinput="true" popable="false" layer="secondary">
+                    <Anchors>
+                        <Anchor point="bottom" relativePoint="bottom" relativeTo="$parentPortraitFrame">
+                            <AbsPoint x="0" y="0" />
+                        </Anchor>
+                    </Anchors>
+                    <EventHandlers>
+                        <EventHandler event="OnMouseOver" function="CustomUI.PlayerStatusWindow.MouseOverInfluenceBadge" />
+                        <EventHandler event="OnLButtonUp" function="CustomUI.PlayerStatusWindow.OnLButtonUpInfluenceBadge" />
+                        <EventHandler event="OnRButtonUp" function="CustomUI.PlayerStatusWindow.OnRButtonUpInfluenceBadge" />
+                    </EventHandlers>
+                </DynamicImage>
+                <Label name="$parentInfluenceBadgeText" font="font_heading_rank" maxchars="2" textalign="center" autoresize="false" warnOnTextCropped="false" popable="false" layer="popup" handleinput="true">
+                    <Size>
+                        <AbsPoint x="31" y="32" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="center" relativePoint="center" relativeTo="$parentInfluenceBadgeBackground">
+                            <AbsPoint x="-1" y="0" />
+                        </Anchor>
+                    </Anchors>
+                    <EventHandlers>
+                        <EventHandler event="OnMouseOver" function="CustomUI.PlayerStatusWindow.MouseOverInfluenceBadge" />
+                        <EventHandler event="OnLButtonUp" function="CustomUI.PlayerStatusWindow.OnLButtonUpInfluenceBadge" />
+                        <EventHandler event="OnRButtonUp" function="CustomUI.PlayerStatusWindow.OnRButtonUpInfluenceBadge" />
+                    </EventHandlers>
+                </Label>
+
+                <!-- Yellow nag (left of badge): unspent renown points. -->
+                <DynamicImage name="$parentRenownIndicator" inherits="AdvancementIndicator" handleinput="false" popable="false" layer="popup">
+                    <Anchors>
+                        <Anchor point="topleft" relativePoint="topleft" relativeTo="$parentRenownRankBackground">
+                            <AbsPoint x="-6" y="1" />
                         </Anchor>
                     </Anchors>
                 </DynamicImage>
-                
-                
-                <!-- Leader crowns: README §Notes — point on target (CareerIcon), relativePoint on crown. -->
+
+                <!-- Yellow nag (left of badge): unclaimed influence rewards for tracked area/event. -->
+                <DynamicImage name="$parentInfluenceIndicator" inherits="AdvancementIndicator" handleinput="false" popable="false" layer="popup">
+                    <Anchors>
+                        <Anchor point="topleft" relativePoint="topleft" relativeTo="$parentInfluenceBadgeBackground">
+                            <AbsPoint x="-6" y="1" />
+                        </Anchor>
+                    </Anchors>
+                </DynamicImage>
+
+                <!-- Leader crowns: portrait top center. -->
                 <DynamicImage name="$parentGroupLeaderCrown" inherits="GroupLeaderCrown" handleinput="false" popable="false" layer="popup">
                     <Anchors>
-                        <Anchor point="top" relativePoint="bottom" relativeTo="$parentCareerIcon">
-                            <AbsPoint x="-2" y="5" />
+                        <Anchor point="top" relativePoint="top" relativeTo="$parentPortraitFrame">
+                            <AbsPoint x="0" y="0" />
                         </Anchor>
                     </Anchors>
                 </DynamicImage>
@@ -262,17 +337,8 @@
                 <!-- Warband Leader Crown -->
                 <DynamicImage name="$parentWarbandLeaderCrown" inherits="WarbandLeaderCrown" handleinput="false" popable="false" layer="popup">
                     <Anchors>
-                        <Anchor point="top" relativePoint="bottom" relativeTo="$parentCareerIcon">
-                            <AbsPoint x="-2" y="5" />
-                        </Anchor>
-                    </Anchors>
-                </DynamicImage>
-
-                <!-- Main Assist Crown -->
-                <DynamicImage name="$parentMainAssistCrown" inherits="MainAssistCrown" handleinput="false" popable="false" layer="popup">
-                    <Anchors>
-                        <Anchor point="left" relativePoint="left" relativeTo="$parent">
-                            <AbsPoint x="62" y="-41" />
+                        <Anchor point="top" relativePoint="top" relativeTo="$parentPortraitFrame">
+                            <AbsPoint x="0" y="0" />
                         </Anchor>
                     </Anchors>
                 </DynamicImage>

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ModuleFile xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-    <UiMod name="CustomUI" version="1.1.0" date="2026-07-23">
+    <UiMod name="CustomUI" version="1.2.0" date="2026-08-22">
         <Author name="Talladego" email="" />
         <Description text="Modular Return of Reckoning UI replacement addon with component toggles and shared systems." />
         <VersionSettings gameVersion="1.4.8" windowsVersion="1.0" savedVariablesVersion="1.0" />
@@ -23,6 +23,12 @@
             <Dependency name="EA_TacticsWindow" />
             <!-- PlayerStatusWindow component: ensures stock player status resources are loaded so this component can reuse default assets. -->
             <Dependency name="EA_PlayerStatusWindow" />
+            <!-- Influence badge context menu (Current Area / manual live events). -->
+            <Dependency name="EA_ContextMenu" optional="true" />
+            <!-- Influence badge: event reward NPC claim snapshots (SelectEventRewards hook). -->
+            <Dependency name="EA_InteractionWindow" optional="true" />
+            <!-- Optional: stock PQ tracker exposes GetLocalAreaInfluenceID; badge works via GetAreaData if absent. -->
+            <Dependency name="EA_ObjectiveTrackers" optional="true" />
             <!-- GroupWindow component: ensures stock group window assets are loaded so member rows render correctly. -->
             <Dependency name="EA_GroupWindow" />
             <!-- TargetWindow component: overrides target window hooks and layout. -->
@@ -36,8 +42,15 @@
             <Dependency name="EASystem_EventText" />
             <!-- KillTracker: Combat TextLog listen + LayoutEditor feed. -->
             <Dependency name="EA_ChatWindow" />
-            <!-- KillTracker / GroupIcons: career icon IDs via Icons.* -->
+            <!-- GroupIcons: career icon IDs via Icons.* -->
             <Dependency name="EATemplate_Icons" />
+            <!-- GroupIcons scenario top damage/heal badges: scoreboard atlas EA_ScenarioSummary01_d8. -->
+            <Dependency name="EA_ScenarioSummaryWindow" />
+            <!-- QoL RedAlert vignette texture -->
+            <Dependency name="EA_ScreenFlashWindow" />
+            <!-- QoL AltTracker: backpack money frame + inventory events -->
+            <Dependency name="EA_BackpackWindow" />
+            <Dependency name="EASystem_ResourceFrames" />
         </Dependencies>
         <Files>
             <File name="Source/CustomUI.lua" />
@@ -52,6 +65,9 @@
             <File name="Source/Shared/BuffTracker/BuffLists.lua" />
             <File name="Source/Shared/BuffTracker/BuffFilterDefaults.lua" />
             <File name="Source/Shared/TargetPresence.lua" />
+            <File name="Source/Shared/PortraitCareerBadge.lua" />
+            <File name="Source/Shared/PortraitInfluenceTrack.lua" />
+            <File name="Source/Shared/StockProgressBars.lua" />
             <File name="Source/Shared/UnitFrame/TargetFrame.lua" />
             <File name="Source/Components/PlayerStatusWindow/Controller/PlayerStatusWindowController.lua" />
             <File name="Source/Components/PlayerStatusWindow/View/PlayerStatusWindow.xml" />
@@ -75,6 +91,7 @@
             <File name="Source/Components/GroupIcons/Controller/GroupIconsWarbandLeaders.lua" />
             <File name="Source/Components/GroupIcons/Controller/GroupIconsOutsiderTracker.lua" />
             <File name="Source/Components/GroupIcons/Controller/GroupIconsRoster.lua" />
+            <File name="Source/Components/GroupIcons/Controller/GroupIconsScenarioStats.lua" />
             <File name="Source/Components/GroupIcons/Controller/GroupIconsController.lua" />
             <File name="Source/Components/GroupIcons/View/GroupIcons.xml" />
             <!-- SCT component (v2 load order) -->
@@ -94,14 +111,27 @@
             <!-- KillTracker component -->
             <File name="Source/Components/KillTracker/Controller/KillTrackerParser.lua" />
             <File name="Source/Components/KillTracker/Controller/KillTrackerSession.lua" />
-            <File name="Source/Components/KillTracker/Controller/KillTrackerCareerCache.lua" />
-            <File name="Source/Components/KillTracker/Controller/KillTrackerAbilityMap.lua" />
             <File name="Source/Components/KillTracker/Controller/KillTrackerFormat.lua" />
             <File name="Source/Components/KillTracker/Controller/KillTrackerChat.lua" />
             <File name="Source/Components/KillTracker/Controller/KillTrackerCapture.lua" />
             <File name="Source/Components/KillTracker/Controller/KillTrackerWindow.lua" />
             <File name="Source/Components/KillTracker/Controller/KillTrackerController.lua" />
             <File name="Source/Components/KillTracker/View/KillTracker.xml" />
+            <!-- AutoFPS component -->
+            <File name="Source/Components/AutoFPS/Controller/AutoFPSController.lua" />
+            <File name="Source/Components/AutoFPS/View/AutoFPS.xml" />
+            <!-- QoL component -->
+            <File name="Source/Components/QoL/Controller/QoLAltTrackerData.lua" />
+            <File name="Source/Components/QoL/Controller/QoLAltTrackerTooltips.lua" />
+            <File name="Source/Components/QoL/Controller/QoLAltTracker.lua" />
+            <File name="Source/Components/QoL/View/QoLAltTracker.xml" />
+            <File name="Source/Components/QoL/View/QoLAltTrackerGoldPanel.xml" />
+            <File name="Source/Components/QoL/Controller/QoLRezzAccept.lua" />
+            <File name="Source/Components/QoL/Controller/QoLRedAlert.lua" />
+            <File name="Source/Components/QoL/Controller/QoLAutoSurrender.lua" />
+            <File name="Source/Components/QoL/Controller/QoLController.lua" />
+            <File name="Source/Components/QoL/View/QoLRedAlert.xml" />
+            <File name="Source/Components/QoL/View/QoLDriver.xml" />
         </Files>
         <OnInitialize>
             <!-- Component root windows: instantiated in Source/CustomUI.lua (EnsureRootWindowInstances) -->
@@ -112,6 +142,7 @@
         </OnShutdown>
         <SavedVariables>
             <SavedVariable name="CustomUI.Settings" />
+            <SavedVariable name="CustomUI_AltTrackerDB" global="true" />
         </SavedVariables>
     </UiMod>
 </ModuleFile>

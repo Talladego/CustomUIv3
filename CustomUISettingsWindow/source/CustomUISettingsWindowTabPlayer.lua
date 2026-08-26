@@ -14,10 +14,28 @@ local BUFF_CHECKBOX_KEYS = {
     BuffTrackerPlayerCastOnly = "playerCastOnly",
 }
 
+local BADGE_CHECKBOX_KEYS = {
+    BadgesCareer    = "career",
+    BadgesRank      = "rank",
+    BadgesRenown    = "renown",
+    BadgesInfluence = "influence",
+}
+
 function CustomUISettingsWindowTabPlayer.Initialize()
     LabelSetText( CustomUISettingsWindowTabPlayer.contentsName.."GeneralTitle", L"General" )
     LabelSetText( CustomUISettingsWindowTabPlayer.contentsName.."GeneralPlayerStatusWindowEnabledLabel", L"Enabled" )
     ButtonSetCheckButtonFlag( CustomUISettingsWindowTabPlayer.contentsName.."GeneralPlayerStatusWindowEnabledButton", true )
+
+    local badges = CustomUISettingsWindowTabPlayer.contentsName.."Badges"
+    LabelSetText( badges.."Title", L"Badges" )
+    LabelSetText( badges.."CareerLabel", L"Career Badge" )
+    ButtonSetCheckButtonFlag( badges.."CareerButton", true )
+    LabelSetText( badges.."RankLabel", L"Rank Badge" )
+    ButtonSetCheckButtonFlag( badges.."RankButton", true )
+    LabelSetText( badges.."RenownLabel", L"Renown Badge" )
+    ButtonSetCheckButtonFlag( badges.."RenownButton", true )
+    LabelSetText( badges.."InfluenceLabel", L"Influence Badge" )
+    ButtonSetCheckButtonFlag( badges.."InfluenceButton", true )
 
     local bt = CustomUISettingsWindowTabPlayer.contentsName.."BuffTracker"
     LabelSetText( bt.."Title", L"Buff Tracker" )
@@ -43,6 +61,13 @@ end
 function CustomUISettingsWindowTabPlayer.UpdateSettings()
     ButtonSetPressedFlag( CustomUISettingsWindowTabPlayer.contentsName.."GeneralPlayerStatusWindowEnabledButton", CustomUI.IsComponentEnabled("PlayerStatusWindow") )
 
+    local badgeCfg = CustomUI.PlayerStatusWindow.GetSettings().badges
+    local badges = CustomUISettingsWindowTabPlayer.contentsName.."Badges"
+    ButtonSetPressedFlag( badges.."CareerButton",    badgeCfg.career ~= false )
+    ButtonSetPressedFlag( badges.."RankButton",      badgeCfg.rank ~= false )
+    ButtonSetPressedFlag( badges.."RenownButton",    badgeCfg.renown ~= false )
+    ButtonSetPressedFlag( badges.."InfluenceButton", badgeCfg.influence ~= false )
+
     local bt  = CustomUISettingsWindowTabPlayer.contentsName.."BuffTracker"
     local cfg = CustomUI.PlayerStatusWindow.GetSettings().buffs
     ButtonSetPressedFlag( bt.."BuffsButton",         cfg.showBuffs )
@@ -58,8 +83,16 @@ function CustomUISettingsWindowTabPlayer.ApplyCurrent()
     local enabled = ButtonGetPressedFlag( CustomUISettingsWindowTabPlayer.contentsName.."GeneralPlayerStatusWindowEnabledButton" )
     CustomUI.SetComponentEnabled( "PlayerStatusWindow", enabled )
 
-    local cfg = CustomUI.PlayerStatusWindow.GetSettings().buffs
     local prefix = CustomUISettingsWindowTabPlayer.contentsName
+    local badgeCfg = CustomUI.PlayerStatusWindow.GetSettings().badges
+    for suffix, key in pairs(BADGE_CHECKBOX_KEYS) do
+        badgeCfg[key] = ButtonGetPressedFlag(prefix .. suffix .. "Button") == true
+    end
+    if type(CustomUI.PlayerStatusWindow.ApplyBadgeSettings) == "function" then
+        CustomUI.PlayerStatusWindow.ApplyBadgeSettings()
+    end
+
+    local cfg = CustomUI.PlayerStatusWindow.GetSettings().buffs
     for suffix, key in pairs(BUFF_CHECKBOX_KEYS) do
         cfg[key] = ButtonGetPressedFlag(prefix .. suffix .. "Button") == true
     end
@@ -71,6 +104,10 @@ function CustomUISettingsWindowTabPlayer.ResetSettings()
 end
 
 function CustomUISettingsWindowTabPlayer.OnBuffFilterChanged()
+    EA_LabelCheckButton.Toggle()
+end
+
+function CustomUISettingsWindowTabPlayer.OnToggleBadge()
     EA_LabelCheckButton.Toggle()
 end
 

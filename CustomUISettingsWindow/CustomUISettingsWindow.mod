@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ModuleFile xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" >
 
-    <UiMod name="CustomUISettingsWindow" version="1.2.0" date="2026-07-23" >
+    <UiMod name="CustomUISettingsWindow" version="1.3.0" date="2026-08-22" >
         <Author name="Talladego" email="" />
         <Description text="This module contains the Custom UI Settings Window." />
         <Dependencies>        
@@ -24,6 +24,8 @@
             <File name="Source/CustomUISettingsWindowTabGroupIcons.xml" />
             <File name="Source/CustomUISettingsWindowTabSCT.xml" />
             <File name="Source/CustomUISettingsWindowTabKillTracker.xml" />
+            <File name="Source/CustomUISettingsWindowTabAutoFPS.xml" />
+            <File name="Source/CustomUISettingsWindowTabQoL.xml" />
             <File name="Source/CustomUISettingsWindowTabbed.xml" />
         </Files>
         <SavedVariables>

@@ -1,5 +1,5 @@
 ----------------------------------------------------------------
--- CustomUI.KillTracker.Window — transparent LayoutEditor kill feed
+-- CustomUI.KillTracker.Window — zone-score LayoutEditor base + click-through feed above it
 ----------------------------------------------------------------
 if not CustomUI then CustomUI = {} end
 CustomUI.KillTracker = CustomUI.KillTracker or {}
@@ -8,12 +8,12 @@ CustomUI.KillTracker.Window = CustomUI.KillTracker.Window or {}
 local Win = CustomUI.KillTracker.Window
 
 local c_ROOT = "CustomUIKillTrackerWindow"
+local c_SCORE = "CustomUIKillTrackerScoreWindow"
 local c_ROW_TEMPLATE = "CustomUIKillTrackerRow"
 local c_ROW_PREFIX = "CustomUIKillTrackerRow"
 local c_BASE_ROW_HEIGHT = 28
-local c_BASE_ICON = 24
-local c_CAREER_ATLAS = 32 -- EA_Image_CareerIcon / stock career slices
-local c_ABILITY_ATLAS = 64 -- ability/buff GetIconData slices (SCT / BuffTracker)
+local c_FEED_PAD = 4 -- inset from the top of the feed
+local c_FEED_SCORE_GAP = 8 -- space between the newest kill line and the score bar
 local c_HISTORY_CAP = 50
 local c_DEFAULT_WIDTH = 720
 local c_MIN_WIDTH = 360
@@ -44,14 +44,87 @@ Win._clock = Win._clock or 0
 Win._lastStamp = Win._lastStamp or 0
 
 local c_MEASURE_WIDTH = 4000
-local c_FADE_LEAD_SECONDS = 3 -- engine ease-out over the last N seconds of that message's life
 
--- Children that need their own alpha anim (labels ignore parent WindowSetAlpha for glyphs).
-local c_ROW_FADE_SUFFIXES = {
-	"KillerCareer", "KillerName", "KillerCount", "Text",
-	"VictimCareer", "VictimName", "VictimCount",
-	"AbilityIcon", "With", "AbilityName", "ZoneIn", "Zone",
+-- Row children that need explicit alpha (labels ignore parent WindowSetAlpha for glyphs).
+local c_ROW_ALPHA_SUFFIXES = {
+	"KillerName", "KillerCount", "Text",
+	"VictimName", "VictimCount",
+	"With", "AbilityName", "ZoneIn", "Zone",
 }
+
+local c_SCORE_ALPHA_SUFFIXES = {
+	"Zone", "FirstLabel", "FirstCount", "SecondLabel", "SecondCount",
+}
+
+local function ForEachRowAlphaTarget(row, fn)
+	fn(row)
+	for i = 1, #c_ROW_ALPHA_SUFFIXES do
+		local child = row .. c_ROW_ALPHA_SUFFIXES[i]
+		if DoesWindowExist(child) then
+			fn(child)
+		end
+	end
+end
+
+local function GetRootAlpha()
+	if DoesWindowExist(c_SCORE) and type(WindowGetAlpha) == "function" then
+		local a = tonumber(WindowGetAlpha(c_SCORE))
+		if a then
+			if a < 0 then
+				a = 0
+			elseif a > 1 then
+				a = 1
+			end
+			return a
+		end
+	end
+	return 1
+end
+
+--- Label glyphs do not inherit LayoutEditor window opacity; copy it onto FontAlpha.
+local function ApplyTextOpacity(force)
+	local alpha = GetRootAlpha()
+	if force ~= true and Win._appliedFontAlpha == alpha then
+		return
+	end
+	Win._appliedFontAlpha = alpha
+	if type(WindowSetFontAlpha) ~= "function" then
+		return
+	end
+	for i = 1, Win._rowCount do
+		local row = c_ROW_PREFIX .. tostring(i)
+		if DoesWindowExist(row) then
+			ForEachRowAlphaTarget(row, function(win)
+				WindowSetFontAlpha(win, alpha)
+			end)
+		end
+	end
+	if DoesWindowExist(c_SCORE) then
+		WindowSetFontAlpha(c_SCORE, alpha)
+		for i = 1, #c_SCORE_ALPHA_SUFFIXES do
+			local child = c_SCORE .. c_SCORE_ALPHA_SUFFIXES[i]
+			if DoesWindowExist(child) then
+				WindowSetFontAlpha(child, alpha)
+			end
+		end
+	end
+end
+
+--- Full child window alpha on relayout; text uses LayoutEditor opacity via FontAlpha.
+local function EnsureRowOpaque(row)
+	local fontAlpha = GetRootAlpha()
+	ForEachRowAlphaTarget(row, function(win)
+		if type(WindowStopAlphaAnimation) == "function" then
+			CustomUI.TryCallQuiet("KillTracker.StopAlpha", WindowStopAlphaAnimation, win)
+		end
+		if type(WindowSetAlpha) == "function" then
+			WindowSetAlpha(win, 1)
+		end
+		if type(WindowSetFontAlpha) == "function" then
+			WindowSetFontAlpha(win, fontAlpha)
+		end
+	end)
+end
 
 local function EnsureSettings()
 	return CustomUI.KillTracker.GetSettings and CustomUI.KillTracker.GetSettings() or {}
@@ -80,7 +153,7 @@ local function Now()
 	return Win._clock or 0
 end
 
---- Unique stamp so rapid kills never share the same addedAt (oldest fades first).
+--- Unique stamp so rapid kills never share the same addedAt (oldest expires first).
 local function NextStamp()
 	local t = Now()
 	local last = tonumber(Win._lastStamp) or 0
@@ -101,140 +174,6 @@ local function EntryExpiresAt(entry)
 	end
 	local added = tonumber(entry.addedAt) or Now()
 	return added + VisibleSeconds()
-end
-
-local function FadeAnimType()
-	local t = Window and Window.AnimationType
-	return t and (t.EASE_OUT or t.SINGLE_NO_RESET) or nil
-end
-
-local function ForEachRowFadeTarget(row, fn)
-	fn(row)
-	for i = 1, #c_ROW_FADE_SUFFIXES do
-		local child = row .. c_ROW_FADE_SUFFIXES[i]
-		if DoesWindowExist(child) then
-			fn(child)
-		end
-	end
-end
-
-local function SetRowAlphaStatic(row, alpha)
-	alpha = tonumber(alpha) or 1
-	if alpha < 0 then
-		alpha = 0
-	elseif alpha > 1 then
-		alpha = 1
-	end
-	ForEachRowFadeTarget(row, function(win)
-		if type(WindowStopAlphaAnimation) == "function" then
-			CustomUI.TryCallQuiet("KillTracker.StopAlpha", WindowStopAlphaAnimation, win)
-		end
-		if type(WindowSetAlpha) == "function" then
-			WindowSetAlpha(win, alpha)
-		end
-		if type(WindowSetFontAlpha) == "function" then
-			WindowSetFontAlpha(win, alpha)
-		end
-	end)
-end
-
-local function StartRowFadeOut(row, startAlpha, duration)
-	local animType = FadeAnimType()
-	startAlpha = tonumber(startAlpha) or 1
-	duration = tonumber(duration) or c_FADE_LEAD_SECONDS
-	if startAlpha < 0.01 then
-		startAlpha = 0.01
-	elseif startAlpha > 1 then
-		startAlpha = 1
-	end
-	if duration < 0.05 then
-		duration = 0.05
-	end
-	if type(WindowStartAlphaAnimation) ~= "function" or not animType then
-		SetRowAlphaStatic(row, startAlpha)
-		return false
-	end
-	ForEachRowFadeTarget(row, function(win)
-		if type(WindowStopAlphaAnimation) == "function" then
-			CustomUI.TryCallQuiet("KillTracker.StopAlpha", WindowStopAlphaAnimation, win)
-		end
-		-- Seed font alpha so glyphs participate; engine anim then eases window alpha.
-		if type(WindowSetFontAlpha) == "function" then
-			WindowSetFontAlpha(win, startAlpha)
-		end
-		if type(WindowSetAlpha) == "function" then
-			WindowSetAlpha(win, startAlpha)
-		end
-		CustomUI.TryCallQuiet(
-			"KillTracker.StartAlpha",
-			WindowStartAlphaAnimation,
-			win,
-			animType,
-			startAlpha,
-			0,
-			duration,
-			false,
-			0,
-			0
-		)
-	end)
-	return true
-end
-
---- Opaque until the fade window; then one-shot engine ease-out (not per-frame SetAlpha).
-local function ApplyRowFade(row, entry, now)
-	if not entry or not DoesWindowExist(row) then
-		return
-	end
-	now = now or Now()
-	local remain = EntryExpiresAt(entry) - now
-	if remain <= 0 then
-		SetRowAlphaStatic(row, 0)
-		entry._fadeAnimRow = nil
-		entry._fadeAnimActive = false
-		return
-	end
-	if remain >= c_FADE_LEAD_SECONDS then
-		if entry._fadeAnimActive or entry._fadeAnimRow then
-			SetRowAlphaStatic(row, 1)
-		else
-			-- Cheap reset when already opaque (new/remapped row).
-			if type(WindowSetAlpha) == "function" then
-				WindowSetAlpha(row, 1)
-			end
-			if type(WindowSetFontAlpha) == "function" then
-				WindowSetFontAlpha(row, 1)
-			end
-			ForEachRowFadeTarget(row, function(win)
-				if win ~= row then
-					if type(WindowSetAlpha) == "function" then
-						WindowSetAlpha(win, 1)
-					end
-					if type(WindowSetFontAlpha) == "function" then
-						WindowSetFontAlpha(win, 1)
-					end
-				end
-			end)
-		end
-		entry._fadeAnimActive = false
-		entry._fadeAnimRow = nil
-		return
-	end
-
-	-- Mid-fade: (re)start only when first entering fade or the entry moved to another row.
-	if entry._fadeAnimActive and entry._fadeAnimRow == row then
-		return
-	end
-	local startAlpha = remain / c_FADE_LEAD_SECONDS
-	if not entry._fadeAnimActive then
-		-- Fresh entry into the fade window — full ease from opaque when close to the lead edge.
-		if remain > c_FADE_LEAD_SECONDS * 0.9 then
-			startAlpha = 1
-		end
-	end
-	StartRowFadeOut(row, startAlpha, remain)
-	entry._fadeAnimActive = true
-	entry._fadeAnimRow = row
 end
 
 function Win.GetChatFonts()
@@ -297,10 +236,6 @@ local function RowHeight()
 	return math.floor(c_BASE_ROW_HEIGHT * FontScale() + 0.5)
 end
 
-local function IconDraw()
-	return math.floor(c_BASE_ICON * FontScale() + 0.5)
-end
-
 local function MaxVisible()
 	local s = EnsureSettings()
 	local n = tonumber(s.maxVisibleRows) or 10
@@ -328,10 +263,8 @@ local function ApplyLabelFont(labelName)
 	end
 end
 
---- Size label to full text width.
---- LabelGetTextDimensions returns the *clipped* window size if the label is already
---- too narrow — that caused progressive truncation after font changes. Always expand
---- to a measure canvas first, then shrink to the measured text.
+--- Size label to full text width; keep a shared row height so chained labels
+--- do not sit on different vertical centers (short words looked staggered).
 local function FitLabel(labelName, rowH)
 	if not DoesWindowExist(labelName) then
 		return
@@ -343,17 +276,13 @@ local function FitLabel(labelName, rowH)
 	if type(WindowForceProcessAnchors) == "function" then
 		CustomUI.TryCallQuiet("KillTracker.FitLabel.Force", WindowForceProcessAnchors, labelName)
 	end
-	local tw, th = 0, h
+	local tw = 0
 	if type(LabelGetTextDimensions) == "function" then
-		tw, th = LabelGetTextDimensions(labelName)
+		tw = LabelGetTextDimensions(labelName)
 	end
 	tw = tonumber(tw) or 0
-	th = tonumber(th) or 0
 	if tw < 1 then
 		tw = 1
-	end
-	if th > h then
-		h = th
 	end
 	if type(WindowSetDimensions) == "function" then
 		WindowSetDimensions(labelName, tw + 4, h)
@@ -405,9 +334,9 @@ local function ApplyZoneLabels(zoneInLabel, zoneLabel, entry, settings, rowH)
 			FitLabel(zoneInLabel, rowH)
 		else
 			LabelSetText(zoneInLabel, L"")
-			if type(WindowSetDimensions) == "function" then
-				WindowSetDimensions(zoneInLabel, 1, 1)
-			end
+		if type(WindowSetDimensions) == "function" then
+			WindowSetDimensions(zoneInLabel, 1, rowH or 28)
+		end
 			WindowSetShowing(zoneInLabel, false)
 		end
 	end
@@ -417,7 +346,7 @@ local function ApplyZoneLabels(zoneInLabel, zoneLabel, entry, settings, rowH)
 	if not showZone then
 		LabelSetText(zoneLabel, L"")
 		if type(WindowSetDimensions) == "function" then
-			WindowSetDimensions(zoneLabel, 1, 1)
+			WindowSetDimensions(zoneLabel, 1, rowH or 28)
 		end
 		WindowSetShowing(zoneLabel, false)
 		return
@@ -439,36 +368,255 @@ local function ApplyZoneLabels(zoneInLabel, zoneLabel, entry, settings, rowH)
 	LabelSetTextColor(zoneLabel, r, g, b)
 end
 
-local function SetIcon(windowName, iconId, atlasSize)
-	if not DoesWindowExist(windowName) then
-		return
+local function LocalRealmIsDestruction()
+	local realms = GameData and GameData.Realm
+	local realm = GameData and GameData.Player and GameData.Player.realm
+	if type(realms) == "table" and realms.DESTRUCTION ~= nil then
+		return realm == realms.DESTRUCTION
 	end
-	atlasSize = tonumber(atlasSize) or c_CAREER_ATLAS
-	iconId = tonumber(iconId)
-	if not iconId or iconId <= 0 or type(GetIconData) ~= "function" then
-		if type(WindowSetDimensions) == "function" then
-			WindowSetDimensions(windowName, 1, 1)
+	return tonumber(realm) == 2
+end
+
+local function FactionRgb(isOrder)
+	local Format = CustomUI.KillTracker.Format
+	if isOrder then
+		if Format and type(Format.GetOrderRgb) == "function" then
+			local rgb = Format.GetOrderRgb()
+			if type(rgb) == "table" then
+				return rgb[1] or 0, rgb[2] or 148, rgb[3] or 225
+			end
 		end
-		WindowSetShowing(windowName, false)
-		return
+		return 0, 148, 225
 	end
-	local texture, x, y = GetIconData(iconId)
-	if not texture or texture == "" or texture == "icon000000" then
-		if type(WindowSetDimensions) == "function" then
-			WindowSetDimensions(windowName, 1, 1)
+	if Format and type(Format.GetDestroRgb) == "function" then
+		local rgb = Format.GetDestroRgb()
+		if type(rgb) == "table" then
+			return rgb[1] or 255, rgb[2] or 39, rgb[3] or 39
 		end
-		WindowSetShowing(windowName, false)
-		return
 	end
-	DynamicImageSetTexture(windowName, texture, x, y)
-	if type(DynamicImageSetTextureDimensions) == "function" then
-		DynamicImageSetTextureDimensions(windowName, atlasSize, atlasSize)
+	return 255, 39, 39
+end
+
+local c_SCORE_COUNT_DIGITS = L"0000"
+
+--- Width of a 4-digit column at the current feed font (cached until font changes).
+local function ScoreCountColumnWidth(measureLabel, rowH)
+	local font = FontName()
+	local cached = tonumber(Win._scoreCountWidth)
+	if cached and cached > 0 and Win._scoreCountFont == font then
+		return cached
 	end
-	local draw = IconDraw()
+	if not DoesWindowExist(measureLabel) then
+		return 36
+	end
+	ApplyLabelFont(measureLabel)
 	if type(WindowSetDimensions) == "function" then
-		WindowSetDimensions(windowName, draw, draw)
+		WindowSetDimensions(measureLabel, c_MEASURE_WIDTH, rowH)
 	end
-	WindowSetShowing(windowName, true)
+	LabelSetText(measureLabel, c_SCORE_COUNT_DIGITS)
+	if type(WindowForceProcessAnchors) == "function" then
+		CustomUI.TryCallQuiet("KillTracker.ScoreCount.Force", WindowForceProcessAnchors, measureLabel)
+	end
+	local tw = 36
+	if type(LabelGetTextDimensions) == "function" then
+		tw = tonumber(LabelGetTextDimensions(measureLabel)) or tw
+	end
+	if tw < 16 then
+		tw = 16
+	end
+	Win._scoreCountWidth = tw + 4
+	Win._scoreCountFont = font
+	return Win._scoreCountWidth
+end
+
+local function SetScoreCountLabel(labelName, count, columnW, rowH)
+	if not DoesWindowExist(labelName) then
+		return
+	end
+	ApplyLabelFont(labelName)
+	if type(LabelSetTextAlign) == "function" then
+		CustomUI.TryCallQuiet("KillTracker.ScoreCount.Align", LabelSetTextAlign, labelName, "rightcenter")
+	end
+	if type(WindowSetDimensions) == "function" then
+		WindowSetDimensions(labelName, columnW, rowH)
+	end
+	LabelSetText(labelName, towstring(count))
+	LabelSetTextColor(labelName, 255, 255, 255)
+	WindowSetShowing(labelName, true)
+end
+
+--- Zone score row: "<Zone>: Order Kills: xx Destro Kills: xx" (local realm first).
+--- This window is the LayoutEditor base; always shown while KillTracker is enabled.
+local function ApplyScoreRow(width, rowH)
+	if not DoesWindowExist(c_SCORE) then
+		return 0
+	end
+	rowH = rowH or RowHeight()
+
+	local orderKills, destroKills = 0, 0
+	local Session = CustomUI.KillTracker.Session
+	if Session and type(Session.GetZoneScore) == "function" then
+		orderKills, destroKills = Session.GetZoneScore()
+	end
+	orderKills = tonumber(orderKills) or 0
+	destroKills = tonumber(destroKills) or 0
+
+	width = tonumber(width) or Win._width or c_DEFAULT_WIDTH
+	if type(WindowSetDimensions) == "function" then
+		WindowSetDimensions(c_SCORE, math.max(width, 1), rowH)
+	end
+	WindowSetShowing(c_SCORE, true)
+
+	local zoneLabel = c_SCORE .. "Zone"
+	local firstLabel = c_SCORE .. "FirstLabel"
+	local firstCount = c_SCORE .. "FirstCount"
+	local secondLabel = c_SCORE .. "SecondLabel"
+	local secondCount = c_SCORE .. "SecondCount"
+	local columnW = ScoreCountColumnWidth(firstCount, rowH)
+
+	local zoneName = L""
+	local Format = CustomUI.KillTracker.Format
+	if Format and type(Format.GetMapZoneName) == "function" then
+		zoneName = Format.GetMapZoneName()
+	end
+	if zoneName == nil or zoneName == L"" then
+		zoneName = L"Zone"
+	end
+
+	local firstIsOrder = not LocalRealmIsDestruction()
+	local firstKills = firstIsOrder and orderKills or destroKills
+	local secondKills = firstIsOrder and destroKills or orderKills
+	Win._scoreFirstIsOrder = firstIsOrder
+
+	local fitLabels = { zoneLabel, firstLabel, secondLabel }
+	for i = 1, #fitLabels do
+		if DoesWindowExist(fitLabels[i]) and type(WindowSetDimensions) == "function" then
+			WindowSetDimensions(fitLabels[i], c_MEASURE_WIDTH, rowH)
+		end
+		ApplyLabelFont(fitLabels[i])
+	end
+
+	if DoesWindowExist(zoneLabel) then
+		LabelSetText(zoneLabel, towstring(zoneName) .. L": ")
+		LabelSetTextColor(zoneLabel, 255, 255, 255)
+		FitLabel(zoneLabel, rowH)
+		LabelSetTextColor(zoneLabel, 255, 255, 255)
+	end
+
+	if DoesWindowExist(firstLabel) then
+		if firstIsOrder then
+			LabelSetText(firstLabel, L"Order Kills: ")
+		else
+			LabelSetText(firstLabel, L"Destro Kills: ")
+		end
+		local r, g, b = FactionRgb(firstIsOrder)
+		LabelSetTextColor(firstLabel, r, g, b)
+		FitLabel(firstLabel, rowH)
+		LabelSetTextColor(firstLabel, r, g, b)
+	end
+
+	SetScoreCountLabel(firstCount, firstKills, columnW, rowH)
+
+	if DoesWindowExist(secondLabel) then
+		if firstIsOrder then
+			LabelSetText(secondLabel, L"Destro Kills: ")
+		else
+			LabelSetText(secondLabel, L"Order Kills: ")
+		end
+		local r, g, b = FactionRgb(not firstIsOrder)
+		LabelSetTextColor(secondLabel, r, g, b)
+		FitLabel(secondLabel, rowH)
+		LabelSetTextColor(secondLabel, r, g, b)
+	end
+
+	SetScoreCountLabel(secondCount, secondKills, columnW, rowH)
+
+	if type(WindowForceProcessAnchors) == "function" then
+		CustomUI.TryCallQuiet("KillTracker.ForceScoreAnchors", WindowForceProcessAnchors, c_SCORE)
+	end
+	-- Feed height no longer includes the score row; it sits above this window.
+	return 0
+end
+
+local c_TOP_KILLERS_LIMIT = 10
+
+local function ShowFactionKillersTooltip(isOrder)
+	if type(Tooltips) ~= "table" or type(Tooltips.CreateTextOnlyTooltip) ~= "function" then
+		return
+	end
+
+	local anchorWindow = SystemData and SystemData.ActiveWindow and SystemData.ActiveWindow.name
+	if anchorWindow == nil or anchorWindow == "" then
+		anchorWindow = c_SCORE
+	end
+
+	local Session = CustomUI.KillTracker.Session
+	local list = {}
+	if Session and type(Session.GetTopFactionKillers) == "function" then
+		list = Session.GetTopFactionKillers(isOrder == true, c_TOP_KILLERS_LIMIT) or {}
+	end
+
+	local heading = isOrder and L"Top Order Killers" or L"Top Destro Killers"
+	local r, g, b = FactionRgb(isOrder == true)
+
+	Tooltips.CreateTextOnlyTooltip(anchorWindow)
+	Tooltips.SetTooltipText(1, 1, heading)
+	if type(Tooltips.SetTooltipColor) == "function" then
+		Tooltips.SetTooltipColor(1, 1, r, g, b)
+	elseif type(Tooltips.SetTooltipColorDef) == "function" and Tooltips.COLOR_HEADING then
+		Tooltips.SetTooltipColorDef(1, 1, Tooltips.COLOR_HEADING)
+	end
+
+	local line = 2
+	if #list == 0 then
+		Tooltips.SetTooltipText(line, 1, L"No kills recorded yet.")
+		line = line + 1
+	else
+		-- TooltipRow (rows 2+): Col1 left, Col2 center, Col3 right.
+		-- Use column 3 so counts sit on the right edge (not Col2, which centers).
+		local countCol = Tooltips.COLUMN_RIGHT_LEFT_ALIGN or 3
+		for i = 1, #list do
+			local row = list[i]
+			local name = towstring(row and row.name or L"?")
+			local count = tonumber(row and row.count) or 0
+			Tooltips.SetTooltipText(line, 1, towstring(i) .. L". " .. name)
+			Tooltips.SetTooltipText(line, countCol, towstring(count))
+			line = line + 1
+		end
+	end
+
+	if type(Tooltips.Finalize) == "function" then
+		Tooltips.Finalize()
+	end
+	if type(Tooltips.AnchorTooltip) == "function" then
+		if Tooltips.ANCHOR_WINDOW_VARIABLE then
+			Tooltips.AnchorTooltip(Tooltips.ANCHOR_WINDOW_VARIABLE)
+		else
+			Tooltips.AnchorTooltip({
+				Point = "top",
+				RelativeTo = anchorWindow,
+				RelativePoint = "bottom",
+				XOffset = 0,
+				YOffset = -4,
+			})
+		end
+	end
+end
+
+function Win.OnMouseOverFirstScore()
+	local firstIsOrder = Win._scoreFirstIsOrder
+	if firstIsOrder == nil then
+		firstIsOrder = not LocalRealmIsDestruction()
+	end
+	ShowFactionKillersTooltip(firstIsOrder == true)
+end
+
+function Win.OnMouseOverSecondScore()
+	local firstIsOrder = Win._scoreFirstIsOrder
+	if firstIsOrder == nil then
+		firstIsOrder = not LocalRealmIsDestruction()
+	end
+	ShowFactionKillersTooltip(firstIsOrder ~= true)
 end
 
 local function EnsureRow(index)
@@ -481,8 +629,8 @@ local function EnsureRow(index)
 end
 
 local function ReadRootWidth()
-	if DoesWindowExist(c_ROOT) and type(WindowGetDimensions) == "function" then
-		local w = WindowGetDimensions(c_ROOT)
+	if DoesWindowExist(c_SCORE) and type(WindowGetDimensions) == "function" then
+		local w = WindowGetDimensions(c_SCORE)
 		w = tonumber(w)
 		if w and w >= c_MIN_WIDTH then
 			Win._width = w
@@ -490,6 +638,53 @@ local function ReadRootWidth()
 		end
 	end
 	return Win._width or c_DEFAULT_WIDTH
+end
+
+--- Pin feed topleft feedH pixels above the counter, then set height so it fills
+--- down to the score row. SetDimensions-before-anchor grew from an implicit
+--- topleft and parked the lines below the counter.
+local function GlueFeedAboveScore(width, feedH)
+	if not DoesWindowExist(c_ROOT) or not DoesWindowExist(c_SCORE) then
+		return
+	end
+	feedH = math.max(tonumber(feedH) or 1, 1)
+	width = math.max(tonumber(width) or 1, 1)
+	if type(WindowSetScale) == "function" and type(WindowGetScale) == "function" then
+		local scale = WindowGetScale(c_SCORE)
+		if scale then
+			WindowSetScale(c_ROOT, scale)
+		end
+	end
+	if type(WindowClearAnchors) ~= "function" or type(WindowAddAnchor) ~= "function" then
+		return
+	end
+	WindowClearAnchors(c_ROOT)
+	CustomUI.TryCall(
+		"KillTracker.GlueFeedTopLeft",
+		WindowAddAnchor,
+		c_ROOT,
+		"topleft",
+		c_SCORE,
+		"topleft",
+		0,
+		-feedH
+	)
+	CustomUI.TryCall(
+		"KillTracker.GlueFeedTopRight",
+		WindowAddAnchor,
+		c_ROOT,
+		"topright",
+		c_SCORE,
+		"topright",
+		0,
+		-feedH
+	)
+	if type(WindowSetDimensions) == "function" then
+		WindowSetDimensions(c_ROOT, width, feedH)
+	end
+	if type(WindowForceProcessAnchors) == "function" then
+		CustomUI.TryCallQuiet("KillTracker.GlueFeed.Force", WindowForceProcessAnchors, c_ROOT)
+	end
 end
 
 local function LayoutRows()
@@ -502,12 +697,19 @@ local function LayoutRows()
 	if Win._laidOutFont ~= font then
 		DestroyAllRows()
 		Win._laidOutFont = font
+		Win._scoreCountWidth = nil
+		Win._scoreCountFont = nil
 	end
 
 	local maxVis = MaxVisible()
 	local history = Win._history
 	local count = #history
-	local showCount = math.min(count, maxVis)
+	local settings = EnsureSettings()
+	local showFeed = settings.showKillMessages ~= false
+	local showCount = 0
+	if showFeed then
+		showCount = math.min(count, maxVis)
+	end
 	local rowH = RowHeight()
 	local width = ReadRootWidth()
 
@@ -526,13 +728,8 @@ local function LayoutRows()
 		if i <= showCount then
 			local entry = history[startIdx + i - 1]
 			local y = (i - 1) * rowH
-			WindowAddAnchor(row, "topleft", c_ROOT, "topleft", 4, 4 + y)
+			WindowAddAnchor(row, "topleft", c_ROOT, "topleft", c_FEED_PAD, c_FEED_PAD + y)
 			WindowSetShowing(row, true)
-
-			local settings = EnsureSettings()
-			SetIcon(row .. "KillerCareer", settings.showCareerIcons ~= false and entry.killerCareerIcon or nil, c_CAREER_ATLAS)
-			SetIcon(row .. "VictimCareer", settings.showCareerIcons ~= false and entry.victimCareerIcon or nil, c_CAREER_ATLAS)
-			SetIcon(row .. "AbilityIcon", settings.showAbilityIcons ~= false and entry.abilityIconNum or nil, c_ABILITY_ATLAS)
 
 			local killerLabel = row .. "KillerName"
 			local killerCountLabel = row .. "KillerCount"
@@ -591,7 +788,8 @@ local function LayoutRows()
 				LabelSetTextColor(victimLabel, 255, 255, 255)
 			end
 			FitLabel(victimLabel, rowH)
-			SetCountLabel(victimCountLabel, entry.deathCount, settings.showKillCount, rowH)
+			-- Same kill bag as the killer; do not show death tallies.
+			SetCountLabel(victimCountLabel, entry.victimKillCount, settings.showKillCount, rowH)
 
 			local hasAbility = entry.ability and entry.ability ~= L""
 			if hasAbility then
@@ -602,7 +800,7 @@ local function LayoutRows()
 			else
 				LabelSetText(withLabel, L"")
 				if type(WindowSetDimensions) == "function" then
-					WindowSetDimensions(withLabel, 1, 1)
+					WindowSetDimensions(withLabel, 1, rowH)
 				end
 				WindowSetShowing(withLabel, false)
 			end
@@ -615,7 +813,7 @@ local function LayoutRows()
 			else
 				LabelSetText(abilityLabel, L"")
 				if type(WindowSetDimensions) == "function" then
-					WindowSetDimensions(abilityLabel, 1, 1)
+					WindowSetDimensions(abilityLabel, 1, rowH)
 				end
 				WindowSetShowing(abilityLabel, false)
 			end
@@ -626,10 +824,7 @@ local function LayoutRows()
 				CustomUI.TryCallQuiet("KillTracker.ForceRowAnchors", WindowForceProcessAnchors, row)
 			end
 
-			-- Relayout re-seeds widgets; allow fade anim to restart from remaining time.
-			entry._fadeAnimActive = false
-			entry._fadeAnimRow = nil
-			ApplyRowFade(row, entry, Now())
+			EnsureRowOpaque(row)
 		else
 			WindowSetShowing(row, false)
 		end
@@ -642,12 +837,16 @@ local function LayoutRows()
 		end
 	end
 
-	local h = 8 + showCount * rowH
-	if h < c_MIN_HEIGHT then
-		h = c_MIN_HEIGHT
+	ApplyScoreRow(width, rowH)
+	local h = c_FEED_PAD + showCount * rowH + c_FEED_SCORE_GAP
+	if showCount <= 0 then
+		h = 1
 	end
-	-- Preserve LayoutEditor width; only grow/shrink height to fit rows.
-	WindowSetDimensions(c_ROOT, width, h)
+	if DoesWindowExist(c_ROOT) then
+		WindowSetShowing(c_ROOT, showCount > 0)
+	end
+	GlueFeedAboveScore(width, h)
+	ApplyTextOpacity(true)
 end
 
 function Win.OnResizeEnd()
@@ -656,7 +855,7 @@ function Win.OnResizeEnd()
 end
 
 function Win.Initialize()
-	if not DoesWindowExist(c_ROOT) then
+	if not DoesWindowExist(c_SCORE) then
 		return
 	end
 	-- New row template children (count labels); drop any stale row instances.
@@ -664,49 +863,66 @@ function Win.Initialize()
 	DestroyAllRows()
 	if not Win._layoutRegistered and type(LayoutEditor) == "table" and type(LayoutEditor.RegisterWindow) == "function" then
 		LayoutEditor.RegisterWindow(
-			c_ROOT,
+			c_SCORE,
 			L"CustomUI: Kill Tracker",
-			L"Transparent RvR kill feed. Move and resize in Layout Editor.",
+			L"Zone kill counter. Kill lines grow upward from this row. Move and resize width in Layout Editor.",
 			true, -- allowSizeWidth
-			true, -- allowSizeHeight
+			false, -- allowSizeHeight (one row; Lua sets height from font)
 			true, -- allowHiding
 			nil,
-			nil,
+			{ "topleft" },
 			true, -- neverLockAspect
-			{ x = c_MIN_WIDTH, y = c_MIN_HEIGHT },
+			{ x = c_MIN_WIDTH, y = c_BASE_ROW_HEIGHT },
 			"CustomUI.KillTracker.Window.OnResizeEnd",
-			nil
+			"CustomUI.KillTracker.Window.OnResizeEnd"
 		)
 		Win._layoutRegistered = true
 	end
+	if type(LayoutEditor) == "table"
+		and type(LayoutEditor.RegisterEditCallback) == "function"
+		and not Win._layoutEditCallback
+	then
+		LayoutEditor.RegisterEditCallback(function(code)
+			if LayoutEditor and code == LayoutEditor.EDITING_END then
+				LayoutRows()
+			end
+		end)
+		Win._layoutEditCallback = true
+	end
 	ReadRootWidth()
 	if type(LayoutEditor) == "table" and type(LayoutEditor.UserHide) == "function" then
-		LayoutEditor.UserHide(c_ROOT)
+		LayoutEditor.UserHide(c_SCORE)
 	else
+		WindowSetShowing(c_SCORE, false)
+	end
+	if DoesWindowExist(c_ROOT) then
 		WindowSetShowing(c_ROOT, false)
 	end
 end
 
 function Win.Show()
-	if not DoesWindowExist(c_ROOT) then
+	if not DoesWindowExist(c_SCORE) then
 		return
 	end
 	if type(LayoutEditor) == "table" and type(LayoutEditor.UserShow) == "function" then
-		LayoutEditor.UserShow(c_ROOT)
+		LayoutEditor.UserShow(c_SCORE)
 	else
-		WindowSetShowing(c_ROOT, true)
+		WindowSetShowing(c_SCORE, true)
 	end
 	LayoutRows()
 end
 
 function Win.Hide()
-	if not DoesWindowExist(c_ROOT) then
+	if DoesWindowExist(c_ROOT) then
+		WindowSetShowing(c_ROOT, false)
+	end
+	if not DoesWindowExist(c_SCORE) then
 		return
 	end
 	if type(LayoutEditor) == "table" and type(LayoutEditor.UserHide) == "function" then
-		LayoutEditor.UserHide(c_ROOT)
+		LayoutEditor.UserHide(c_SCORE)
 	else
-		WindowSetShowing(c_ROOT, false)
+		WindowSetShowing(c_SCORE, false)
 	end
 end
 
@@ -736,7 +952,7 @@ function Win.PushKill(model)
 	LayoutRows()
 end
 
---- Per-message expiry: oldest lines fade and drop first; newer ones stay opaque.
+--- Remove expired lines from history and relayout (no fade-out animation).
 function Win.OnUpdate(timePassed)
 	local dt = tonumber(timePassed) or 0
 	if dt < 0 then
@@ -750,7 +966,6 @@ function Win.OnUpdate(timePassed)
 
 	local now = Now()
 	local removed = false
-	-- Remove expired from front-biased history (oldest first).
 	for i = #Win._history, 1, -1 do
 		local entry = Win._history[i]
 		if now >= EntryExpiresAt(entry) then
@@ -763,27 +978,8 @@ function Win.OnUpdate(timePassed)
 		LayoutRows()
 		return
 	end
-
-	if #Win._history == 0 then
-		return
-	end
-
-	-- Kick off one-shot ease-out when a line enters the fade window; do not
-	-- stomp alpha every frame (that was the choppy look).
-	local maxVis = MaxVisible()
-	local count = #Win._history
-	local showCount = math.min(count, maxVis)
-	local startIdx = count - showCount + 1
-	if startIdx < 1 then
-		startIdx = 1
-	end
-	for i = 1, showCount do
-		local entry = Win._history[startIdx + i - 1]
-		local row = c_ROW_PREFIX .. tostring(i)
-		if DoesWindowExist(row) and entry then
-			ApplyRowFade(row, entry, now)
-		end
-	end
+	-- LayoutEditor opacity slider only sets WindowSetAlpha; copy it to glyphs.
+	ApplyTextOpacity()
 end
 
 function Win.OnSettingsChanged()

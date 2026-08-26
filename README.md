@@ -2,7 +2,7 @@
 
 CustomUI is a modular Return of Reckoning addon that replaces and enhances stock UI components behind a single settings surface and slash-command workflow.
 
-**Version:** CustomUI `1.1.0` (see `CustomUI.Version` / `CustomUI.mod`). Companion settings addon: CustomUISettingsWindow `1.2.0`. One addon-level semver (not per-component); the active profile also stores `CustomUI.Settings.version` on init.
+**Version:** CustomUI `1.2.0` (see `CustomUI.Version` / `CustomUI.mod`). Companion settings addon: CustomUISettingsWindow `1.3.0`. One addon-level semver (not per-component); the active profile also stores `CustomUI.Settings.version` on init.
 
 ## Documentation
 
@@ -33,17 +33,36 @@ Place **CustomUI** and **CustomUISettingsWindow** under the game’s `Interface\
 
 | Component | Replaces | Status |
 |---|---|---|
-| `PlayerStatusWindow` | `ea_playerstatuswindow` | ✅ Implemented, `DefaultEnabled = false` |
+| `PlayerStatusWindow` | `ea_playerstatuswindow` | ✅ Implemented, `DefaultEnabled = false` — portrait badges (career / rank / renown / influence), stock XP·RP·PQ influence bar hide when matching badges are on |
 | `TargetWindow` | `ea_targetwindow` (hostile + friendly slots) | ✅ Implemented, `DefaultEnabled = false` — HP% overlay on health bars |
 | `PlayerPetWindow` | `PetHealthWindow` in `ea_careerresourceswindow` | ✅ Implemented helper component, not registered separately in `/customui components` |
 | `GroupWindow` | `ea_groupwindow` | ✅ Implemented, `DefaultEnabled = false` |
-| `TargetHUD` | — (new world-attached HUDs for hostile and friendly targets) | ✅ Implemented, `DefaultEnabled = false` — HP% on `HealthBarBarText` |
+| `TargetHUD` | — (world-attached HUDs: hostile, friendly, and self) | ✅ Implemented, `DefaultEnabled = false` — HP% on `HealthBarBarText` |
 | `UnitFrames` | BattlegroupHUD + FloatingScenarioGroup scenario roster frames | ✅ Implemented, `DefaultEnabled = false` |
 | `GroupIcons` | — (career icons on world objects for party / warband / scenario members) | ✅ Implemented, enabled by default on a fresh profile |
 | `SCT` | `easystem_eventtext` combat/point-gain floating text | ✅ Complete, `DefaultEnabled = false` |
 | `KillTracker` | — (RvR Order/Destruction kill feed) | ✅ Implemented, `DefaultEnabled = false`; `/cui` → **Kills** tab |
+| `QoL` | — (RedAlert, AutoSurrender, RezzAccept, AltTracker) | ✅ Implemented, `DefaultEnabled = false`; `/cui` → **QoL** tab |
+| `AutoFPS` | — (dynamic FPS / graphics helpers) | ✅ Implemented, `DefaultEnabled = false`; `/cui` → **AutoFPS** tab |
 
 All registered components default to **disabled** except `GroupIcons`, which currently omits `DefaultEnabled = false` and therefore comes up enabled on a fresh profile. `PlayerPetWindow` is shipped and has full lifecycle code, but it is still owned through `PlayerStatusWindow` rather than being registered as a separate top-level component.
+
+### PlayerStatus portrait badges
+
+Portrait chrome (career icon TL, rank BL, influence BC, renown BR) is shared via `PortraitCareerBadge.lua`. Influence tracking lives in `PortraitInfluenceTrack.lua` (Current Area / manual live event; no modified EA_ObjectiveTrackers required).
+
+| Badge | Shows | Yellow nag (left) | Hides stock bar when badge on |
+|-------|--------|-------------------|-------------------------------|
+| Career | Career icon | — | — |
+| Rank | Career rank | Unspent career advance points | `XpBarWindow` |
+| Renown | Renown rank | Unspent renown points | `RpBarWindow` |
+| Influence | Tier count 0–3 (or `-`) | Unclaimed rewards for tracked area/event | PQ **Influence bar only** (objectives stay) |
+
+Live-event **unclaimed** = threshold met and no `purchased` record; NPC open is authoritative for claim flags; `SelectEventRewards` is hooked so claims update immediately. Stock bar hide is owned by `StockProgressBars.lua` and only while PlayerStatus is enabled.
+
+### QoL (AutoSurrender)
+
+Scenario auto-surrender: server rejects votes on a **lead or tie** (“winning”). AutoSurrender treats score `>=` as winning and only resumes deferred attempts when **strictly behind**. Kill-leader rule cannot start a vote while tied/ahead. Settings: enable, status chat, kill rule, score deficit, pre-start retry.
 
 ### KillTracker (RvR kill feed)
 
@@ -56,11 +75,9 @@ Enriched Order/Destruction kill lines from the Combat TextLog (`RVR_KILLS_ORDER`
 | `KillTrackerController.lua` | Component adapter, settings, world events, `ProcessKillLine` |
 | `KillTrackerCapture.lua` | Combat TextLog listener (`TextLogGetUpdateEventId`) |
 | `KillTrackerParser.lua` | Parse stock kill grammar into `{ killer, victim, ability, zone, … }` |
-| `KillTrackerSession.lua` | Dual kill/death bags: open-world RvR (session) vs scenario/siege (per instance) |
-| `KillTrackerCareerCache.lua` | Name → career icon (party, warband, scenario roster, social lists, target, unique-ability inference) |
-| `KillTrackerAbilityMap.lua` | Ability name → icon (Warbuilder, local spellbook, SCT cache; career disambiguation) |
+| `KillTrackerSession.lua` | Dual kill/death bags + career/ability icon resolution (open-world RvR vs scenario/siege) |
 | `KillTrackerFormat.lua` | Shared row/chat model, realm colors, local-zone tint (`FixString` wstring compare) |
-| `KillTrackerWindow.lua` + `View/KillTracker.xml` | Feed UI (`CustomUIKillTrackerWindow`), row template, fade/expiry |
+| `KillTrackerWindow.lua` + `View/KillTracker.xml` | Feed UI (`CustomUIKillTrackerWindow`), row template, expiry/removal |
 | `KillTrackerChat.lua` | Optional chat rewrite hook + custom TextLog filters (legacy, off by default) |
 
 **Feed row layout:** `[killerIcon] Killer[k] killed [victimIcon] Victim[d] with [abilityIcon] Ability in Zone` — connector words stay white; ability names gold; zone name green when it matches the player's current area (cmap-style `GameData.Player.area.name` / zone / `MapGetPlayerLocationMaps`). Open-world RvR only; scenario and city siege omit the zone suffix.
@@ -103,7 +120,7 @@ pair per feature.
 Each per-tab script binds controls to the matching component’s public APIs (for
 example `CustomUI.IsComponentEnabled`, `CustomUI.PlayerStatusWindow.GetSettings()`).
 
-**Player** tab sections in use: **General** (enable + pet window) and **Buff Tracker**. There is no Player Appearance section — the old minimal chrome and low-HP screen flash were removed (flash belongs in **RedAlert** if you want that effect).
+**Player** tab sections in use: **General** (enable + pet window), **Badges** (career / rank / renown / influence), and **Buff Tracker**. There is no Player Appearance section — the old minimal chrome and low-HP screen flash were removed (flash belongs in **RedAlert** / QoL if you want that effect).
 
 Footer buttons match stock **User Settings** (`EA_SettingsWindow`):
 
@@ -155,9 +172,21 @@ Also creates a `CustomUITargetHealthText` label over the status bar and override
 
 `TargetHUD` uses the same idea on the built-in `HealthBarBarText` (written from `RefreshHUDFromCache`), not via `TargetFrame`.
 
+### TargetHUD (world overlays)
+
+Three independent sides: **hostile**, **friendly**, and **self**. Hostile/friendly follow live `TargetInfo` via `TargetPresence.HasLiveTarget` (no transient hold — a hold leaves a stale world overlay). Self is a permanent player overlay from `GameData.Player.worldObjNum` and does not require self-target; when you do target yourself, Self settings override Friendly.
+
+World-bind lessons (also in RoR-Interface `docs/api/world-object-windows.md`):
+
+- Self window is created at runtime with `CreateWindowFromTemplate(..., "Root")`, then `AttachWindowToWorldObject` on **that** window (BuffHead `Container:Create`). A load-time `CreateWindow` XML instance stayed at screen origin.
+- Do not parent the HUD to a 1×1 anchor and bind the 1×1 (Pure’s other-target pattern). Failed binds snap to top-left.
+- `AttachWindowToWorldObject` has no success return. A `worldBound` flag after a failed first attach will skip every later rebind — force detach+attach on world/zone/reload and a short grace poll.
+- Deselect: engine detach, then `GroupIcons.RebindAllTrackedWorldObjects()`. Component disable: hide / spatial squash only (shared bind table per `worldObjNum`).
+- Do not put `OnShutdown` on the shared HUD template — `DestroyWindow` of one instance used to shut down the whole controller.
+
 ### CustomUI.TargetPresence
 
-Shared target cache ownership and transient-gap handling for `TargetWindow` and `TargetHUD`. It centralizes target refresh consumption, keeps short-lived snapshot holds during `TargetInfo` gaps, and reference-counts active target UI consumers so one component can disable without wiping the other component's shared state.
+Shared target cache ownership for `TargetWindow` and `TargetHUD`. It centralizes `UpdateFromClient` consumption and reference-counts consumers so one component can disable without wiping the other. `ShouldShow` / snapshot hold is for **screen** TargetWindow frames only. World TargetHUD sides use `HasLiveTarget` / `GetLiveEntityId` so a deselect does not leave a stale overlay.
 
 ### BuffGroups.lua
 
@@ -211,6 +240,9 @@ CustomUI/
 		Shared/
 			Archetypes.lua
 			Shared.xml
+			PortraitCareerBadge.lua          ← shared portrait badge layout
+			PortraitInfluenceTrack.lua       ← influence badge track / tooltip / claim cache
+			StockProgressBars.lua            ← hide stock XP/RP/PQ influence when badges on
 			BuffTracker/
 				BuffFilterDefaults.lua
 				BuffTrackerGrouping.lua
@@ -247,6 +279,7 @@ CustomUI/
 					GroupIconsWarbandLeaders.lua
 					GroupIconsOutsiderTracker.lua
 					GroupIconsRoster.lua
+					GroupIconsScenarioStats.lua
 					GroupIconsController.lua
 				View/
 					GroupIcons.xml
@@ -287,8 +320,6 @@ CustomUI/
 				Controller/
 					KillTrackerParser.lua
 					KillTrackerSession.lua
-					KillTrackerCareerCache.lua
-					KillTrackerAbilityMap.lua
 					KillTrackerFormat.lua
 					KillTrackerChat.lua           ← optional legacy chat rewrite
 					KillTrackerCapture.lua
@@ -297,6 +328,25 @@ CustomUI/
 				View/
 					KillTracker.xml               ← CustomUIKillTrackerWindow + row template
 					(settings tab: CustomUISettingsWindowTabKillTracker.* — not in this mod)
+			QoL/
+				Controller/
+					QoLController.lua
+					QoLAutoSurrender.lua
+					QoLRedAlert.lua
+					QoLRezzAccept.lua
+					QoLAltTracker.lua
+					QoLAltTrackerData.lua
+					QoLAltTrackerTooltips.lua
+				View/
+					QoLDriver.xml
+					QoLRedAlert.xml
+					QoLAltTracker.xml
+					QoLAltTrackerGoldPanel.xml
+			AutoFPS/
+				Controller/
+					AutoFPSController.lua
+				View/
+					AutoFPS.xml
 ```
 
 ### `Source/Shared` (what is current)
@@ -305,6 +355,9 @@ CustomUI/
 |------|--------|------|
 | `Shared.xml` | **Current** | Defines `CustomUIBuffContainerTemplate`; `BuffTracker` creates slot windows from it. |
 | `Archetypes.lua` | **Current** | Shared career-to-archetype mapping and RGB helpers used by UnitFrames and GroupIcons. |
+| `PortraitCareerBadge.lua` | **Current** | Shared portrait badge layout (PlayerStatus / Group / Target). |
+| `PortraitInfluenceTrack.lua` | **Current** | Influence badge track (Current Area / live event), tooltip, claim cache, Select hook. |
+| `StockProgressBars.lua` | **Current** | Hides stock XP / Renown / PQ Influence bars while matching PlayerStatus badges are enabled. |
 | `BuffTracker/` (`BuffTracker.lua`, `BuffTrackerLayout.lua`, `BuffTrackerRules.lua`, `BuffTrackerGrouping.lua`, `BuffFilterDefaults.lua`, `BuffGroups.lua`, `BuffLists.lua`) | **Current** | Core buff list behavior, helper splits, and shared filter defaults for trackers used by `PlayerStatusWindow`, `TargetWindow` (via `TargetFrame`), `GroupWindow`, and `TargetHUD`. |
 | `TargetPresence.lua` | **Current** | Shared target cache owner for `TargetWindow` + `TargetHUD`, including transient-gap holds and shared refresh coordination. |
 | `UnitFrame/TargetFrame.lua` | **Current** | Stock `TargetUnitFrame` subclass with `CustomUI.BuffTracker`, HP% overlay, and tier portrait skulls; used only by **TargetWindow**. |

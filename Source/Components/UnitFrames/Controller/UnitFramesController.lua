@@ -17,7 +17,9 @@
 --   • Target ring (friendly selffriendlytarget), mouseover ring via SystemData.MouseOverWindow + parent walk + WStringToString.
 --   • Scenario roster/HITS/distance parity target Enemy.Core.Groups (Enemy/Code/Core/Groups/Groups.lua + EnemyPlayer:LoadFromScenarioData),
 --     not Enemy/Code/UnitFrames/*.lua (those frames mostly pull ScenarioSummaryWindow for unrelated UI paths).
---     RoR-only extras: IsScenarioModeActive also respects isInScenarioGroup + live GetScenarioPlayerGroups rows when flags lag;
+--     RoR-only extras: IsScenarioModeActive uses instance flags + live GetScenarioPlayerGroups rows
+--     (not isInScenarioGroup — that flag lingers in queue). Open-world party mode wins over stale
+--     scenario signals so Party UnitFrames still show while queued.
 --     ScenarioCareerLineFromScenarioPlayer adds Icons careerNames fallback after Enemy.ScenarioCareerIdToLine-equivalent map.
 ----------------------------------------------------------------
 
@@ -209,6 +211,27 @@ local function ScenarioRosterHasAssignedGroups()
     return false
 end
 
+--- True when physically inside a scenario or city-siege instance (not queue).
+local function IsInScenarioOrSiegeInstance()
+    local p = GameData and GameData.Player
+    return p ~= nil and (p.isInScenario == true or p.isInSiege == true)
+end
+
+--- PartyUtils cache can stay empty after /reloadui if partyDirty was cleared before GetGroupData
+--- was ready. Force one refresh before treating the party as inactive.
+local function IsPlainPartyActive()
+    if type(PartyUtils) ~= "table" or type(PartyUtils.IsPartyActive) ~= "function" then
+        return false
+    end
+    if PartyUtils.IsPartyActive() then
+        return true
+    end
+    if GameData and GameData.Party then
+        GameData.Party.partyDirty = true
+    end
+    return PartyUtils.IsPartyActive() == true
+end
+
 --- Full scenario roster (CustomUI 6×6) when the user opted in, even if IsWarBandActive() wins first:
 --- open ShowWarband uses EA_Window_OpenPartyManageWarband*Show toggles and often leaves only party 1 visible.
 local function ShouldUseScenarioGroupLayout(s)
@@ -224,8 +247,8 @@ local function ShouldUseScenarioGroupLayout(s)
     if type(IsWarBandActive) == "function" and IsWarBandActive() then
         return true
     end
-    local p = GameData and GameData.Player
-    if p and (p.isInScenario == true or p.isInSiege == true or p.isInScenarioGroup == true) then
+    -- Instance flags only — do not use isInScenarioGroup (lingers in queue; see KillTracker).
+    if IsInScenarioOrSiegeInstance() then
         return true
     end
     return false
@@ -234,6 +257,18 @@ end
 --- Resolved visibility mode for ApplyModeVisibility / borders / scenario polls (not identical to IsScenarioModeActive alone).
 local function GetActiveUnitFramesDisplayMode()
     local s = EnsureUnitFramesGroupsSettings()
+
+    -- Open-world party must win over queue/stale scenario signals. isInScenarioGroup used to
+    -- keep IsScenarioModeActive true while queued, which picked empty scenario layout and hid
+    -- UnitFrames. Do not require an empty scenario roster here — leftover rows after leave
+    -- would otherwise keep blocking party mode.
+    if s.groupsParty == true
+        and not IsInScenarioOrSiegeInstance()
+        and not (type(IsWarBandActive) == "function" and IsWarBandActive())
+        and IsPlainPartyActive() then
+        return "party"
+    end
+
     if ShouldUseScenarioGroupLayout(s) then
         return "scenario"
     end
@@ -254,7 +289,7 @@ local function GetActiveUnitFramesDisplayMode()
         end
         return "none"
     end
-    if s.groupsParty == true and type(PartyUtils) == "table" and type(PartyUtils.IsPartyActive) == "function" and PartyUtils.IsPartyActive() then
+    if s.groupsParty == true and IsPlainPartyActive() then
         return "party"
     end
     return "none"
@@ -342,6 +377,7 @@ local ShowScenarioDualModeWindows
 local c_FRIENDLY_TARGET = "selffriendlytarget"
 local m_currentTargetId = 0
 local m_currentTargetName = nil
+local m_pendingFriendlyTargetRefresh = false
 local m_mouseOverMemberWindow = nil
 local m_lastHoverWindowName   = nil  -- cached raw MouseOverWindow name; skip chain walk when unchanged
 
@@ -353,14 +389,6 @@ local function ToWString(v)
         return towstring(v)
     end
     return v
-end
-
-local function ToLuaString(v)
-    if v == nil then
-        return nil
-    end
-
-    return tostring(v)
 end
 
 local function ToNameString(name)
@@ -398,19 +426,12 @@ local function FixScenarioMapNameKey(name)
 end
 
 local function NamesMatch(memberName, targetName)
-    local memberText = ToLuaString(memberName)
-    local targetText = ToLuaString(targetName)
-    if memberText == nil or targetText == nil or memberText == "" or targetText == "" then
+    local memberKey = FixScenarioMapNameKey(memberName)
+    local targetKey = FixScenarioMapNameKey(targetName)
+    if memberKey == nil or targetKey == nil or memberKey == "" or targetKey == "" then
         return false
     end
-
-    if memberText == targetText then
-        return true
-    end
-
-    -- Stock WStringsCompareIgnoreGrammer strips a leading grammar marker but uses
-    -- '<' internally, which can crash on mixed string/wstring values on this client.
-    return string.sub(memberText, 2) == string.sub(targetText, 2)
+    return memberKey == targetKey
 end
 
 local function MemberHasDisplayName(member)
@@ -430,18 +451,16 @@ local function IsMemberCurrentFriendlyTarget(member)
     if member == nil then
         return false
     end
-    local currentTargetId = tonumber(m_currentTargetId)
-    local memberWorldObjNum = tonumber(member.worldObjNum)
-    if currentTargetId ~= nil and currentTargetId ~= 0 and memberWorldObjNum ~= nil and memberWorldObjNum ~= 0 and memberWorldObjNum == currentTargetId then
-        return true
+    local currentTargetId = tonumber(m_currentTargetId) or 0
+    local memberWorldObjNum = tonumber(member.worldObjNum) or 0
+    -- When both sides have an entity id, id is authoritative. A stale TargetInfo name
+    -- must not keep the previous row selected after the target has already changed.
+    if currentTargetId ~= 0 and memberWorldObjNum ~= 0 then
+        return memberWorldObjNum == currentTargetId
     end
-    local memberName = ToWString(member and member.name)
-    if m_currentTargetName ~= nil and memberName ~= nil and memberName ~= L"" then
-        local targetName = ToWString(m_currentTargetName)
-        if memberName == nil or targetName == nil then
-            return false
-        end
-        return NamesMatch(memberName, targetName)
+    local memberName = member and member.name
+    if m_currentTargetName ~= nil and memberName ~= nil then
+        return NamesMatch(memberName, m_currentTargetName)
     end
     return false
 end
@@ -634,20 +653,76 @@ function UnitFrames.OnMemberMouseOverEnd()
     end
 end
 
+local function NameLooksPresent(name)
+    if name == nil or name == L"" or name == "" then
+        return false
+    end
+    local key = FixScenarioMapNameKey(name)
+    return key ~= nil and key ~= ""
+end
+
+local function ApplyDeferredFriendlyTarget()
+    if not m_pendingFriendlyTargetRefresh then
+        return
+    end
+    m_pendingFriendlyTargetRefresh = false
+
+    local id = 0
+    local name = nil
+    local tp = CustomUI.TargetPresence
+    if type(tp) == "table" then
+        if type(tp.GetEntityId) == "function" then
+            id = tonumber(tp.GetEntityId(c_FRIENDLY_TARGET)) or 0
+        end
+        if type(tp.GetName) == "function" then
+            name = tp.GetName(c_FRIENDLY_TARGET)
+        end
+        if type(tp.ShouldShow) == "function" and tp.ShouldShow(c_FRIENDLY_TARGET) ~= true then
+            m_currentTargetId = 0
+            m_currentTargetName = nil
+            RefreshTargetBorders()
+            return
+        end
+    end
+
+    if type(TargetInfo) == "table" then
+        if id == 0 and type(TargetInfo.UnitEntityId) == "function" then
+            id = tonumber(TargetInfo:UnitEntityId(c_FRIENDLY_TARGET)) or 0
+        end
+        if not NameLooksPresent(name) and type(TargetInfo.UnitName) == "function" then
+            name = TargetInfo:UnitName(c_FRIENDLY_TARGET)
+        end
+    end
+
+    if id == 0 and not NameLooksPresent(name) then
+        m_currentTargetId = 0
+        m_currentTargetName = nil
+    else
+        if id ~= 0 then
+            m_currentTargetId = id
+        end
+        if NameLooksPresent(name) then
+            if type(name) == "string" then
+                name = towstring(name)
+            end
+            m_currentTargetName = name
+        end
+    end
+    RefreshTargetBorders()
+end
+
 function UnitFrames.OnTargetUpdated(targetClassification, targetId, targetType)
     if targetClassification ~= c_FRIENDLY_TARGET then
         return
     end
-    m_currentTargetId = tonumber(targetId) or 0
-    m_currentTargetName = nil
-    if type(TargetInfo) == "table" and type(TargetInfo.UnitName) == "function" then
-        local nm = TargetInfo:UnitName(c_FRIENDLY_TARGET)
-        if type(nm) == "string" then
-            nm = towstring(nm)
-        end
-        m_currentTargetName = nm
+    -- targetId is often 0 on friendly HP/status ticks (TargetPresence / NerfedButtons).
+    -- Do not clear the selector here; resolve from TargetInfo next frame after UpdateFromClient.
+    local id = tonumber(targetId) or 0
+    if id ~= 0 then
+        m_currentTargetId = id
+        RefreshTargetBorders()
     end
-    RefreshTargetBorders()
+    m_pendingFriendlyTargetRefresh = true
 end
 
 IsScenarioModeActive = function()
@@ -658,24 +733,9 @@ IsScenarioModeActive = function()
     if p.isInScenario == true or p.isInSiege == true then
         return true
     end
-    if p.isInScenarioGroup == true then
-        return true
-    end
-    -- RoR: scenario roster can arrive before isInScenario flips; mirror GroupIcons / ScenarioGroupWindow data source.
-    if type(GameData.GetScenarioPlayerGroups) ~= "function" then
-        return false
-    end
-    local pg = GameData.GetScenarioPlayerGroups()
-    if type(pg) ~= "table" then
-        return false
-    end
-    for _, pl in ipairs(pg) do
-        local gi = tonumber(pl and pl.sgroupindex)
-        if gi ~= nil and gi > 0 then
-            return true
-        end
-    end
-    return false
+    -- Do not use isInScenarioGroup — it lingers in the scenario queue and is not an instance
+    -- (same rule as KillTracker). Roster rows can still arrive before isInScenario flips on zone-in.
+    return ScenarioRosterHasAssignedGroups()
 end
 
 IsWarbandModeActive = function()
@@ -1053,13 +1113,17 @@ local function SetMemberHpBarValues(memberWindow, maxVal, curVal)
     if maxVal == nil or curVal == nil then
         return
     end
-    local snap = (tonumber(curVal) or 0) <= 0
+    maxVal = tonumber(maxVal) or 100
+    curVal = tonumber(curVal) or 0
+    if maxVal < 1 then
+        maxVal = 1
+    end
+    -- Always stop interpolate before applying: with interpolate="true", a slow
+    -- 100→85 tween can leave the fill visually full while LabelHealth already shows 85%.
     for _, suffix in ipairs({ "HPBar", "HPBarTargetHud" }) do
         local w = memberWindow .. suffix
         if DoesWindowExist(w) then
-            -- interpolate="true" on both HP templates: without StopInterpolating, a jump to 0
-            -- (dead) can leave the bar visually full while SkullIcon already shows.
-            if snap and type(StatusBarStopInterpolating) == "function" then
+            if type(StatusBarStopInterpolating) == "function" then
                 StatusBarStopInterpolating(w)
             end
             StatusBarSetMaximumValue(w, maxVal)
@@ -2416,6 +2480,8 @@ function UnitFrames.Update(elapsedTime)
         return
     end
 
+    ApplyDeferredFriendlyTarget()
+
     -- Fresh roster map for this tick; hit events after Update may reuse it until the next tick/roster change.
     InvalidateScenarioGroupMapCache()
 
@@ -2523,6 +2589,8 @@ function UnitFrames.Enable()
     end
 
     ApplyModeVisibility()
+    m_pendingFriendlyTargetRefresh = true
+    ApplyDeferredFriendlyTarget()
     RefreshMouseOverBorders()
 
     local alpha = UnitFrames.WindowSettings.backgroundAlpha

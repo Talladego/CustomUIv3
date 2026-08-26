@@ -14,15 +14,37 @@ CustomUI.BuffTrackerLayout = CustomUI.BuffTrackerLayout or {}
 
 local BuffTrackerLayout = CustomUI.BuffTrackerLayout
 
+local function ScalesEqual(a, b)
+    if a == nil or b == nil then
+        return false
+    end
+    local d = a - b
+    if d < 0 then
+        d = -d
+    end
+    return d < 0.0001
+end
+
+function BuffTrackerLayout.InvalidateAppliedLayout(tracker)
+    if tracker == nil then
+        return
+    end
+    tracker.m_lastAppliedScale = nil
+    tracker.m_lastAppliedShowing = nil
+end
+
 function BuffTrackerLayout.ApplyContainerVisibility(tracker, ownerShowing)
     if tracker == nil then
         return
     end
     if tracker.m_containerName and DoesWindowExist(tracker.m_containerName) then
-        WindowSetShowing(
-            tracker.m_containerName,
-            tracker.m_requestedShow == true and ownerShowing == true
-        )
+        local desiredShowing = tracker.m_requestedShow == true and ownerShowing == true
+        if tracker.m_lastAppliedShowing == desiredShowing then
+            return
+        end
+        WindowSetShowing(tracker.m_containerName, desiredShowing)
+        tracker.m_lastAppliedShowing = desiredShowing
+        CustomUI.PerfCount("buffTrackerShowingWrites")
     end
 end
 
@@ -39,7 +61,14 @@ function BuffTrackerLayout.ApplyContainerScale(tracker)
         ownerScale = tonumber(WindowGetScale(tracker.m_ownerName)) or 1.0
     end
 
-    WindowSetScale(tracker.m_containerName, ownerScale * (tracker.m_relativeScale or 1.0))
+    local desiredScale = ownerScale * (tracker.m_relativeScale or 1.0)
+    if ScalesEqual(tracker.m_lastAppliedScale, desiredScale) then
+        return
+    end
+
+    WindowSetScale(tracker.m_containerName, desiredScale)
+    tracker.m_lastAppliedScale = desiredScale
+    CustomUI.PerfCount("buffTrackerScaleWrites")
 end
 
 function BuffTrackerLayout.ApplyContainerHitArea(tracker)

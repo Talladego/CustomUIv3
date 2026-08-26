@@ -74,6 +74,12 @@ function OutsiderTracker.UntrackWid(state, wid)
     state.trackWidToSlot[wid] = nil
     state.trackMeta[wid] = nil
     state.slotOccupantWid[idx] = nil
+    if state.outsiderDeadWids then
+        state.outsiderDeadWids[wid] = nil
+    end
+    if state.deadMotionByWid then
+        state.deadMotionByWid[wid] = nil
+    end
 
     local icon = state.outsiderPool[idx]
     if icon then
@@ -124,6 +130,12 @@ function OutsiderTracker.TryTrack(state, wid, playerName, career, opts)
         if icon then
             icon:Enable()
             icon:Update(playerName, wid, career, false, realmRing, nil, useLeaderScale, showGroupLeaderCrown)
+            if type(icon.RebindWorldObject) == "function" then
+                icon:RebindWorldObject()
+            end
+            if type(opts.applyOverlays) == "function" then
+                opts.applyOverlays(icon)
+            end
         end
         state.trackMeta[wid] = { name = playerName, isFriendly = isFriendly }
         return true
@@ -163,6 +175,9 @@ function OutsiderTracker.TryTrack(state, wid, playerName, career, opts)
     if icon then
         icon:Enable()
         icon:Update(playerName, wid, career, false, realmRing, nil, useLeaderScale, showGroupLeaderCrown)
+        if type(opts.applyOverlays) == "function" then
+            opts.applyOverlays(icon)
+        end
     end
     return true
 end

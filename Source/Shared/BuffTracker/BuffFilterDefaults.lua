@@ -73,3 +73,58 @@ function CustomUI.BuffTracker.ApplyPairedFilters(settingsTable, hostileTracker, 
         friendlyTracker:SetFilter(settingsTable and settingsTable.buffsFriendly)
     end
 end
+
+function CustomUI.BuffTracker.EnsureFilterTable(filterTable)
+    local v = filterTable or {}
+    local keys = CustomUI.BuffTracker.FilterSettingKeys
+    local defs = CustomUI.BuffTracker.FilterDefaults
+    for _, key in ipairs(keys) do
+        if v[key] == nil then
+            v[key] = defs[key]
+        end
+    end
+    return v
+end
+
+CustomUI.BuffTracker.TargetHUDSideDefaults = {
+    showHealthBar   = true,
+    showBuffTracker = true,
+}
+
+function CustomUI.BuffTracker.EnsureTargetHUDSideSettings(sideTable, legacyBuffs)
+    local side = sideTable or {}
+    local sideDefs = CustomUI.BuffTracker.TargetHUDSideDefaults
+    if side.showHealthBar == nil then
+        side.showHealthBar = sideDefs.showHealthBar
+    end
+    if side.showBuffTracker == nil then
+        side.showBuffTracker = sideDefs.showBuffTracker
+    end
+    if legacyBuffs ~= nil then
+        side.buffs = side.buffs or legacyBuffs
+    end
+    side.buffs = CustomUI.BuffTracker.EnsureFilterTable(side.buffs)
+    return side
+end
+
+-- TargetHUD settings: hostile / friendly / self side blocks with per-side HP + buff toggles.
+function CustomUI.BuffTracker.EnsureTargetHUDSettings(settingsTable)
+    local v = settingsTable or {}
+    local paired = CustomUI.BuffTracker.EnsurePairedFilterSettings(v)
+
+    v.hostile = CustomUI.BuffTracker.EnsureTargetHUDSideSettings(
+        v.hostile,
+        paired.buffsHostile
+    )
+    v.friendly = CustomUI.BuffTracker.EnsureTargetHUDSideSettings(
+        v.friendly,
+        paired.buffsFriendly
+    )
+    v.self = CustomUI.BuffTracker.EnsureTargetHUDSideSettings(v.self, nil)
+
+    v.buffsHostile = nil
+    v.buffsFriendly = nil
+    v.buffs = nil
+
+    return v
+end

@@ -18,11 +18,28 @@ local Roster = CustomUI.GroupIcons.Roster
 local c_MAX_PARTIES = 6
 local c_MAX_MEMBERS = 6
 
+--- Do not call this on the attach path. Setting partyDirty/warbandDirty forces
+--- GetGroupData()/GetBattlegroupMemberData() and wipes worldObjNum that GroupWindow
+--- already merged via GetAndClear*DirtyFlag (Enemy.Groups never invalidates).
 function Roster.InvalidatePartyAndWarbandCaches()
     if GameData and GameData.Party then
         GameData.Party.partyDirty = true
         GameData.Party.warbandDirty = true
     end
+end
+
+--- Prefer PartyUtils.GetWarbandData() so GetWarbandMember status hydrates stay intact.
+function Roster.GetWarbandParties(partiesOverride)
+    if partiesOverride ~= nil then
+        return partiesOverride
+    end
+    if type(PartyUtils) == "table" and type(PartyUtils.GetWarbandData) == "function" then
+        return PartyUtils.GetWarbandData()
+    end
+    if type(GetBattlegroupMemberData) == "function" then
+        return GetBattlegroupMemberData()
+    end
+    return nil
 end
 
 function Roster.ClearGroupMembershipCache(state)
@@ -57,30 +74,25 @@ local function RememberStickyRosterWid(state, nameW, wid, opts)
     end
 end
 
+--- Live attach id for a roster row. Distant, offline, or no world object ⇒ 0 (icon must hide, not stick).
+function Roster.LiveAttachWorldId(member)
+    if not member then
+        return 0
+    end
+    if member.isDistant == true or member.online == false then
+        return 0
+    end
+    return tonumber(member.worldObjNum) or 0
+end
+
 function Roster.ResolveAttachWorldId(state, nameW, liveWidFromData, opts)
     local w = tonumber(liveWidFromData) or 0
     if w ~= 0 then
         RememberStickyRosterWid(state, nameW, w, opts)
         return w
     end
-
-    local key = opts.normalizeNameKey(nameW)
-    if key == nil then
-        return 0
-    end
-
-    local known = state.knownByNameKey[key]
-    local knownWid = known and tonumber(known.wid) or 0
-    if knownWid ~= 0 then
-        RememberStickyRosterWid(state, nameW, knownWid, opts)
-        return knownWid
-    end
-
-    local stickyWid = tonumber(state.stickyRosterWidByKey[key]) or 0
-    if stickyWid ~= 0 then
-        return stickyWid
-    end
-
+    -- No known/sticky fallback: a 0 live id means out of range or not streamed.
+    -- Attaching the last entity id leaves a static (or recycled) icon on screen.
     return 0
 end
 
@@ -187,8 +199,18 @@ local function GetPartySlotMember(memberIndex, fallbackData)
     return nil
 end
 
+local function HydrateMember(opts, partyIndex, memberIndex, member)
+    if member == nil or type(opts) ~= "table" or type(opts.hydrateMember) ~= "function" then
+        return member
+    end
+    local hydrated = opts.hydrateMember(partyIndex, memberIndex, member)
+    if hydrated ~= nil then
+        return hydrated
+    end
+    return member
+end
+
 function Roster.RegisterAllForPruning(state, opts)
-    Roster.InvalidatePartyAndWarbandCaches()
     Roster.ClearGroupMembershipCache(state)
 
     local data = nil
@@ -200,9 +222,9 @@ function Roster.RegisterAllForPruning(state, opts)
     end
     if type(data) == "table" then
         for m = 1, c_MAX_MEMBERS do
-            local member = GetPartySlotMember(m, data)
+            local member = HydrateMember(opts, 1, m, GetPartySlotMember(m, data))
             if member and member.name then
-                local liveWid = tonumber(member.worldObjNum) or 0
+                local liveWid = Roster.LiveAttachWorldId(member)
                 local wid = Roster.ResolveAttachWorldId(state, member.name, liveWid, opts)
                 Roster.RegisterGroupMember(state, { name = member.name, worldObjNum = (wid ~= 0 and wid) or nil }, opts)
             end
@@ -210,7 +232,7 @@ function Roster.RegisterAllForPruning(state, opts)
     end
 
     if opts.isWarBandActive() then
-        local parties = GetBattlegroupMemberData()
+        local parties = Roster.GetWarbandParties(nil)
         if type(parties) == "table" then
             for p = 1, c_MAX_PARTIES do
                 local party = parties[p]
@@ -222,8 +244,9 @@ function Roster.RegisterAllForPruning(state, opts)
                             member = hydrated
                         end
                     end
+                    member = HydrateMember(opts, p, m, member)
                     if member and member.name then
-                        local liveWid = tonumber(member.worldObjNum) or 0
+                        local liveWid = Roster.LiveAttachWorldId(member)
                         local wid = Roster.ResolveAttachWorldId(state, member.name, liveWid, opts)
                         Roster.RegisterGroupMember(state, { name = member.name, worldObjNum = (wid ~= 0 and wid) or nil }, opts)
                     end
@@ -234,7 +257,6 @@ function Roster.RegisterAllForPruning(state, opts)
 end
 
 function Roster.RefreshParty(state, opts)
-    Roster.InvalidatePartyAndWarbandCaches()
     local data = nil
     if type(PartyUtils) == "table" and type(PartyUtils.GetPartyData) == "function" then
         data = PartyUtils.GetPartyData()
@@ -250,7 +272,7 @@ function Roster.RefreshParty(state, opts)
     local attachable = 0
     local validStickyKeys = {}
     for m = 1, c_MAX_MEMBERS do
-        local member = GetPartySlotMember(m, data)
+        local member = HydrateMember(opts, 1, m, GetPartySlotMember(m, data))
         local icon = state.icons[1][m]
         local memberName = member and opts.toWString(member.name)
         local socialOnly = member ~= nil
@@ -262,13 +284,16 @@ function Roster.RefreshParty(state, opts)
             if nk ~= nil then
                 validStickyKeys[nk] = true
             end
-            local liveWid = tonumber(member.worldObjNum) or 0
+            local liveWid = Roster.LiveAttachWorldId(member)
             local wid = Roster.ResolveAttachWorldId(state, member.name, liveWid, opts)
             Roster.RegisterGroupMember(state, { name = member.name, worldObjNum = (wid ~= 0 and wid) or nil }, opts)
             if wid ~= 0 and not opts.isSelfMember(memberName) then
                 attachable = attachable + 1
                 icon:Enable()
                 icon:Update(memberName, wid, member.careerLine, member.isGroupLeader == true, false)
+                if type(opts.applyRosterOverlays) == "function" then
+                    opts.applyRosterOverlays(icon, member)
+                end
             else
                 icon:Disable()
             end
@@ -291,8 +316,7 @@ function Roster.RefreshParty(state, opts)
 end
 
 function Roster.RefreshWarband(state, showAll, showParty1, partiesOverride, opts)
-    Roster.InvalidatePartyAndWarbandCaches()
-    local parties = partiesOverride or GetBattlegroupMemberData()
+    local parties = Roster.GetWarbandParties(partiesOverride)
     if not parties then
         return
     end
@@ -315,6 +339,7 @@ function Roster.RefreshWarband(state, showAll, showParty1, partiesOverride, opts
                     member = hydrated
                 end
             end
+            member = HydrateMember(opts, p, m, member)
             local icon = state.icons[p][m]
             local shouldShow = showAll or (showParty1 and p == 1)
             local memberName = member and opts.toWString(member.name)
@@ -327,12 +352,15 @@ function Roster.RefreshWarband(state, showAll, showParty1, partiesOverride, opts
                 if nk ~= nil then
                     validStickyKeys[nk] = true
                 end
-                local liveWid = tonumber(member.worldObjNum) or 0
+                local liveWid = Roster.LiveAttachWorldId(member)
                 local wid = Roster.ResolveAttachWorldId(state, member.name, liveWid, opts)
                 Roster.RegisterGroupMember(state, { name = member.name, worldObjNum = (wid ~= 0 and wid) or nil }, opts)
                 if wid ~= 0 and not opts.isSelfMember(memberName) then
                     icon:Enable()
                     icon:Update(memberName, wid, member.careerLine, member.isGroupLeader == true, false)
+                    if type(opts.applyRosterOverlays) == "function" then
+                        opts.applyRosterOverlays(icon, member)
+                    end
                 else
                     icon:Disable()
                 end

@@ -2,6 +2,11 @@ CustomUISettingsWindowTabTarget = {}
 
 CustomUISettingsWindowTabTarget.contentsName = "SWTabTargetContentsScrollChild"
 
+local BADGE_CHECKBOX_KEYS = {
+    BadgesCareer = "career",
+    BadgesRank   = "rank",
+}
+
 local function InitBuffTrackerSection(prefix)
     LabelSetText(prefix .. "CategoryLabel", L"Category")
     LabelSetText(prefix .. "BuffsLabel", L"Buffs")
@@ -47,6 +52,13 @@ function CustomUISettingsWindowTabTarget.Initialize()
     LabelSetText(CustomUISettingsWindowTabTarget.contentsName .. "GeneralTargetWindowEnabledLabel", L"Enabled")
     ButtonSetCheckButtonFlag(CustomUISettingsWindowTabTarget.contentsName .. "GeneralTargetWindowEnabledButton", true)
 
+    local badges = CustomUISettingsWindowTabTarget.contentsName .. "Badges"
+    LabelSetText(badges .. "Title", L"Badges")
+    LabelSetText(badges .. "CareerLabel", L"Career Badge")
+    ButtonSetCheckButtonFlag(badges .. "CareerButton", true)
+    LabelSetText(badges .. "RankLabel", L"Rank Badge")
+    ButtonSetCheckButtonFlag(badges .. "RankButton", true)
+
     local btH = CustomUISettingsWindowTabTarget.contentsName .. "BuffTrackerHostile"
     local btF = CustomUISettingsWindowTabTarget.contentsName .. "BuffTrackerFriendly"
     LabelSetText(btH .. "Title", L"Buff Tracker - Hostile target")
@@ -57,6 +69,11 @@ end
 
 function CustomUISettingsWindowTabTarget.UpdateSettings()
     ButtonSetPressedFlag(CustomUISettingsWindowTabTarget.contentsName .. "GeneralTargetWindowEnabledButton", CustomUI.IsComponentEnabled("TargetWindow"))
+
+    local badgeCfg = CustomUI.TargetWindow.GetSettings().badges
+    local badges = CustomUISettingsWindowTabTarget.contentsName .. "Badges"
+    ButtonSetPressedFlag(badges .. "CareerButton", badgeCfg.career ~= false)
+    ButtonSetPressedFlag(badges .. "RankButton", badgeCfg.rank ~= false)
 
     local btH = CustomUISettingsWindowTabTarget.contentsName .. "BuffTrackerHostile"
     local btF = CustomUISettingsWindowTabTarget.contentsName .. "BuffTrackerFriendly"
@@ -74,6 +91,15 @@ function CustomUISettingsWindowTabTarget.ApplyCurrent()
         CustomUI.DisableComponent("TargetWindow")
     end
 
+    local prefix = CustomUISettingsWindowTabTarget.contentsName
+    local badgeCfg = CustomUI.TargetWindow.GetSettings().badges
+    for suffix, key in pairs(BADGE_CHECKBOX_KEYS) do
+        badgeCfg[key] = ButtonGetPressedFlag(prefix .. suffix .. "Button") == true
+    end
+    if type(CustomUI.TargetWindow.ApplyBadgeSettings) == "function" then
+        CustomUI.TargetWindow.ApplyBadgeSettings()
+    end
+
     local btH = CustomUISettingsWindowTabTarget.contentsName .. "BuffTrackerHostile"
     local btF = CustomUISettingsWindowTabTarget.contentsName .. "BuffTrackerFriendly"
     ReadBuffButtonsToCfg(btH, CustomUI.TargetWindow.GetBuffFilterHostile())
@@ -85,6 +111,10 @@ function CustomUISettingsWindowTabTarget.ResetSettings()
 end
 
 function CustomUISettingsWindowTabTarget.OnBuffFilterChanged()
+    EA_LabelCheckButton.Toggle()
+end
+
+function CustomUISettingsWindowTabTarget.OnToggleBadge()
     EA_LabelCheckButton.Toggle()
 end
 

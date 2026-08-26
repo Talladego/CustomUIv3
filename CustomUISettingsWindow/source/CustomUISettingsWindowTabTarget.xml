@@ -94,18 +94,72 @@
                         </Window>
 						<!-- end General -->
 
-                        <!-- Buff Tracker — Hostile target -->
-                        <Window name="$parentBuffTrackerHostile" >
+                        <!-- Badges -->
+                        <Window name="$parentBadges" >
                             <Size>
-                                <AbsPoint x="500" y="240" />
+                                <AbsPoint x="500" y="90" />
                             </Size>
-                            <!-- README Pattern A: do not use relativeTo="$parentGeneral" — sibling anchors are unreliable. -->
+                            <!-- README Pattern A: y = General(100) + gap(10). -->
                             <Anchors>
                                 <Anchor point="topleft" relativePoint="topleft">
                                     <AbsPoint x="0" y="110" />
                                 </Anchor>
                                 <Anchor point="topright" relativePoint="topright">
                                     <AbsPoint x="0" y="110" />
+                                </Anchor>
+                            </Anchors>
+                            <Windows>
+                                <FullResizeImage name="$parentBackground" inherits="SettingsSectionBackground" />
+                                <Label name="$parentTitle" inherits="EA_Settings_SectionTitle">
+                                    <Size>
+                                        <AbsPoint x="400" y="25" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="10" y="10" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+
+                                <Window name="$parentCareer" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="40" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabTarget.OnToggleBadge" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Window name="$parentRank" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="$parentCareer">
+                                            <AbsPoint x="0" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabTarget.OnToggleBadge" />
+                                    </EventHandlers>
+                                </Window>
+                            </Windows>
+                        </Window>
+                        <!-- end Badges -->
+
+                        <!-- Buff Tracker — Hostile target -->
+                        <Window name="$parentBuffTrackerHostile" >
+                            <Size>
+                                <AbsPoint x="500" y="240" />
+                            </Size>
+                            <!-- README Pattern A: y = General(100) + gap(10) + Badges(90) + gap(10) = 210. -->
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft">
+                                    <AbsPoint x="0" y="210" />
+                                </Anchor>
+                                <Anchor point="topright" relativePoint="topright">
+                                    <AbsPoint x="0" y="210" />
                                 </Anchor>
                             </Anchors>
                             <Windows>
@@ -256,13 +310,13 @@
                             <Size>
                                 <AbsPoint x="500" y="240" />
                             </Size>
-                            <!-- y = General(100) + gap(10) + Hostile(240) + gap(10). README Pattern A — no sibling relativeTo. -->
+                            <!-- y = General(100) + gap(10) + Badges(90) + gap(10) + Hostile(240) + gap(10) = 460. README Pattern A — no sibling relativeTo. -->
                             <Anchors>
                                 <Anchor point="topleft" relativePoint="topleft">
-                                    <AbsPoint x="0" y="360" />
+                                    <AbsPoint x="0" y="460" />
                                 </Anchor>
                                 <Anchor point="topright" relativePoint="topright">
-                                    <AbsPoint x="0" y="360" />
+                                    <AbsPoint x="0" y="460" />
                                 </Anchor>
                             </Anchors>
                             <Windows>

@@ -90,7 +90,7 @@
                         <!-- Display (Pattern A: y = General 100 + gap 10) -->
                         <Window name="$parentDisplay" >
                             <Size>
-                                <AbsPoint x="500" y="300" />
+                                <AbsPoint x="500" y="268" />
                             </Size>
                             <Anchors>
                                 <Anchor point="topleft" relativePoint="topleft">
@@ -185,7 +185,7 @@
                                     </EventHandlers>
                                 </SliderBar>
 
-                                <Window name="$parentCareerIcons" inherits="EA_LabelCheckButton">
+                                <Window name="$parentKillMessages" inherits="EA_LabelCheckButton">
                                     <Anchors>
                                         <Anchor point="topleft" relativePoint="topleft">
                                             <AbsPoint x="45" y="151" />
@@ -193,26 +193,14 @@
                                     </Anchors>
                                     <EventHandlers>
                                         <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
-                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabKillTracker.OnToggleCareerIcons" />
-                                    </EventHandlers>
-                                </Window>
-
-                                <Window name="$parentAbilityIcons" inherits="EA_LabelCheckButton">
-                                    <Anchors>
-                                        <Anchor point="topleft" relativePoint="topleft">
-                                            <AbsPoint x="45" y="183" />
-                                        </Anchor>
-                                    </Anchors>
-                                    <EventHandlers>
-                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
-                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabKillTracker.OnToggleAbilityIcons" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabKillTracker.OnToggleKillMessages" />
                                     </EventHandlers>
                                 </Window>
 
                                 <Window name="$parentKillCount" inherits="EA_LabelCheckButton">
                                     <Anchors>
                                         <Anchor point="topleft" relativePoint="topleft">
-                                            <AbsPoint x="45" y="215" />
+                                            <AbsPoint x="45" y="183" />
                                         </Anchor>
                                     </Anchors>
                                     <EventHandlers>
@@ -224,7 +212,7 @@
                                 <Window name="$parentZone" inherits="EA_LabelCheckButton">
                                     <Anchors>
                                         <Anchor point="topleft" relativePoint="topleft">
-                                            <AbsPoint x="45" y="247" />
+                                            <AbsPoint x="45" y="215" />
                                         </Anchor>
                                     </Anchors>
                                     <EventHandlers>

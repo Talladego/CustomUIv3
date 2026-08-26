@@ -1,8 +1,8 @@
 ----------------------------------------------------------------
 -- CustomUI.KillTracker.Format — shared enriched kill line + row model
 --
--- Compact chat format:
---   [careerIcon]<Killer>[killCount] killed [careerIcon]<Victim>[deathCount] with [abilityIcon]<Ability>[ in Zone]
+-- Compact format:
+--   <Killer>[killCount] killed <Victim>[killCount] with <Ability>[ in Zone]
 --
 -- Zone suffix only for open-world RvR (not scenario / city siege).
 -- Colors: white filter base; player names realm LINK (Order blue / Destruction red);
@@ -58,6 +58,14 @@ function Format.GetRealmColors(filterType)
 	return c_ORDER_RGB, c_DESTRO_RGB
 end
 
+function Format.GetOrderRgb()
+	return c_ORDER_RGB
+end
+
+function Format.GetDestroRgb()
+	return c_DESTRO_RGB
+end
+
 local function LinkText(text, rgb)
 	local plain = tostring(towstring(text or L""))
 	plain = string.gsub(plain, "\"", "")
@@ -74,35 +82,6 @@ local function LinkText(text, rgb)
 	return towstring(colored)
 end
 
-local function FormatIconMarkup(iconId)
-	iconId = tonumber(iconId)
-	if not iconId or iconId <= 0 then
-		return L""
-	end
-	return towstring(string.format("<icon%05d>", iconId))
-end
-
-local function CareerIconMarkup(name, settings)
-	if settings.showCareerIcons == false then
-		return L""
-	end
-	local CareerCache = CustomUI.KillTracker.CareerCache
-	local iconId = CareerCache and CareerCache.GetCareerIconId(name)
-	return FormatIconMarkup(iconId)
-end
-
-local function AbilityIconMarkup(abilityName, killerName, settings)
-	if settings.showAbilityIcons == false then
-		return L""
-	end
-	if abilityName == nil or abilityName == L"" then
-		return L""
-	end
-	local AbilityMap = CustomUI.KillTracker.AbilityMap
-	local iconNum = AbilityMap and AbilityMap.GetIconNum(abilityName, killerName)
-	return FormatIconMarkup(iconNum)
-end
-
 local function CountBracket(count, enabled)
 	if enabled == false then
 		return L""
@@ -111,7 +90,7 @@ local function CountBracket(count, enabled)
 	if count <= 0 then
 		return L""
 	end
-	return LinkText(L"[" .. towstring(count) .. L"]", c_COUNT_RGB)
+	return L"[" .. towstring(count) .. L"]"
 end
 
 local function ResolveZoneLabel(parsed)
@@ -192,12 +171,22 @@ function Format.GetLocalZoneName()
 	if Format._cachedAreaW ~= nil and Format._cachedAreaW ~= L"" then
 		return Format._cachedAreaW
 	end
+	return Format.GetMapZoneName()
+end
+
+--- Map zone only (not sub-area). Used by the zone score footer.
+function Format.GetMapZoneName()
 	local p = GameData and GameData.Player
-	if p and p.zone ~= nil and type(GetZoneName) == "function" then
-		local zoneName = FixString(GetZoneName(p.zone))
-		if zoneName ~= L"" then
-			return zoneName
-		end
+	if not p then
+		return L""
+	end
+	local zoneId = tonumber(p.zone) or 0
+	if zoneId < 1 or type(GetZoneName) ~= "function" then
+		return L""
+	end
+	local zoneName = FixString(GetZoneName(zoneId))
+	if zoneName ~= L"" then
+		return zoneName
 	end
 	return L""
 end
@@ -278,27 +267,24 @@ local function ShouldShowZone(settings)
 end
 
 --- Build display model + chat wstring.
---- Format: [career]<Killer>[kills] killed [career]<Victim>[deaths] with [ability]<Ability>[ in Zone]
-function Format.Build(parsed, filterType, killCount, deathCount, settings)
+--- Format: <Killer>[kills] killed <Victim>[kills] with <Ability>[ in Zone]
+--- Both brackets are session kill tallies (victim is not death count).
+function Format.Build(parsed, filterType, killerKills, victimKills, settings)
 	settings = settings or {}
 	local killerRgb, victimRgb = Format.GetRealmColors(filterType)
-
-	local killerIcon = CareerIconMarkup(parsed.killer, settings)
-	local victimIcon = CareerIconMarkup(parsed.victim, settings)
-	local abilityIcon = AbilityIconMarkup(parsed.ability, parsed.killer, settings)
 
 	local killerLink = LinkText(parsed.killer, killerRgb)
 	local victimLink = LinkText(parsed.victim, victimRgb)
 
-	local killBracket = CountBracket(killCount, settings.showKillCount)
-	local deathBracket = CountBracket(deathCount, settings.showKillCount)
+	local killerBracket = CountBracket(killerKills, settings.showKillCount)
+	local victimBracket = CountBracket(victimKills, settings.showKillCount)
 
-	local line = killerIcon .. killerLink .. killBracket
+	local line = killerLink .. killerBracket
 		.. L" killed "
-		.. victimIcon .. victimLink .. deathBracket
+		.. victimLink .. victimBracket
 
 	if parsed.ability and parsed.ability ~= L"" then
-		line = line .. L" with " .. abilityIcon .. LinkText(parsed.ability, c_ABILITY_RGB)
+		line = line .. L" with " .. LinkText(parsed.ability, c_ABILITY_RGB)
 	end
 
 	local zone = L""
@@ -322,13 +308,10 @@ function Format.Build(parsed, filterType, killCount, deathCount, settings)
 		ability = parsed.ability,
 		zone = zone,
 		streak = parsed.streak,
-		killCount = killCount or 0,
-		deathCount = deathCount or 0,
+		killCount = killerKills or 0,
+		victimKillCount = victimKills or 0,
 		killerRgb = killerRgb,
 		victimRgb = victimRgb,
-		victimCareerIcon = CustomUI.KillTracker.CareerCache.GetCareerIconId(parsed.victim),
-		killerCareerIcon = CustomUI.KillTracker.CareerCache.GetCareerIconId(parsed.killer),
-		abilityIconNum = CustomUI.KillTracker.AbilityMap.GetIconNum(parsed.ability, parsed.killer),
 		filterType = filterType,
 	}
 end

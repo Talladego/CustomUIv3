@@ -290,6 +290,22 @@ function TP.InjectCacheIfHeld(unitId)
     return true
 end
 
+--- Whether TargetInfo currently has a named target (no transient hold).
+function TP.HasLiveTarget(unitId)
+    if not IsKnownUnitId(unitId) then
+        return false
+    end
+    return CacheLooksPresent(unitId)
+end
+
+--- Live entity id from TargetInfo only; 0 when deselected or unnamed.
+function TP.GetLiveEntityId(unitId)
+    if not TP.HasLiveTarget(unitId) then
+        return 0
+    end
+    return ReadCacheEntityId(unitId)
+end
+
 --- Whether the UI should treat this slot as having a target.
 function TP.ShouldShow(unitId)
     local slot = GetSlot(unitId)

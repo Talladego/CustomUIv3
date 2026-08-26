@@ -64,6 +64,9 @@ local prevHitpointLevel       = 1
 local m_handlersRegistered    = false
 local m_stockPlayerUnhooked   = false
 local m_stockReplaceTracked   = {} -- PlayerWindow: true if we hid, false if already user-hidden
+-- Set-bonus point grants can land a tick after PLAYER_EQUIPMENT_SLOT_UPDATED.
+local m_nagRefreshRemaining   = 0
+local c_NAG_REFRESH_DELAY     = 0.25
 
 local function RegisterHandlers()
     if m_handlersRegistered then return end
@@ -76,7 +79,14 @@ local function RegisterHandlers()
     WindowRegisterEventHandler(w, e.PLAYER_START_RVR_FLAG_TIMER,        "CustomUI.PlayerStatusWindow.OnStartRvRFlagTimer")
     WindowRegisterEventHandler(w, e.PLAYER_RVR_FLAG_UPDATED,            "CustomUI.PlayerStatusWindow.OnRvRFlagUpdated")
     WindowRegisterEventHandler(w, e.PLAYER_CAREER_RANK_UPDATED,         "CustomUI.PlayerStatusWindow.UpdateCareerRank")
+    WindowRegisterEventHandler(w, e.PLAYER_RENOWN_RANK_UPDATED,         "CustomUI.PlayerStatusWindow.UpdateRenownRank")
     WindowRegisterEventHandler(w, e.PLAYER_CAREER_CATEGORY_UPDATED,     "CustomUI.PlayerStatusWindow.UpdateAdvancementNag")
+    WindowRegisterEventHandler(w, e.PLAYER_ADVANCE_ALERT,               "CustomUI.PlayerStatusWindow.UpdateAdvancementNag")
+    WindowRegisterEventHandler(w, e.PLAYER_SINGLE_ABILITY_UPDATED,      "CustomUI.PlayerStatusWindow.UpdateAdvancementNag")
+    WindowRegisterEventHandler(w, e.PLAYER_ABILITIES_LIST_UPDATED,      "CustomUI.PlayerStatusWindow.UpdateAdvancementNag")
+    WindowRegisterEventHandler(w, e.PLAYER_SKILLS_UPDATED,              "CustomUI.PlayerStatusWindow.UpdateAdvancementNag")
+    WindowRegisterEventHandler(w, e.PLAYER_EQUIPMENT_SLOT_UPDATED,      "CustomUI.PlayerStatusWindow.RequestAdvancementNagRefresh")
+    WindowRegisterEventHandler(w, e.ITEM_SET_DATA_UPDATED,              "CustomUI.PlayerStatusWindow.RequestAdvancementNagRefresh")
     WindowRegisterEventHandler(w, e.PLAYER_MORALE_UPDATED,              "CustomUI.PlayerStatusWindow.OnMoraleUpdated")
     WindowRegisterEventHandler(w, e.PLAYER_EFFECTS_UPDATED,             "CustomUI.PlayerStatusWindow.OnEffectsUpdated")
     WindowRegisterEventHandler(w, e.PLAYER_AGRO_MODE_UPDATED,           "CustomUI.PlayerStatusWindow.OnAgroModeUpdated")
@@ -84,7 +94,6 @@ local function RegisterHandlers()
     WindowRegisterEventHandler(w, e.PLAYER_HEALTH_FADE_UPDATED,         "CustomUI.PlayerStatusWindow.UpdateBasedOnUserSettings")
     WindowRegisterEventHandler(w, e.PLAYER_GROUP_LEADER_STATUS_UPDATED, "CustomUI.PlayerStatusWindow.UpdateCrown")
     WindowRegisterEventHandler(w, e.GROUP_UPDATED,                      "CustomUI.PlayerStatusWindow.UpdateCrown")
-    WindowRegisterEventHandler(w, e.PLAYER_MAIN_ASSIST_UPDATED,         "CustomUI.PlayerStatusWindow.UpdateMainAssist")
     WindowRegisterEventHandler(w, e.PLAYER_BATTLE_LEVEL_UPDATED,        "CustomUI.PlayerStatusWindow.UpdatePlayerLevel")
     WindowRegisterEventHandler(w, e.ADVANCED_WAR_RELIC_UPDATE,          "CustomUI.PlayerStatusWindow.UpdateRelicBonuses")
     WindowRegisterEventHandler(w, e.LOADING_END,                        "CustomUI.PlayerStatusWindow.UpdatePlayer")
@@ -104,7 +113,14 @@ local function UnregisterHandlers()
     WindowUnregisterEventHandler(w, e.PLAYER_START_RVR_FLAG_TIMER)
     WindowUnregisterEventHandler(w, e.PLAYER_RVR_FLAG_UPDATED)
     WindowUnregisterEventHandler(w, e.PLAYER_CAREER_RANK_UPDATED)
+    WindowUnregisterEventHandler(w, e.PLAYER_RENOWN_RANK_UPDATED)
     WindowUnregisterEventHandler(w, e.PLAYER_CAREER_CATEGORY_UPDATED)
+    WindowUnregisterEventHandler(w, e.PLAYER_ADVANCE_ALERT)
+    WindowUnregisterEventHandler(w, e.PLAYER_SINGLE_ABILITY_UPDATED)
+    WindowUnregisterEventHandler(w, e.PLAYER_ABILITIES_LIST_UPDATED)
+    WindowUnregisterEventHandler(w, e.PLAYER_SKILLS_UPDATED)
+    WindowUnregisterEventHandler(w, e.PLAYER_EQUIPMENT_SLOT_UPDATED)
+    WindowUnregisterEventHandler(w, e.ITEM_SET_DATA_UPDATED)
     WindowUnregisterEventHandler(w, e.PLAYER_MORALE_UPDATED)
     WindowUnregisterEventHandler(w, e.PLAYER_EFFECTS_UPDATED)
     WindowUnregisterEventHandler(w, e.PLAYER_AGRO_MODE_UPDATED)
@@ -112,7 +128,6 @@ local function UnregisterHandlers()
     WindowUnregisterEventHandler(w, e.PLAYER_HEALTH_FADE_UPDATED)
     WindowUnregisterEventHandler(w, e.PLAYER_GROUP_LEADER_STATUS_UPDATED)
     WindowUnregisterEventHandler(w, e.GROUP_UPDATED)
-    WindowUnregisterEventHandler(w, e.PLAYER_MAIN_ASSIST_UPDATED)
     WindowUnregisterEventHandler(w, e.PLAYER_BATTLE_LEVEL_UPDATED)
     WindowUnregisterEventHandler(w, e.ADVANCED_WAR_RELIC_UPDATE)
     WindowUnregisterEventHandler(w, e.LOADING_END)
@@ -193,43 +208,58 @@ local MoraleLevelSliceMap = {
 local c_MAX_BUFF_SLOTS = 20
 local c_BUFF_STRIDE    = 5
 local c_CAREER_ICON_WINDOW = "CustomUIPlayerStatusWindowCareerIcon"
+local c_CAREER_ICON_BACKGROUND_WINDOW = "CustomUIPlayerStatusWindowCareerIconBackground"
+local c_PORTRAIT_FRAME_WINDOW = "CustomUIPlayerStatusWindowPortraitFrame"
+local c_RENOWN_RANK_BACKGROUND_WINDOW = "CustomUIPlayerStatusWindowRenownRankBackground"
+local c_RENOWN_RANK_TEXT_WINDOW = "CustomUIPlayerStatusWindowRenownRankText"
+local c_INFLUENCE_BADGE_BACKGROUND_WINDOW = "CustomUIPlayerStatusWindowInfluenceBadgeBackground"
+local c_INFLUENCE_BADGE_TEXT_WINDOW = "CustomUIPlayerStatusWindowInfluenceBadgeText"
+local c_RANK_NAG_WINDOW = "CustomUIPlayerStatusWindowAdvancementIndicator"
+local c_RENOWN_NAG_WINDOW = "CustomUIPlayerStatusWindowRenownIndicator"
+local c_INFLUENCE_NAG_WINDOW = "CustomUIPlayerStatusWindowInfluenceIndicator"
 local c_GROUP_LEADER_CROWN_WINDOW = "CustomUIPlayerStatusWindowGroupLeaderCrown"
 local c_WARBAND_LEADER_CROWN_WINDOW = "CustomUIPlayerStatusWindowWarbandLeaderCrown"
 local c_PS_ROOT = "CustomUIPlayerStatusWindow"
 
--- Crown atlas/size parity with GroupIconsController WarbandCrown (EA_HUD_01 @ 162,138).
-local c_GI_CROWN_TEX_W = 25
-local c_GI_CROWN_TEX_H = 16
-local c_GI_CROWN_TEXTURE = "EA_HUD_01"
-local c_GI_CROWN_TEX_X = 162
-local c_GI_CROWN_TEX_Y = 138
--- Keep in sync with GroupIconsController c_CROWN_ANCHOR_OPTICAL_OFFSET_X (atlas vs geometric center).
-local c_GI_CROWN_ANCHOR_OPTICAL_OFFSET_X = -2
-local c_GI_CROWN_ANCHOR_TOUCH_OFFSET_Y = 5 -- sync GroupIconsController c_CROWN_ANCHOR_TOUCH_OFFSET_Y
+-- GroupMemberUnitFrame / GroupWindow: gold Warband-Leader-Crown slice on party leader too.
+local c_LEADER_CROWN_GOLD_SLICE = "Warband-Leader-Crown"
+
+local m_leaderCrownGoldApplied = false
 
 ----------------------------------------------------------------
 -- Local / Utility Functions
 ----------------------------------------------------------------
 
---- README §Notes: arg2 Point on target, arg4 RelativePoint on anchored window → crown sits above icon.
-local function LayoutPlayerStatusLeaderCrownsLikeGroupIcons()
-    local iconWin = c_CAREER_ICON_WINDOW
-    if not DoesWindowExist(iconWin) then
+local function EnsurePlayerStatusLeaderCrownsGold()
+    if m_leaderCrownGoldApplied == true then
         return
     end
+    if type(DynamicImageSetTextureSlice) ~= "function" then
+        return
+    end
+    for _, crownWin in ipairs({ c_GROUP_LEADER_CROWN_WINDOW, c_WARBAND_LEADER_CROWN_WINDOW }) do
+        if DoesWindowExist(crownWin) then
+            DynamicImageSetTextureSlice(crownWin, c_LEADER_CROWN_GOLD_SLICE)
+        end
+    end
+    m_leaderCrownGoldApplied = true
+end
+
+--- Pin leader crowns to portrait top center (PortraitCareerBadge axis).
+local function LayoutPlayerStatusLeaderCrowns()
+    local portraitWin = c_PORTRAIT_FRAME_WINDOW
+    local Badge = CustomUI.PortraitCareerBadge
+    if not DoesWindowExist(portraitWin) or Badge == nil then
+        return
+    end
+
+    EnsurePlayerStatusLeaderCrownsGold()
 
     local function applyLayout(crownWin)
         if crownWin == nil or not DoesWindowExist(crownWin) then
             return
         end
-        WindowClearAnchors(crownWin)
-        WindowSetDimensions(crownWin, c_GI_CROWN_TEX_W, c_GI_CROWN_TEX_H)
-        WindowAddAnchor(crownWin, "top", iconWin, "bottom", c_GI_CROWN_ANCHOR_OPTICAL_OFFSET_X, c_GI_CROWN_ANCHOR_TOUCH_OFFSET_Y)
-        -- Match GroupIcons crown atlas exactly on warband crown; group crown keeps template UV (different art).
-        if crownWin == c_WARBAND_LEADER_CROWN_WINDOW then
-            DynamicImageSetTexture(crownWin, c_GI_CROWN_TEXTURE, c_GI_CROWN_TEX_X, c_GI_CROWN_TEX_Y)
-            DynamicImageSetTextureDimensions(crownWin, c_GI_CROWN_TEX_W, c_GI_CROWN_TEX_H)
-        end
+        Badge.LayoutTopCenter(crownWin, portraitWin, 0, Badge.CROWN_W, Badge.CROWN_H)
     end
 
     applyLayout(c_GROUP_LEADER_CROWN_WINDOW)
@@ -300,13 +330,18 @@ function CustomUI.PlayerStatusWindow.Initialize()
     LayoutEditor.UserHide( "CustomUIPlayerStatusWindow" )  -- hidden until component Enable()
 
     WindowSetShowing( "CustomUIPlayerStatusWindowMoraleMini",            false )
-    WindowSetShowing( "CustomUIPlayerStatusWindowAdvancementIndicator",  false )
-    WindowSetShowing( "CustomUIPlayerStatusWindowRenownIndicator",       false )
+    WindowSetShowing( c_RANK_NAG_WINDOW, false )
+    WindowSetShowing( c_RENOWN_NAG_WINDOW, false )
+    WindowSetShowing( c_INFLUENCE_NAG_WINDOW, false )
     WindowSetShowing( "CustomUIPlayerStatusWindowGroupLeaderCrown",      false )
     WindowSetShowing( "CustomUIPlayerStatusWindowWarbandLeaderCrown",    false )
-    WindowSetShowing( "CustomUIPlayerStatusWindowMainAssistCrown",       false )
     WindowSetShowing( "CustomUIPlayerStatusWindowDeathPortrait",         false )
     WindowSetShowing( c_CAREER_ICON_WINDOW,                               false )
+    WindowSetShowing( c_CAREER_ICON_BACKGROUND_WINDOW,                   false )
+    WindowSetShowing( c_RENOWN_RANK_BACKGROUND_WINDOW,                    false )
+    WindowSetShowing( c_RENOWN_RANK_TEXT_WINDOW,                          false )
+    WindowSetShowing( c_INFLUENCE_BADGE_BACKGROUND_WINDOW,                false )
+    WindowSetShowing( c_INFLUENCE_BADGE_TEXT_WINDOW,                      false )
     WindowSetShowing( "CustomUIPlayerStatusWindowKillingSpree",          false )
     WindowSetShowing( "CustomUIPlayerStatusWindowRelicBonus",            false )
     WindowSetShowing( "CustomUIPlayerStatusWindowStatusContainerAPText", false )
@@ -338,7 +373,6 @@ function CustomUI.PlayerStatusWindow.Initialize()
     CustomUI.PlayerStatusWindow.UpdateMaximumActionPoints()
     CustomUI.PlayerStatusWindow.OnMoraleUpdated( 0, 0 )
     CustomUI.PlayerStatusWindow.UpdateAdvancementNag()
-    CustomUI.PlayerStatusWindow.UpdateMainAssist( nil )
     CustomUI.PlayerStatusWindow.UpdateRelicBonuses()
     CustomUI.PlayerStatusWindow.ApplyAppearance()
 end
@@ -367,6 +401,14 @@ function CustomUI.PlayerStatusWindow.Update( timePassed )
             rvrFlagStartTimer = 0
         end
         LabelSetText( "CustomUIPlayerStatusWindowRvRFlagCountDown", wstring.format( L"%.0f", rvrFlagStartTimer + 0.5 ) )
+    end
+
+    if ( m_nagRefreshRemaining > 0 ) then
+        m_nagRefreshRemaining = m_nagRefreshRemaining - timePassed
+        if ( m_nagRefreshRemaining <= 0 ) then
+            m_nagRefreshRemaining = 0
+            CustomUI.PlayerStatusWindow.UpdateAdvancementNag()
+        end
     end
 
     if ( fadeOutAnimationDelay > 0 ) then
@@ -415,18 +457,58 @@ function CustomUI.PlayerStatusWindow.KillingSpreeUpdated( stage, time, bonus )
     end
 end
 
-function CustomUI.PlayerStatusWindow.UpdateAdvancementNag()
-    local showNag    = false
-    local pointsData = GameData.Player.GetAdvancePointsAvailable()
-
-    for index, pointsLeft in pairs( pointsData ) do
-        if pointsLeft > 0 then
-            showNag = true
-            break
+local function HasUnspentPointsInRange(pointsData, firstCategory, lastCategory)
+    if type(pointsData) ~= "table" then
+        return false
+    end
+    for category = firstCategory, lastCategory do
+        local pointsLeft = pointsData[category]
+        if type(pointsLeft) == "number" and pointsLeft > 0 then
+            return true
         end
     end
+    return false
+end
 
-    WindowSetShowing( "CustomUIPlayerStatusWindowAdvancementIndicator", showNag )
+-- Stock trainer (EA_Window_InteractionRenownTraining.GetPointsAvailable) reads only
+-- RENOWN_STATS_A. Categories STATS_B..RENOWN_REALM can keep stale leftovers after a spend.
+local function HasUnspentRenownPoints(pointsData)
+    if type(pointsData) ~= "table" then
+        return false
+    end
+    local cc = GameData.CareerCategory
+    local remaining = tonumber(pointsData[cc.RENOWN_STATS_A]) or 0
+    return remaining > 0
+end
+
+local function HasUnclaimedInfluenceRewards()
+    local Track = CustomUI.PortraitInfluenceTrack
+    if type(Track) ~= "table" or type(Track.GetBadgeSnapshot) ~= "function" then
+        return false
+    end
+    local snapshot = Track.GetBadgeSnapshot()
+    return type(snapshot) == "table" and snapshot.unclaimed == true
+end
+
+function CustomUI.PlayerStatusWindow.UpdateAdvancementNag()
+    local pointsData = GameData.Player.GetAdvancePointsAvailable()
+    local cc = GameData.CareerCategory
+    -- One yellow AdvancementIndicator per badge, anchored left of that badge.
+    local showRankNag = CustomUI.PlayerStatusWindow.IsBadgeEnabled("rank")
+        and HasUnspentPointsInRange(pointsData, cc.CAREER_ABILITY, cc.SPECIALIZATION)
+    local showRenownNag = CustomUI.PlayerStatusWindow.IsBadgeEnabled("renown")
+        and HasUnspentRenownPoints(pointsData)
+    local showInfluenceNag = CustomUI.PlayerStatusWindow.IsBadgeEnabled("influence")
+        and HasUnclaimedInfluenceRewards()
+
+    WindowSetShowing( c_RANK_NAG_WINDOW, showRankNag )
+    WindowSetShowing( c_RENOWN_NAG_WINDOW, showRenownNag )
+    WindowSetShowing( c_INFLUENCE_NAG_WINDOW, showInfluenceNag )
+end
+
+function CustomUI.PlayerStatusWindow.RequestAdvancementNagRefresh()
+    CustomUI.PlayerStatusWindow.UpdateAdvancementNag()
+    m_nagRefreshRemaining = c_NAG_REFRESH_DELAY
 end
 
 function CustomUI.PlayerStatusWindow.OnMoraleUpdated( moralePercent, moraleLevel )
@@ -482,57 +564,210 @@ function CustomUI.PlayerStatusWindow.UpdatePlayer()
     LabelSetText( "CustomUIPlayerStatusWindowPlayerName", GameData.Player.name )
     LabelSetTextColor( "CustomUIPlayerStatusWindowPlayerName", DefaultColor.NAME_COLOR_PLAYER.r, DefaultColor.NAME_COLOR_PLAYER.g, DefaultColor.NAME_COLOR_PLAYER.b )
     CustomUI.PlayerStatusWindow.UpdatePlayerLevel()
+    CustomUI.PlayerStatusWindow.UpdateRenownRank()
+    CustomUI.PlayerStatusWindow.UpdateInfluenceBadge()
     CustomUI.PlayerStatusWindow.UpdateCareerIcon()
     CustomUI.PlayerStatusWindow.UpdateAdvancementNag()
     CustomUI.PlayerStatusWindow.UpdateCrown()
 end
 
+local function SetCareerIconShowing(showing)
+    local Badge = CustomUI.PortraitCareerBadge
+    if Badge then
+        Badge.SetShowing(c_CAREER_ICON_WINDOW, c_CAREER_ICON_BACKGROUND_WINDOW, showing)
+    else
+        WindowSetShowing(c_CAREER_ICON_WINDOW, showing)
+        WindowSetShowing(c_CAREER_ICON_BACKGROUND_WINDOW, showing)
+    end
+end
+
 function CustomUI.PlayerStatusWindow.UpdateCareerIcon()
+    if not CustomUI.PlayerStatusWindow.IsBadgeEnabled("career") then
+        SetCareerIconShowing(false)
+        return
+    end
     if not GameData.Player then return end
     local career = GameData.Player.career or {}
-    local careerLine = tonumber( career.line )
+    local careerLine = tonumber(career.line)
+    local Badge = CustomUI.PortraitCareerBadge
 
-    if careerLine == nil then
-        WindowSetShowing( c_CAREER_ICON_WINDOW, false )
+    if Badge and Badge.LayoutAndApplyTopLeft(
+        c_CAREER_ICON_WINDOW,
+        c_CAREER_ICON_BACKGROUND_WINDOW,
+        c_PS_ROOT,
+        c_PORTRAIT_FRAME_WINDOW,
+        careerLine
+    ) then
         return
     end
 
-    local careerIconId = Icons.GetCareerIconIDFromCareerLine( careerLine )
-    if careerIconId == nil or careerIconId == 0 then
-        WindowSetShowing( c_CAREER_ICON_WINDOW, false )
+    SetCareerIconShowing(false)
+end
+
+local function SetRenownRankShowing(showing)
+    WindowSetShowing( c_RENOWN_RANK_BACKGROUND_WINDOW, showing )
+    WindowSetShowing( c_RENOWN_RANK_TEXT_WINDOW, showing )
+end
+
+function CustomUI.PlayerStatusWindow.UpdateRenownRank()
+    if not CustomUI.PlayerStatusWindow.IsBadgeEnabled("renown") then
+        SetRenownRankShowing(false)
+        LayoutPlayerStatusLeaderCrowns()
+        CustomUI.PlayerStatusWindow.UpdateAdvancementNag()
         return
     end
-    local iconTexture, iconX, iconY = GetIconData( careerIconId )
-    if iconTexture == nil then
-        WindowSetShowing( c_CAREER_ICON_WINDOW, false )
+    local renown = GameData.Player and GameData.Player.Renown
+    local rank = renown and tonumber(renown.curRank)
+    if rank == nil then
+        SetRenownRankShowing( false )
+        LayoutPlayerStatusLeaderCrowns()
+        CustomUI.PlayerStatusWindow.UpdateAdvancementNag()
         return
     end
 
-    DynamicImageSetTexture( c_CAREER_ICON_WINDOW, iconTexture, iconX, iconY )
-    WindowSetShowing( c_CAREER_ICON_WINDOW, true )
-    LayoutPlayerStatusLeaderCrownsLikeGroupIcons()
+    local color = (DefaultColor and DefaultColor.COLOR_RENOWN_GAIN) or (DefaultColor and DefaultColor.PURPLE) or { r = 194, g = 56, b = 153 }
+    LabelSetText( c_RENOWN_RANK_TEXT_WINDOW, L"" .. rank )
+    LabelSetTextColor( c_RENOWN_RANK_TEXT_WINDOW, color.r, color.g, color.b )
+    LabelSetTextAlign( c_RENOWN_RANK_TEXT_WINDOW, "center" )
+
+    -- Center on the Rank-Circle. Scale 3-digit ranks; keep center anchor (with optical -1 X).
+    local rootScale = 1.0
+    if DoesWindowExist(c_PS_ROOT) and type(WindowGetScale) == "function" then
+        rootScale = WindowGetScale(c_PS_ROOT) or 1.0
+    end
+    local textScale = (rank >= 100) and 0.68 or 1.0
+    if type(WindowSetScale) == "function" and DoesWindowExist(c_RENOWN_RANK_TEXT_WINDOW) then
+        WindowSetScale(c_RENOWN_RANK_TEXT_WINDOW, rootScale * textScale)
+    end
+    if DoesWindowExist(c_RENOWN_RANK_TEXT_WINDOW) and DoesWindowExist(c_RENOWN_RANK_BACKGROUND_WINDOW) then
+        WindowClearAnchors(c_RENOWN_RANK_TEXT_WINDOW)
+        WindowAddAnchor(
+            c_RENOWN_RANK_TEXT_WINDOW,
+            "center",
+            c_RENOWN_RANK_BACKGROUND_WINDOW,
+            "center",
+            -1,
+            0
+        )
+    end
+
+    SetRenownRankShowing( true )
+    LayoutPlayerStatusLeaderCrowns()
+    CustomUI.PlayerStatusWindow.UpdateAdvancementNag()
+end
+
+local function SetInfluenceBadgeShowing(showing)
+    WindowSetShowing(c_INFLUENCE_BADGE_BACKGROUND_WINDOW, showing)
+    WindowSetShowing(c_INFLUENCE_BADGE_TEXT_WINDOW, showing)
+end
+
+local function LayoutInfluenceBadge()
+    local Badge = CustomUI.PortraitCareerBadge
+    if Badge == nil or not DoesWindowExist(c_INFLUENCE_BADGE_BACKGROUND_WINDOW) then
+        return
+    end
+    Badge.LayoutBottomCenter(
+        c_INFLUENCE_BADGE_BACKGROUND_WINDOW,
+        c_PORTRAIT_FRAME_WINDOW,
+        Badge.PORTRAIT_BOTTOM_Y,
+        Badge.RING_W,
+        Badge.RING_H
+    )
+    if DoesWindowExist(c_INFLUENCE_BADGE_TEXT_WINDOW) then
+        WindowSetDimensions(c_INFLUENCE_BADGE_TEXT_WINDOW, Badge.RING_W, Badge.RING_H)
+        WindowClearAnchors(c_INFLUENCE_BADGE_TEXT_WINDOW)
+        WindowAddAnchor(
+            c_INFLUENCE_BADGE_TEXT_WINDOW,
+            "center",
+            c_INFLUENCE_BADGE_BACKGROUND_WINDOW,
+            "center",
+            -1,
+            0
+        )
+    end
+end
+
+function CustomUI.PlayerStatusWindow.UpdateInfluenceBadge()
+    if not CustomUI.PlayerStatusWindow.IsBadgeEnabled("influence") then
+        SetInfluenceBadgeShowing(false)
+        CustomUI.PlayerStatusWindow.UpdateAdvancementNag()
+        return
+    end
+
+    if not DoesWindowExist(c_INFLUENCE_BADGE_BACKGROUND_WINDOW)
+        or not DoesWindowExist(c_INFLUENCE_BADGE_TEXT_WINDOW)
+    then
+        return
+    end
+
+    local Track = CustomUI.PortraitInfluenceTrack
+    local snapshot = { empty = true, value = 0, unclaimed = false }
+    if type(Track) == "table" and type(Track.GetBadgeSnapshot) == "function" then
+        local okSnap = Track.GetBadgeSnapshot()
+        if type(okSnap) == "table" then
+            snapshot = okSnap
+        end
+    end
+
+    local empty = snapshot.empty == true
+    local value = tonumber(snapshot.value) or 0
+    local maxTiers = 3
+    if type(TomeWindow) == "table" and tonumber(TomeWindow.NUM_REWARD_LEVELS) then
+        maxTiers = tonumber(TomeWindow.NUM_REWARD_LEVELS)
+    end
+    if value < 0 then
+        value = 0
+    elseif value > maxTiers then
+        value = maxTiers
+    end
+
+    local color = (DefaultColor and DefaultColor.COLOR_INFLUENCE_GAIN) or { r = 0, g = 170, b = 163 }
+    if empty then
+        LabelSetText(c_INFLUENCE_BADGE_TEXT_WINDOW, L"-")
+    else
+        LabelSetText(c_INFLUENCE_BADGE_TEXT_WINDOW, L"" .. value)
+    end
+    LabelSetTextColor(c_INFLUENCE_BADGE_TEXT_WINDOW, color.r, color.g, color.b)
+    LabelSetTextAlign(c_INFLUENCE_BADGE_TEXT_WINDOW, "center")
+
+    LayoutInfluenceBadge()
+    SetInfluenceBadgeShowing(true)
+    CustomUI.PlayerStatusWindow.UpdateAdvancementNag()
+end
+
+function CustomUI.PlayerStatusWindow.OnLButtonUpInfluenceBadge()
+    local Track = CustomUI.PortraitInfluenceTrack
+    if type(Track) == "table" and type(Track.OpenTrackedSourceTome) == "function" then
+        Track.OpenTrackedSourceTome()
+    end
+end
+
+function CustomUI.PlayerStatusWindow.OnRButtonUpInfluenceBadge()
+    local Track = CustomUI.PortraitInfluenceTrack
+    if type(Track) == "table" and type(Track.ShowTrackContextMenu) == "function" then
+        Track.ShowTrackContextMenu(c_INFLUENCE_BADGE_BACKGROUND_WINDOW)
+    end
 end
 
 function CustomUI.PlayerStatusWindow.UpdatePlayerLevel()
+    if not CustomUI.PlayerStatusWindow.IsBadgeEnabled("rank") then
+        WindowSetShowing( "CustomUIPlayerStatusWindowLevelBackground", false )
+        WindowSetShowing( "CustomUIPlayerStatusWindowLevelText", false )
+        CustomUI.PlayerStatusWindow.UpdateAdvancementNag()
+        return
+    end
     -- Career rank (GameData.Player.level), not bolstered battle rank (battleLevel).
     local careerRank = GameData.Player.level
-    local color = PartyUtils.GetLevelTextColor( careerRank, careerRank )
+    local color = (DefaultColor and DefaultColor.COLOR_EXPERIENCE_GAIN) or { r = 255, g = 170, b = 0 }
     LabelSetText( "CustomUIPlayerStatusWindowLevelText", L"" .. careerRank )
     LabelSetTextColor( "CustomUIPlayerStatusWindowLevelText", color.r, color.g, color.b )
     WindowSetShowing( "CustomUIPlayerStatusWindowLevelBackground", true )
     WindowSetShowing( "CustomUIPlayerStatusWindowLevelText", true )
-end
-
-function CustomUI.PlayerStatusWindow.UpdateMainAssist( showIcon )
-    local isMainAssist = showIcon
-    if ( isMainAssist == nil ) then
-        isMainAssist = ( IsPlayerMainAssist() == 1 )
-    end
-    WindowSetShowing( "CustomUIPlayerStatusWindowMainAssistCrown", isMainAssist )
+    CustomUI.PlayerStatusWindow.UpdateAdvancementNag()
 end
 
 function CustomUI.PlayerStatusWindow.UpdateCrown()
-    LayoutPlayerStatusLeaderCrownsLikeGroupIcons()
+    LayoutPlayerStatusLeaderCrowns()
     WindowSetShowing( c_GROUP_LEADER_CROWN_WINDOW, GameData.Player.isGroupLeader == true )
     local wbLeader = false
     if GameData.Player ~= nil and GameData.Player.isWarbandLeader == true then
@@ -686,7 +921,20 @@ local PlayerStatusWindowComponent = {
 
 function PlayerStatusWindowComponent:Enable()
     RegisterHandlers()
+    local Track = CustomUI.PortraitInfluenceTrack
+    if type(Track) == "table" then
+        if type(Track.Initialize) == "function" then
+            Track.Initialize()
+        end
+        if type(Track.AddRefreshListener) == "function" then
+            Track.AddRefreshListener("CustomUI.PlayerStatusWindow.UpdateInfluenceBadge")
+        end
+    end
+    CustomUI.PlayerStatusWindow.UpdateInfluenceBadge()
     CustomUI.PlayerStatusWindow.ApplyAppearance()
+    if type(CustomUI.StockProgressBars) == "table" and type(CustomUI.StockProgressBars.Apply) == "function" then
+        CustomUI.StockProgressBars.Apply(true)
+    end
     if type(CustomUI.HideStockForReplace) == "function" then
         CustomUI.HideStockForReplace("PlayerWindow", m_stockReplaceTracked)
     elseif LayoutEditor.windowsList["PlayerWindow"] then
@@ -725,6 +973,18 @@ function PlayerStatusWindowComponent:Enable()
 end
 
 function PlayerStatusWindowComponent:Disable()
+    local Track = CustomUI.PortraitInfluenceTrack
+    if type(Track) == "table" then
+        if type(Track.RemoveRefreshListener) == "function" then
+            Track.RemoveRefreshListener("CustomUI.PlayerStatusWindow.UpdateInfluenceBadge")
+        end
+        if type(Track.Shutdown) == "function" then
+            Track.Shutdown()
+        end
+    end
+    if type(CustomUI.StockProgressBars) == "table" and type(CustomUI.StockProgressBars.Shutdown) == "function" then
+        CustomUI.StockProgressBars.Shutdown()
+    end
     CustomUI.PlayerPetWindow.Disable()
     UnregisterHandlers()
     -- Clear CUI buff tracker before handing back to stock to avoid stale entries across rapid toggles.
@@ -817,7 +1077,27 @@ function CustomUI.PlayerStatusWindow.GetSettings()
             v.buffs[k] = defs[k]
         end
     end
+    v.badges = v.badges or {}
+    local badgeDefs = {
+        career = true,
+        rank = true,
+        renown = true,
+        influence = true,
+    }
+    for key, defaultValue in pairs(badgeDefs) do
+        if v.badges[key] == nil then
+            v.badges[key] = defaultValue
+        end
+    end
     return v
+end
+
+function CustomUI.PlayerStatusWindow.IsBadgeEnabled(badgeKey)
+    local badges = CustomUI.PlayerStatusWindow.GetSettings().badges
+    if type(badges) ~= "table" then
+        return true
+    end
+    return badges[badgeKey] ~= false
 end
 
 function CustomUI.PlayerStatusWindow.ApplyBuffSettings()
@@ -825,6 +1105,19 @@ function CustomUI.PlayerStatusWindow.ApplyBuffSettings()
     if not tracker then return end
     local cfg = CustomUI.PlayerStatusWindow.GetSettings().buffs
     tracker:SetFilter(cfg)
+end
+
+function CustomUI.PlayerStatusWindow.ApplyBadgeSettings()
+    CustomUI.PlayerStatusWindow.UpdateCareerIcon()
+    CustomUI.PlayerStatusWindow.UpdatePlayerLevel()
+    CustomUI.PlayerStatusWindow.UpdateRenownRank()
+    CustomUI.PlayerStatusWindow.UpdateInfluenceBadge()
+    CustomUI.PlayerStatusWindow.UpdateAdvancementNag()
+    if type(CustomUI.StockProgressBars) == "table" and type(CustomUI.StockProgressBars.Apply) == "function" then
+        local playerStatusOn = type(CustomUI.IsComponentEnabled) == "function"
+            and CustomUI.IsComponentEnabled("PlayerStatusWindow") == true
+        CustomUI.StockProgressBars.Apply(playerStatusOn)
+    end
 end
 
 CustomUI.RegisterComponent( "PlayerStatusWindow", PlayerStatusWindowComponent )

@@ -14,13 +14,20 @@
 --     Guild/Friends (highlightSocial): gold overrides cyan/realm whenever an icon is shown for that name;
 --     also attaches roster icons for social members when Party/Warband are off, and tracks Friendly-off
 --     mouseover/target allies who are guild/friends (gold instead of green).
---   • Roster attach requires a live worldObjNum this refresh (party slot / scenario roster optional scenarioWorldObjNum).
---     Cached ids refine LearnKnown when live wid is 0 (distant / unloaded row); zone change clears caches.
+--   • Roster attach uses PartyUtils cache + GetGroupMemberStatusData/GetWarbandMemberStatus worldObjNum
+--     (do not set partyDirty/warbandDirty on this path — that wipes GroupWindow-hydrated ids after /reloadui).
+--     Live non-zero worldObjNum only: distant / 0 id disables the icon (Enemy). Back in range reattaches.
+--     Real zone changes clear sticky/known maps (used for name/id validation, not OOR attach).
 --     Outsiders: FIFO when full; same AutoMark-style spatial wid probe as roster (below) + window/name checks.
 --     Roster: spatial probe; if wid projects as “gone” for several consecutive ticks, squash+hide (Enemy ObjectWindows) until valid again — mitigates top-left stuck attach without probe-boundary flicker.
 --   • Outsiders (non-own-roster players incl. other scenario parties): hostile / friendly / mouseover PLAYER_TARGET_UPDATED → deferred TargetInfo read;
 --     FIFO pool (c_MAX_TRACKED_OUTSIDERS); realm-tint rings (+ Friendly/Hostile toggles; Guild/Friends can bypass Friendly-off for social names).
 --   • Names: NormalizeNameKey (strip caret grammar, lowercase) for PartyUtils / scenario / roster dedupe.
+--   • Overlays (lower right, one at a time): death skull first, then one scoreboard
+--     stat per player (per realm, exclusive, priority: death blows, kill damage,
+--     damage, healing, protection). Dead players show only the skull.
+--     Roster death skulls follow live party/warband status HP (and scenario group HP);
+--     they clear as soon as HP > 0, on release/offline, or when distant at 0 HP.
 --   • Driver + CustomUIGroupIconsWorldProbe: shared AutoMark-style spatial check for outsiders and roster.
 ----------------------------------------------------------------
 
@@ -32,6 +39,7 @@ local OutsiderTracker = CustomUI.GroupIcons.OutsiderTracker or {}
 local Roster = CustomUI.GroupIcons.Roster or {}
 local SpatialProbe = CustomUI.GroupIcons.SpatialProbe or {}
 local WarbandLeaders = CustomUI.GroupIcons.WarbandLeaders or {}
+local ScenarioStats = CustomUI.GroupIcons.ScenarioStats or {}
 
 ----------------------------------------------------------------
 -- Constants
@@ -101,6 +109,15 @@ local c_WARM_REFRESH_ATTEMPTS = 30
 local c_GROUPICONS_DRIVER = "CustomUIGroupIconsDriver"
 -- Roster spatial hide only after this many consecutive probe intervals (~0.2s each) reporting “gone” — avoids flicker when projection flickers at boundaries.
 local c_ROSTER_SPATIAL_GONE_STREAK = 4
+-- Overhead map scan used to tell a walking rez from a corpse (camera-independent range).
+-- Spatial attach probe stays at 0.2s; map range only needs ~1Hz (skull clear is not latency-critical).
+local c_MAX_MAP_POINTS = 511
+local c_MAP_DISTANCE_FIX = 1 / 1.06
+local c_DEAD_MOTION_LANDMARK_YARDS = 8
+local c_DEAD_MOTION_PLAYER_YARDS = 25
+local c_DEAD_MOTION_MAP_INTERVAL = 1.0
+local c_DEAD_MOTION_MIN_LANDMARKS = 3
+local c_OVERHEAD_MAP_DISPLAY = "EA_Window_OverheadMapMapDisplay"
 
 -- Ring colors
 local c_RING_FRIENDLY     = { 0, 255, 0 }   -- Green
@@ -116,6 +133,8 @@ local c_DEFAULT_SETTINGS = {
     highlightSocial = true,
     showFriendly = true,
     showHostile = true,
+    showDeathSkull = true,
+    showScenarioThreat = true,
 }
 
 local function EnsureSettings()
@@ -167,6 +186,9 @@ end
 -- Defined after NormalizeNameKey / social name sets (forward decls for GroupIcon:Attach/Update).
 local RingRgbForPlayer
 local RefreshSocialNameSets
+local ApplyIconOverlays
+local ApplyAllLiveIconOverlays
+local SyncScenarioStatsStream
 -- GetIconData atlas cell size in texture pixels for career icons.
 -- Stock uses TexDims 32 (see EA_Image_CareerIcon template); using the wrong value can tile/repeat.
 local c_ATLAS_ICON   = 32
@@ -191,8 +213,27 @@ local c_UF_RING_OUTER_REF = 42
 local c_OFFSET_Y     = 50   -- gap below the frame toward world attach; outer height = c_OFFSET_Y + framePx (GroupIconLayoutPixels)
 -- Party/warband leader: +50% linear size on icon, ring, crown (scale 1.5).
 local c_LEADER_VISUAL_SCALE = 1.5
+-- Overlay badges: ~24px on a 48px Content square; scale with leader layout.
+local c_OVERLAY_DRAW = 24
+-- Death: EA_HUD_01 PartyMarker-Skull.
+local c_DEATH_TEXTURE  = "EA_HUD_01"
+local c_DEATH_TEX_X    = 422
+local c_DEATH_TEX_Y    = 349
+local c_DEATH_TEX_W    = 30
+local c_DEATH_TEX_H    = 33
+-- Scoreboard stats: EA_ScenarioSummary01_d8 highlighted column icons.
+local c_STAT_TEXTURE = "EA_ScenarioSummary01_d8"
+-- Slice UV from ea_scenariosummary01_d8.xml (*-highlighted).
+local c_STAT_SLICES = {
+    deathblows = { x = 63,  y = 33, w = 18, h = 33 }, -- sword-skull-highlighted
+    killdamage = { x = 81,  y = 33, w = 30, h = 33 }, -- crown-highlighted
+    damage     = { x = 137, y = 33, w = 32, h = 33 }, -- axe-highlighted
+    heal       = { x = 169, y = 33, w = 28, h = 33 }, -- health-highlighted
+    protection = { x = 146, y = 68, w = 27, h = 33 }, -- shield-highlighted
+}
+local c_STAT_KINDS = { "deathblows", "killdamage", "damage", "heal", "protection" }
 
---- @return framePx, iconPx, ringPx, crownW, crownH, outerH
+--- @return framePx, iconPx, ringPx, crownW, crownH, outerH, overlayDraw, deathW, deathH
 local function GroupIconLayoutPixels( useLeaderScale )
     local scale = ( useLeaderScale == true ) and c_LEADER_VISUAL_SCALE or 1.0
     local framePx = math.max( 1, math.floor( c_FRAME_SIZE * scale + 0.5 ) )
@@ -201,7 +242,10 @@ local function GroupIconLayoutPixels( useLeaderScale )
     local crownW  = math.max( 1, math.floor( c_CROWN_TEX_W * scale + 0.5 ) )
     local crownH  = math.max( 1, math.floor( c_CROWN_TEX_H * scale + 0.5 ) )
     local outerH  = c_OFFSET_Y + framePx
-    return framePx, iconPx, ringPx, crownW, crownH, outerH
+    local overlayDraw = math.max( 1, math.floor( c_OVERLAY_DRAW * scale + 0.5 ) )
+    local deathW = overlayDraw
+    local deathH = math.max( 1, math.floor( overlayDraw * c_DEATH_TEX_H / c_DEATH_TEX_W + 0.5 ) )
+    return framePx, iconPx, ringPx, crownW, crownH, outerH, overlayDraw, deathW, deathH
 end
 
 ----------------------------------------------------------------
@@ -225,6 +269,9 @@ function GroupIcon.New(partyIndex, memberIndex)
     self.lastGroupLeaderCrown = nil
     self.lastLeaderScale = nil
     self.lastRingTintKey = nil -- "archetype" | "realm:r,g,b"
+    self.lastDeathShowing = nil
+    self.lastStatKind = nil -- deathblows | killdamage | damage | heal | protection | nil
+    self.lastRosterDead = nil
     -- Roster slots only (partyIndex 1..6): hide stuck world-attached UI without Destroy (Enemy ObjectWindows pattern).
     self.rosterSpatialHidden = false
     self.rosterSavedWorldAttachScale = nil
@@ -321,11 +368,39 @@ function GroupIcon:Attach(name, worldObjNum, careerLine, showWarbandCrown, useRe
     self.lastGroupLeaderCrown = showGroupLeaderCrown
     self.lastLeaderScale = useLeaderScale
 
+    self:_applyOverlayLayout()
+
     WindowSetShowing(base, true)
     self.rosterSpatialHidden = false
     self.rosterSavedWorldAttachScale = nil
     self.rosterSpatialGoneStreak = 0
     AttachWindowToWorldObject(self.windowName, worldObjNum)
+    if type(ForceUpdateWorldObjectWindow) == "function" then
+        CustomUI.TryCallQuiet(
+            "GroupIcons.ForceUpdateWorldObjectWindow",
+            ForceUpdateWorldObjectWindow,
+            worldObjNum,
+            self.windowName
+        )
+    end
+end
+
+--- Re-issue engine attach without destroying the window (same Lua wid after /reloadui can be unbound).
+function GroupIcon:RebindWorldObject()
+    local win = self.windowName
+    local wid = tonumber(self.worldObjNum) or 0
+    if not win or not DoesWindowExist(win) or wid == 0 then
+        return
+    end
+    if type(DetachWindowFromWorldObject) == "function" then
+        CustomUI.TryCallQuiet("GroupIcons.RebindDetach", DetachWindowFromWorldObject, win, wid)
+    end
+    if type(AttachWindowToWorldObject) == "function" then
+        CustomUI.TryCallQuiet("GroupIcons.RebindAttach", AttachWindowToWorldObject, win, wid)
+    end
+    if type(ForceUpdateWorldObjectWindow) == "function" then
+        CustomUI.TryCallQuiet("GroupIcons.RebindForceUpdate", ForceUpdateWorldObjectWindow, wid, win)
+    end
 end
 
 --- Party/warband roster only: engine often won't hide world-attached windows; squash like Enemy ObjectWindows:Deactivate.
@@ -370,6 +445,7 @@ function GroupIcon:RosterSpatialShow()
     self.rosterSpatialHidden = false
     self.rosterSavedWorldAttachScale = nil
     self.rosterSpatialGoneStreak = 0
+    self:RebindWorldObject()
 end
 
 function GroupIcon:_detach()
@@ -390,6 +466,9 @@ function GroupIcon:_detach()
     self.lastGroupLeaderCrown = nil
     self.lastLeaderScale = nil
     self.lastRingTintKey = nil
+    self.lastDeathShowing = nil
+    self.lastStatKind = nil
+    self.lastRosterDead = nil
     self.rosterSpatialHidden = false
     self.rosterSavedWorldAttachScale = nil
     self.rosterSpatialGoneStreak = 0
@@ -425,6 +504,84 @@ function GroupIcon:Update(name, worldObjNum, careerLine, showWarbandCrown, useRe
     end
 end
 
+function GroupIcon:_overlayWindow(suffix)
+    if not self.windowName then
+        return nil
+    end
+    local win = self.windowName .. "Content" .. suffix
+    if DoesWindowExist(win) then
+        return win
+    end
+    return nil
+end
+
+--- Size/anchor/show death + scoreboard stat overlay without recreating the world attach.
+function GroupIcon:_applyOverlayLayout()
+    local content = self.windowName and (self.windowName .. "Content")
+    if not content or not DoesWindowExist(content) then
+        return
+    end
+    local _, _, _, _, _, _, overlayDraw, deathW, deathH = GroupIconLayoutPixels(self.lastLeaderScale)
+    local deathWin = self:_overlayWindow("DeathMark")
+    local statWin = self:_overlayWindow("StatMark")
+    local showDeath = self.lastDeathShowing == true
+    local slice = self.lastStatKind and c_STAT_SLICES[self.lastStatKind]
+    local showStat = (not showDeath) and slice ~= nil
+
+    if deathWin then
+        if WindowSetHandleInput then
+            WindowSetHandleInput(deathWin, false)
+        end
+        DynamicImageSetTexture(deathWin, c_DEATH_TEXTURE, c_DEATH_TEX_X, c_DEATH_TEX_Y)
+        DynamicImageSetTextureDimensions(deathWin, c_DEATH_TEX_W, c_DEATH_TEX_H)
+        WindowSetDimensions(deathWin, deathW, deathH)
+        WindowClearAnchors(deathWin)
+        WindowAddAnchor(deathWin, "bottomright", content, "bottomright", -1, -1)
+        WindowSetShowing(deathWin, showDeath)
+    end
+
+    if statWin then
+        if WindowSetHandleInput then
+            WindowSetHandleInput(statWin, false)
+        end
+        if slice then
+            DynamicImageSetTexture(statWin, c_STAT_TEXTURE, slice.x, slice.y)
+            DynamicImageSetTextureDimensions(statWin, slice.w, slice.h)
+            local statH = overlayDraw
+            local statW = math.max(1, math.floor(overlayDraw * slice.w / slice.h + 0.5))
+            WindowSetDimensions(statWin, statW, statH)
+        end
+        WindowClearAnchors(statWin)
+        WindowAddAnchor(statWin, "bottomright", content, "bottomright", -1, -1)
+        WindowSetShowing(statWin, showStat)
+    end
+end
+
+function GroupIcon:SetDeathShowing(show)
+    show = show == true
+    if self.lastDeathShowing == show and self.windowName and DoesWindowExist(self.windowName) then
+        return
+    end
+    self.lastDeathShowing = show
+    if self.windowName and DoesWindowExist(self.windowName) then
+        self:_applyOverlayLayout()
+    end
+end
+
+--- kind: deathblows | killdamage | damage | heal | protection | nil
+function GroupIcon:SetStatKind(kind)
+    if kind == nil or c_STAT_SLICES[kind] == nil then
+        kind = nil
+    end
+    if self.lastStatKind == kind and self.windowName and DoesWindowExist(self.windowName) then
+        return
+    end
+    self.lastStatKind = kind
+    if self.windowName and DoesWindowExist(self.windowName) then
+        self:_applyOverlayLayout()
+    end
+end
+
 function GroupIcon:Enable()
     self.isEnabled = true
 end
@@ -453,10 +610,15 @@ local m_groupNames = {}        -- [playerName] = true (fast path when exact matc
 local m_groupNameList = {}     -- { WString, ... } robust compare via WStringsCompareIgnoreGrammer
 
 -- Debounce group roster rebuilds: GROUP_STATUS_UPDATED can spam and recreating all windows flickers.
+-- Status ticks only set this when the attach worldObj id actually changed (0→N, N→M, or should disable).
 local m_needsRefreshAll = false
+local m_pendingRosterAttachCheck = false
+local m_handlersRegistered = false
+-- Last zone used for sticky/known wid wipe. /reloadui can fire PLAYER_ZONE_CHANGED with 0 or the same zone.
+local m_lastAttachZoneId = nil
 
--- After /reloadui, warband worldObj ids often arrive shortly after Initialize; synchronous RefreshAll in Enable
--- can attach with wid=0 (no marker) until BATTLEGROUP_* fires — stock BattlegroupHUD defers to OnUpdate instead.
+-- After /reloadui, warband worldObj ids often arrive shortly after Initialize; Enable defers RefreshAll to OnUpdate
+-- (Enemy.Groups schedules the first pass one task tick later). Warm polling rebinds until live ids project.
 local m_postEnableWarmRefreshPoll = 0
 local m_postEnableWarmRefreshRemaining = 0
 
@@ -464,13 +626,27 @@ local m_postEnableWarmRefreshRemaining = 0
 -- { [key] = { wid = number, careerLine = number|nil, t = number|nil } }
 local m_knownByNameKey = {}
 
--- Last known worldObjNum per name (targeting + live party/warband when non-zero). Used when roster row wid is 0.
--- Cleared on zone change with sticky map.
+-- Last in-range worldObjNum per name (validation / recycle checks). Not used to keep OOR icons attached.
+-- Cleared on real zone change.
 local m_stickyRosterWidByKey = {}
 
 -- Social Window friends / guild roster name keys (NormalizeNameKey) for gold ring highlight.
 local m_friendNameKeys = {}
 local m_guildNameKeys = {}
+
+-- Outsider death: sticky on HP 0 from mouseover/hard target; clear on HP>0, scenario
+-- roster health > 0 (rez), or untrack. Looking away from a corpse keeps the skull.
+local m_outsiderDeadWids = {}
+local m_pendingOutsiderHealthRefresh = false
+local m_pendingRosterDeathRefresh = false
+-- Scenario group HP from SCENARIO_PLAYER_HITS_UPDATED, keyed [groupIndex][slot].
+local m_scenarioHitHp = {}
+-- Map-range samples to drop skulls on walking rezes while the local player is still.
+local m_deadMotionByWid = {}
+local m_deadMotionLandmarks = {}
+local m_deadMotionMapElapsed = 0
+-- Scenario/siege scoreboard stat winners: [nameKey] = kind.
+local m_statKindByKey = {}
 
 local m_debugLastSig = nil
 
@@ -481,6 +657,8 @@ local function GetOutsiderTrackerState()
         trackWidToSlot = m_trackWidToSlot,
         trackMeta = m_trackMeta,
         trackFIFOOrder = m_trackFIFOOrder,
+        outsiderDeadWids = m_outsiderDeadWids,
+        deadMotionByWid = m_deadMotionByWid,
     }
 end
 
@@ -509,6 +687,8 @@ end
 -- Forward decls (used before definition).
 local IsScenarioContext
 local RefreshAll
+local HydrateRosterMemberForAttach
+local SlotAttachNeedsRefresh
 
 ----------------------------------------------------------------
 -- Internal helpers
@@ -605,14 +785,96 @@ RingRgbForPlayer = function(name, careerLine, useRealmRingTint)
     return GroupRingRgbForCareerLine(careerLine)
 end
 
-local function InvalidatePartyAndWarbandCaches()
-    if type(Roster.InvalidatePartyAndWarbandCaches) == "function" then
-        Roster.InvalidatePartyAndWarbandCaches()
+local function IsRosterMemberDead(member)
+    if not member then
+        return false
+    end
+    local hp = tonumber(member.healthPercent)
+    if hp == nil then
+        return false
+    end
+    -- Live HP wins: a rez must clear the skull even if distant/online flags lag.
+    if hp > 0 then
+        return false
+    end
+    if member.online == false then
+        return false
+    end
+    -- 0 HP while distant is usually out of range, not a corpse.
+    if member.isDistant == true then
+        return false
+    end
+    return true
+end
+
+local function StatKindForIcon(icon)
+    if not icon or EnsureSettings().showScenarioThreat ~= true then
+        return nil
+    end
+    local key = icon.playerName and NormalizeNameKey(icon.playerName)
+    if key == nil then
+        return nil
+    end
+    return m_statKindByKey[key]
+end
+
+ApplyIconOverlays = function(icon)
+    if not icon or not icon.windowName or not DoesWindowExist(icon.windowName) then
         return
     end
-    if GameData and GameData.Party then
-        GameData.Party.partyDirty = true
-        GameData.Party.warbandDirty = true
+    local s = EnsureSettings()
+    local showDeath = false
+    if s.showDeathSkull == true then
+        if icon.partyIndex <= c_MAX_PARTIES then
+            showDeath = icon.lastRosterDead == true
+        else
+            local wid = tonumber(icon.worldObjNum) or 0
+            showDeath = wid ~= 0 and m_outsiderDeadWids[wid] == true
+        end
+    end
+    icon:SetDeathShowing(showDeath)
+    icon:SetStatKind(StatKindForIcon(icon))
+end
+
+ApplyAllLiveIconOverlays = function()
+    for p = 1, c_MAX_PARTIES do
+        local row = m_icons[p]
+        if row then
+            for m = 1, c_MAX_MEMBERS do
+                ApplyIconOverlays(row[m])
+            end
+        end
+    end
+    for i = 1, c_MAX_TRACKED_OUTSIDERS do
+        ApplyIconOverlays(m_outsiderPool[i])
+    end
+end
+
+local function ClearThreatWinners()
+    m_statKindByKey = {}
+end
+
+local function RefreshThreatWinnersFromScenarioPlayers()
+    if type(ScenarioStats.PickTopWinners) ~= "function" then
+        ClearThreatWinners()
+        return
+    end
+    local winners = ScenarioStats.PickTopWinners(NormalizeNameKey)
+    m_statKindByKey = {}
+    if type(winners) ~= "table" then
+        return
+    end
+
+    for i = 1, #c_STAT_KINDS do
+        local kind = c_STAT_KINDS[i]
+        local byRealm = winners[kind]
+        if type(byRealm) == "table" then
+            for _, entry in pairs(byRealm) do
+                if type(entry) == "table" and entry.key ~= nil then
+                    m_statKindByKey[entry.key] = kind
+                end
+            end
+        end
     end
 end
 
@@ -675,9 +937,20 @@ local function RememberStickyRosterWid(nameW, wid)
     end
 end
 
---- Prefer live worldObjNum from PartyUtils / battlegroup row. When it is 0 (member out of stream range,
---- status not merged yet, or joined warband while distant), fall back to last known entity id from
---- targeting (`m_knownByNameKey`) or an earlier refresh (`m_stickyRosterWidByKey`). Live non-zero always wins.
+local function LiveAttachWorldId(member)
+    if type(Roster.LiveAttachWorldId) == "function" then
+        return Roster.LiveAttachWorldId(member)
+    end
+    if not member then
+        return 0
+    end
+    if member.isDistant == true or member.online == false then
+        return 0
+    end
+    return tonumber(member.worldObjNum) or 0
+end
+
+--- Live non-zero worldObjNum only. Sticky/known are not used to keep an OOR icon on a dead entity id.
 local function ResolveRosterIconAttachWorldId(nameW, liveWidFromData)
     if type(Roster.ResolveAttachWorldId) == "function" then
         return Roster.ResolveAttachWorldId(GetRosterState(), nameW, liveWidFromData, {
@@ -688,20 +961,6 @@ local function ResolveRosterIconAttachWorldId(nameW, liveWidFromData)
     if w ~= 0 then
         RememberStickyRosterWid(nameW, w)
         return w
-    end
-    local key = NormalizeNameKey(nameW)
-    if key == nil then
-        return 0
-    end
-    local kn = m_knownByNameKey[key]
-    local kw = kn and tonumber(kn.wid) or 0
-    if kw ~= 0 then
-        RememberStickyRosterWid(nameW, kw)
-        return kw
-    end
-    local sw = tonumber(m_stickyRosterWidByKey[key]) or 0
-    if sw ~= 0 then
-        return sw
     end
     return 0
 end
@@ -823,7 +1082,6 @@ local function GetPartySlotMember(memberIndex, fallbackData)
 end
 
 local function LearnKnownWorldObjectsFromParty()
-    InvalidatePartyAndWarbandCaches()
     local data = nil
     if type(PartyUtils) == "table" and type(PartyUtils.GetPartyData) == "function" then
         data = PartyUtils.GetPartyData()
@@ -914,6 +1172,10 @@ local function PickOutsiderFifoEvictionVictim(protected)
 end
 
 local function UntrackOutsiderWid(wid)
+    if wid ~= nil then
+        m_outsiderDeadWids[wid] = nil
+        m_deadMotionByWid[wid] = nil
+    end
     if type(OutsiderTracker.UntrackWid) == "function" then
         OutsiderTracker.UntrackWid(GetOutsiderTrackerState(), wid)
         return
@@ -933,6 +1195,10 @@ local function UntrackOutsiderWid(wid)
 end
 
 local function UntrackAllOutsiders()
+    m_outsiderDeadWids = {}
+    m_deadMotionByWid = {}
+    m_deadMotionLandmarks = {}
+    m_deadMotionMapElapsed = 0
     if type(OutsiderTracker.UntrackAll) == "function" then
         OutsiderTracker.UntrackAll(GetOutsiderTrackerState())
         m_outsiderProbeElapsed = 0
@@ -998,6 +1264,7 @@ local function RefreshTrackedOutsiderLeaderVisuals()
         if nm and icon and icon.isEnabled and icon.worldObjNum ~= 0 then
             local useLeaderScale, showGroupLeaderCrown = ResolveOutsiderLeaderVisuals(nm, meta.isFriendly == true)
             icon:Update(nm, wid, icon.lastCareerLine, false, true, icon.lastCareerNamesId, useLeaderScale, showGroupLeaderCrown)
+            ApplyIconOverlays(icon)
         end
     end
 end
@@ -1019,6 +1286,7 @@ local function TryTrackOutsider(wid, pname, career, isFriendly)
             isGroupWorldObject = function(trackWid) return m_groupWorldObjs[trackWid] == true end,
             isGroupMemberName = IsGroupMemberName,
             resolveOutsiderLeaderVisuals = ResolveOutsiderLeaderVisuals,
+            applyOverlays = ApplyIconOverlays,
         }) then
             m_outsiderProbeElapsed = c_OUTSIDER_PROBE_INTERVAL
         end
@@ -1041,8 +1309,10 @@ local function TryTrackOutsider(wid, pname, career, isFriendly)
         icon:Enable()
         local useLeaderScale, showGroupLeaderCrown = ResolveOutsiderLeaderVisuals(pname, isFriendly)
         icon:Update(pname, wid, career, false, realmRing, nil, useLeaderScale, showGroupLeaderCrown)
+        icon:RebindWorldObject()
         m_trackMeta[wid] = { name = pname, isFriendly = isFriendly }
         m_outsiderProbeElapsed = c_OUTSIDER_PROBE_INTERVAL
+        ApplyIconOverlays(icon)
         return
     end
 
@@ -1080,6 +1350,7 @@ local function TryTrackOutsider(wid, pname, career, isFriendly)
     icon:Enable()
     local useLeaderScale, showGroupLeaderCrown = ResolveOutsiderLeaderVisuals(pname, isFriendly)
     icon:Update(pname, wid, career, false, realmRing, nil, useLeaderScale, showGroupLeaderCrown)
+    ApplyIconOverlays(icon)
     m_outsiderProbeElapsed = c_OUTSIDER_PROBE_INTERVAL
 end
 
@@ -1092,10 +1363,10 @@ local function RegisterAllPartyWarbandMembersForPruning()
             toWString = ToWString,
             isWarBandActive = IsWarBandActive,
             debugLog = DebugLog,
+            hydrateMember = HydrateRosterMemberForAttach,
         })
         return
     end
-    InvalidatePartyAndWarbandCaches()
     ClearGroupMembershipCache()
     local data = nil
     if type(PartyUtils) == "table" and type(PartyUtils.GetPartyData) == "function" then
@@ -1108,14 +1379,14 @@ local function RegisterAllPartyWarbandMembersForPruning()
         for m = 1, c_MAX_MEMBERS do
             local member = GetPartySlotMember(m, data)
             if member and member.name then
-                local liveWid = tonumber(member.worldObjNum) or 0
+                local liveWid = LiveAttachWorldId(member)
                 local wid = ResolveRosterIconAttachWorldId(member.name, liveWid)
                 RegisterGroupMember({ name = member.name, worldObjNum = (wid ~= 0 and wid) or nil })
             end
         end
     end
     if IsWarBandActive() then
-        local parties = GetBattlegroupMemberData()
+        local parties = (type(Roster.GetWarbandParties) == "function" and Roster.GetWarbandParties(nil)) or GetBattlegroupMemberData()
         if type(parties) == "table" then
             for p = 1, c_MAX_PARTIES do
                 local party = parties[p]
@@ -1128,7 +1399,7 @@ local function RegisterAllPartyWarbandMembersForPruning()
                         end
                     end
                     if member and member.name then
-                        local liveWid = tonumber(member.worldObjNum) or 0
+                        local liveWid = LiveAttachWorldId(member)
                         local wid = ResolveRosterIconAttachWorldId(member.name, liveWid)
                         RegisterGroupMember({ name = member.name, worldObjNum = (wid ~= 0 and wid) or nil })
                     end
@@ -1136,6 +1407,502 @@ local function RegisterAllPartyWarbandMembersForPruning()
             end
         end
     end
+end
+
+--- Snapshot mouseover/hard-target HP onto outsider sticky death; roster death uses party/warband HP.
+local function ApplyOverlaysForOutsiderWid(wid)
+    wid = tonumber(wid) or 0
+    if wid == 0 then
+        return
+    end
+    local idx = m_trackWidToSlot[wid]
+    if not idx then
+        return
+    end
+    ApplyIconOverlays(m_outsiderPool[idx])
+end
+
+--- Merge live TargetInfo HP into sticky outsider death. HP 0 sets; HP > 0 clears that wid.
+--- Looking away does not clear. Untrack / spatial gone still clears.
+local function ApplyLiveTargetDeathObservations()
+    local changed = {}
+
+    local function consider(classification)
+        if not TargetInfo then
+            return
+        end
+        local unitType = TargetInfo:UnitType(classification)
+        if unitType ~= SystemData.TargetObjectType.ENEMY_PLAYER
+            and unitType ~= SystemData.TargetObjectType.ALLY_PLAYER
+        then
+            return
+        end
+        local wid = TargetInfo:UnitEntityId(classification)
+        if not wid or wid == 0 then
+            return
+        end
+        local hp = tonumber(TargetInfo:UnitHealth(classification))
+        if hp == nil then
+            return
+        end
+        if hp <= 0 then
+            if m_trackWidToSlot[wid] and m_outsiderDeadWids[wid] ~= true then
+                m_outsiderDeadWids[wid] = true
+                changed[wid] = true
+            end
+        elseif m_outsiderDeadWids[wid] == true then
+            m_outsiderDeadWids[wid] = nil
+            changed[wid] = true
+        end
+    end
+
+    consider(c_HOSTILE_TARGET)
+    consider(c_FRIENDLY_TARGET)
+    consider(c_MOUSEOVER_TARGET)
+
+    for wid in pairs(changed) do
+        ApplyOverlaysForOutsiderWid(wid)
+    end
+end
+
+local function ScenarioHealthLooksAlive(hp)
+    hp = tonumber(hp)
+    if hp == nil then
+        return false
+    end
+    -- Same near-zero snap as UnitFrames: sub-1% is still a corpse, not a rez.
+    if hp > 0 and hp < 1 then
+        hp = 0
+    end
+    return hp > 0
+end
+
+local function BuildScenarioHpByNameKey()
+    local byKey = {}
+    if type(IsScenarioContext) == "function" and IsScenarioContext() ~= true then
+        return byKey
+    end
+    if type(GameData) ~= "table" or type(GameData.GetScenarioPlayerGroups) ~= "function" then
+        return byKey
+    end
+    local ok, groups = CustomUI.TryCallQuiet("GroupIcons.GetScenarioPlayerGroups", GameData.GetScenarioPlayerGroups)
+    if not ok or type(groups) ~= "table" then
+        return byKey
+    end
+    for _, player in ipairs(groups) do
+        if type(player) == "table" then
+            local key = NormalizeNameKey(player.name)
+            if key ~= nil then
+                local groupIndex = tonumber(player.sgroupindex)
+                local slotIndex = tonumber(player.sgroupslotnum)
+                local hp = tonumber(player.health)
+                if groupIndex ~= nil and slotIndex ~= nil then
+                    local hitsForGroup = m_scenarioHitHp[groupIndex]
+                    local hit = hitsForGroup and hitsForGroup[slotIndex]
+                    if hit ~= nil then
+                        hp = tonumber(hit)
+                    end
+                end
+                if hp ~= nil then
+                    byKey[key] = hp
+                end
+            end
+        end
+    end
+    return byKey
+end
+
+--- Party/warband skulls must use live status HP (GetGroupMemberStatusData / GetWarbandMemberStatus),
+--- not GetGroupData() after a cache invalidate — that snapshot stays at 0 after rez/release.
+local function MergeLiveRosterDeathMember(partyIndex, memberIndex, member, playerName, scenarioHpByKey)
+    member = member or {}
+    local inScenario = type(IsScenarioContext) == "function" and IsScenarioContext() == true
+    local status = nil
+    if inScenario ~= true and type(IsWarBandActive) == "function" and IsWarBandActive() then
+        if type(GetWarbandMemberStatus) == "function" then
+            local ok, st = CustomUI.TryCallQuiet(
+                "GroupIcons.GetWarbandMemberStatus",
+                GetWarbandMemberStatus,
+                partyIndex,
+                memberIndex
+            )
+            if ok and type(st) == "table" then
+                status = st
+            end
+        end
+    elseif partyIndex == 1 and type(GetGroupMemberStatusData) == "function" then
+        local ok, st = CustomUI.TryCallQuiet(
+            "GroupIcons.GetGroupMemberStatusData",
+            GetGroupMemberStatusData,
+            memberIndex
+        )
+        if ok and type(st) == "table" then
+            status = st
+        end
+    end
+    if status ~= nil then
+        if status.healthPercent ~= nil then
+            member.healthPercent = status.healthPercent
+        end
+        if status.online ~= nil then
+            member.online = status.online
+        end
+        if status.isDistant ~= nil then
+            member.isDistant = status.isDistant
+        end
+        local statusWid = tonumber(status.worldObjNum) or 0
+        if statusWid ~= 0 then
+            member.worldObjNum = statusWid
+        end
+    end
+    local key = NormalizeNameKey(playerName or member.name)
+    local scenarioHp = key and scenarioHpByKey and scenarioHpByKey[key]
+    if scenarioHp ~= nil then
+        member.healthPercent = scenarioHp
+        member.online = true
+        member.isDistant = false
+    end
+    return member, status
+end
+
+HydrateRosterMemberForAttach = function(partyIndex, memberIndex, member)
+    if member == nil then
+        return nil
+    end
+    MergeLiveRosterDeathMember(partyIndex, memberIndex, member, member.name, nil)
+    return member
+end
+
+local function CurrentPlayerZoneId()
+    if GameData and GameData.Player then
+        return tonumber(GameData.Player.zone)
+    end
+    return nil
+end
+
+local function RememberAttachZoneId()
+    local zone = CurrentPlayerZoneId()
+    if zone ~= nil and zone ~= 0 then
+        m_lastAttachZoneId = zone
+    end
+end
+
+--- True when this slot's attach wid (status/cache/sticky) disagrees with the live icon.
+SlotAttachNeedsRefresh = function(partyIndex, memberIndex)
+    partyIndex = tonumber(partyIndex)
+    memberIndex = tonumber(memberIndex)
+    if partyIndex == nil or memberIndex == nil then
+        return false
+    end
+    if partyIndex < 1 or partyIndex > c_MAX_PARTIES or memberIndex < 1 or memberIndex > c_MAX_MEMBERS then
+        return false
+    end
+
+    local s = EnsureSettings()
+    local inScenario = IsScenarioContext()
+    local member = nil
+    local shouldShow = false
+
+    if inScenario then
+        if partyIndex ~= 1 then
+            return false
+        end
+        shouldShow = s.showParty == true
+        local data = (type(PartyUtils) == "table" and type(PartyUtils.GetPartyData) == "function") and PartyUtils.GetPartyData() or GetGroupData()
+        member = GetPartySlotMember(memberIndex, data)
+    elseif IsWarBandActive() then
+        shouldShow = s.showWarband == true or (s.showParty == true and partyIndex == 1)
+        if type(PartyUtils) == "table" and type(PartyUtils.GetWarbandMember) == "function" then
+            member = PartyUtils.GetWarbandMember(partyIndex, memberIndex)
+        end
+        if member == nil then
+            local parties = (type(Roster.GetWarbandParties) == "function" and Roster.GetWarbandParties(nil)) or GetBattlegroupMemberData()
+            local party = parties and parties[partyIndex]
+            member = party and party.players and party.players[memberIndex]
+        end
+    else
+        if partyIndex ~= 1 then
+            return false
+        end
+        shouldShow = s.showParty == true
+        local data = (type(PartyUtils) == "table" and type(PartyUtils.GetPartyData) == "function") and PartyUtils.GetPartyData() or GetGroupData()
+        member = GetPartySlotMember(memberIndex, data)
+    end
+
+    member = HydrateRosterMemberForAttach(partyIndex, memberIndex, member)
+    if not member or not member.name then
+        local icon = m_icons[partyIndex] and m_icons[partyIndex][memberIndex]
+        return icon ~= nil and icon.isEnabled == true
+    end
+
+    local socialOnly = IsSocialHighlightedName(member.name)
+    if not shouldShow and not socialOnly then
+        return false
+    end
+
+    local memberName = ToWString(member.name)
+    if memberName == nil or memberName == L"" or IsSelfMember(memberName) then
+        return false
+    end
+
+    local liveWid = LiveAttachWorldId(member)
+    local resolvedWid = ResolveRosterIconAttachWorldId(member.name, liveWid)
+    local icon = m_icons[partyIndex][memberIndex]
+    if not icon then
+        return false
+    end
+    if resolvedWid == 0 then
+        return icon.isEnabled == true
+    end
+    if not icon.isEnabled or icon.worldObjNum ~= resolvedWid then
+        return true
+    end
+    return false
+end
+
+local function RefreshRosterDeathOverlays()
+    if EnsureSettings().showDeathSkull ~= true then
+        return
+    end
+    local scenarioHpByKey = BuildScenarioHpByNameKey()
+    for p = 1, c_MAX_PARTIES do
+        local row = m_icons[p]
+        if row then
+            for m = 1, c_MAX_MEMBERS do
+                local icon = row[m]
+                if icon and icon.isEnabled == true and icon.windowName and DoesWindowExist(icon.windowName) then
+                    local member, status = MergeLiveRosterDeathMember(
+                        p,
+                        m,
+                        { name = icon.playerName },
+                        icon.playerName,
+                        scenarioHpByKey
+                    )
+                    icon.lastRosterDead = IsRosterMemberDead(member)
+                    ApplyIconOverlays(icon)
+                    local liveWid = status and tonumber(status.worldObjNum) or 0
+                    -- Include 0→N: overlay-only ticks used to ignore disabled / wid-0 icons.
+                    if liveWid ~= 0 and liveWid ~= (tonumber(icon.worldObjNum) or 0) then
+                        if not IsSelfMember(icon.playerName or member.name) then
+                            m_needsRefreshAll = true
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+--- Scenario groups report HP for assigned parties. Sticky-dead outsiders with HP > 0 rezzed.
+local function ClearOutsiderDeadFromScenarioHealth()
+    if not next(m_outsiderDeadWids) then
+        return
+    end
+    if type(IsScenarioContext) == "function" and IsScenarioContext() ~= true then
+        return
+    end
+    if type(GameData) ~= "table" or type(GameData.GetScenarioPlayerGroups) ~= "function" then
+        return
+    end
+    local ok, groups = CustomUI.TryCallQuiet("GroupIcons.GetScenarioPlayerGroups", GameData.GetScenarioPlayerGroups)
+    if not ok or type(groups) ~= "table" then
+        return
+    end
+
+    local aliveKeys = {}
+    local aliveWids = {}
+    for _, player in ipairs(groups) do
+        if type(player) == "table" then
+            local groupIndex = tonumber(player.sgroupindex)
+            local slotIndex = tonumber(player.sgroupslotnum)
+            local hp = tonumber(player.health)
+            if groupIndex ~= nil and slotIndex ~= nil then
+                local hitsForGroup = m_scenarioHitHp[groupIndex]
+                local hit = hitsForGroup and hitsForGroup[slotIndex]
+                if hit ~= nil then
+                    hp = tonumber(hit)
+                end
+            end
+            if ScenarioHealthLooksAlive(hp) then
+                local key = NormalizeNameKey(player.name)
+                if key ~= nil then
+                    aliveKeys[key] = true
+                end
+                local wid = tonumber(player.worldObjNum or player.worldobjnum or player.entityId or player.entityid)
+                if wid ~= nil and wid ~= 0 then
+                    aliveWids[wid] = true
+                end
+            end
+        end
+    end
+
+    if not next(aliveKeys) and not next(aliveWids) then
+        return
+    end
+
+    local changed = {}
+    for wid in pairs(m_outsiderDeadWids) do
+        local clear = aliveWids[wid] == true
+        if not clear then
+            local meta = m_trackMeta[wid]
+            local key = meta and meta.name and NormalizeNameKey(meta.name)
+            if key ~= nil and aliveKeys[key] == true then
+                clear = true
+            end
+        end
+        if clear then
+            m_outsiderDeadWids[wid] = nil
+            changed[wid] = true
+        end
+    end
+    for wid in pairs(changed) do
+        ApplyOverlaysForOutsiderWid(wid)
+    end
+end
+
+local function AbsNumber(a)
+    if a < 0 then
+        return -a
+    end
+    return a
+end
+
+--- Only collect distances for sticky-dead outsider names (+ a few landmarks for "did we move").
+--- Early-outs once pending player keys are filled and enough landmarks exist (avoids full 511 walks).
+local function CollectDeadMotionMapScan(pendingPlayerKeys, pendingPlayerCount)
+    local distByKey = {}
+    local landmarkByIndex = {}
+    if type(GetMapPointData) ~= "function" then
+        return distByKey, landmarkByIndex
+    end
+    if type(DoesWindowExist) == "function" and not DoesWindowExist(c_OVERHEAD_MAP_DISPLAY) then
+        return distByKey, landmarkByIndex
+    end
+    local pips = SystemData and SystemData.MapPips
+    if type(pips) ~= "table" then
+        return distByKey, landmarkByIndex
+    end
+    local playerTypes = {
+        [pips.GROUP_MEMBER] = true,
+        [pips.WARBAND_MEMBER] = true,
+        [pips.DESTRUCTION_ARMY] = true,
+        [pips.ORDER_ARMY] = true,
+    }
+    local landmarkTypes = {
+        [pips.KEEP] = true,
+        [pips.OBJECTIVE] = true,
+        [pips.FLAG] = true,
+        [pips.LANDMARK] = true,
+        [pips.CHAPTER] = true,
+        [pips.WAR_CAMP] = true,
+        [pips.PUBLIC_QUEST] = true,
+    }
+    local remaining = tonumber(pendingPlayerCount) or 0
+    local landmarkCount = 0
+    local needLandmarks = remaining > 0
+    for i = 1, c_MAX_MAP_POINTS do
+        local mpd = GetMapPointData(c_OVERHEAD_MAP_DISPLAY, i)
+        if type(mpd) == "table" and mpd.pointType ~= nil then
+            local dist = tonumber(mpd.distance)
+            if dist ~= nil then
+                dist = dist * c_MAP_DISTANCE_FIX
+                if playerTypes[mpd.pointType] then
+                    local key = NormalizeNameKey(mpd.name)
+                    if key ~= nil and pendingPlayerKeys[key] == true and distByKey[key] == nil then
+                        distByKey[key] = dist
+                        remaining = remaining - 1
+                    end
+                elseif needLandmarks and landmarkTypes[mpd.pointType] then
+                    landmarkByIndex[i] = dist
+                    landmarkCount = landmarkCount + 1
+                end
+            end
+        end
+        if remaining <= 0 and (not needLandmarks or landmarkCount >= c_DEAD_MOTION_MIN_LANDMARKS) then
+            break
+        end
+    end
+    return distByKey, landmarkByIndex
+end
+
+local function LandmarkMaxDelta(prevByIndex, curByIndex)
+    local maxDelta = nil
+    local compared = 0
+    if type(prevByIndex) ~= "table" or type(curByIndex) ~= "table" then
+        return nil, 0
+    end
+    for index, dist in pairs(curByIndex) do
+        local prev = prevByIndex[index]
+        if prev ~= nil then
+            local delta = AbsNumber(dist - prev)
+            if maxDelta == nil or delta > maxDelta then
+                maxDelta = delta
+            end
+            compared = compared + 1
+        end
+    end
+    return maxDelta, compared
+end
+
+--- World-range motion: if landmarks are stable (we did not translate) and a sticky-dead
+--- player's map pip range changes, they walked — drop the skull. Screen position of the
+--- attached GroupIcon also moves when the camera yaws, so it is not used here.
+local function ClearOutsiderDeadFromIndependentMotion()
+    if not next(m_outsiderDeadWids) then
+        m_deadMotionByWid = {}
+        m_deadMotionLandmarks = {}
+        m_deadMotionMapElapsed = 0
+        return
+    end
+
+    local pendingPlayerKeys = {}
+    local pendingPlayerCount = 0
+    for wid in pairs(m_outsiderDeadWids) do
+        local meta = m_trackMeta[wid]
+        local key = meta and meta.name and NormalizeNameKey(meta.name)
+        if key ~= nil and pendingPlayerKeys[key] ~= true then
+            pendingPlayerKeys[key] = true
+            pendingPlayerCount = pendingPlayerCount + 1
+        end
+    end
+    if pendingPlayerCount <= 0 then
+        return
+    end
+
+    local distByKey, landmarkByIndex = CollectDeadMotionMapScan(pendingPlayerKeys, pendingPlayerCount)
+    local maxLandmarkDelta, compared = LandmarkMaxDelta(m_deadMotionLandmarks, landmarkByIndex)
+    m_deadMotionLandmarks = landmarkByIndex
+    local weMoved = compared < 1 or maxLandmarkDelta == nil or maxLandmarkDelta > c_DEAD_MOTION_LANDMARK_YARDS
+
+    local changed = {}
+    for wid in pairs(m_outsiderDeadWids) do
+        local meta = m_trackMeta[wid]
+        local key = meta and meta.name and NormalizeNameKey(meta.name)
+        local dist = key and distByKey[key]
+        local prev = m_deadMotionByWid[wid]
+        if weMoved or dist == nil then
+            m_deadMotionByWid[wid] = { dist = dist }
+        elseif prev and prev.dist ~= nil and AbsNumber(dist - prev.dist) > c_DEAD_MOTION_PLAYER_YARDS then
+            m_outsiderDeadWids[wid] = nil
+            m_deadMotionByWid[wid] = nil
+            changed[wid] = true
+        else
+            m_deadMotionByWid[wid] = { dist = dist }
+        end
+    end
+    for wid in pairs(m_deadMotionByWid) do
+        if m_outsiderDeadWids[wid] ~= true then
+            m_deadMotionByWid[wid] = nil
+        end
+    end
+    for wid in pairs(changed) do
+        ApplyOverlaysForOutsiderWid(wid)
+    end
+end
+
+local function RefreshOutsiderDeathFlags()
+    ApplyLiveTargetDeathObservations()
+    ClearOutsiderDeadFromScenarioHealth()
 end
 
 --- Reads TargetInfo after stock TargetWindow / MouseOverTargetWindow ran UpdateFromClient on PLAYER_TARGET_UPDATED.
@@ -1151,6 +1918,7 @@ local function ConsiderClassificationForTracking(classification)
             isGroupWorldObject = function(trackWid) return m_groupWorldObjs[trackWid] == true end,
             isGroupMemberName = IsGroupMemberName,
             resolveOutsiderLeaderVisuals = ResolveOutsiderLeaderVisuals,
+            applyOverlays = ApplyIconOverlays,
         }) then
             m_outsiderProbeElapsed = c_OUTSIDER_PROBE_INTERVAL
         end
@@ -1309,8 +2077,12 @@ local function RosterLiveWorldIdsFullyAttached()
         if memberName == nil or memberName == L"" or IsSelfMember(memberName) then
             return true
         end
-        local liveWid = tonumber(member.worldObjNum) or 0
+        local liveWid = LiveAttachWorldId(member)
         if liveWid == 0 then
+            local icon = m_icons[partyIndex][memberIndex]
+            if icon and icon.isEnabled then
+                return false
+            end
             return true
         end
         sawLive = true
@@ -1318,6 +2090,7 @@ local function RosterLiveWorldIdsFullyAttached()
         if not icon
             or not icon.isEnabled
             or icon.worldObjNum ~= liveWid
+            or icon.rosterSpatialHidden == true
             or not icon.windowName
             or not DoesWindowExist(icon.windowName)
         then
@@ -1338,7 +2111,7 @@ local function RosterLiveWorldIdsFullyAttached()
             local data = (type(PartyUtils) == "table" and type(PartyUtils.GetPartyData) == "function") and PartyUtils.GetPartyData() or GetGroupData()
             if type(data) == "table" then
                 for m = 1, c_MAX_MEMBERS do
-                    local member = GetPartySlotMember(m, data)
+                    local member = HydrateRosterMemberForAttach(1, m, GetPartySlotMember(m, data))
                     if wantRosterMember(member, s.showParty == true) and not memberLiveAttached(1, m, member) then
                         return false
                     end
@@ -1348,7 +2121,7 @@ local function RosterLiveWorldIdsFullyAttached()
     elseif IsWarBandActive() then
         local showAll = s.showWarband == true
         local showParty1 = s.showParty == true
-        local parties = GetBattlegroupMemberData()
+        local parties = (type(Roster.GetWarbandParties) == "function" and Roster.GetWarbandParties(nil)) or GetBattlegroupMemberData()
         if type(parties) == "table" then
             for p = 1, c_MAX_PARTIES do
                 local party = parties[p]
@@ -1360,6 +2133,7 @@ local function RosterLiveWorldIdsFullyAttached()
                             member = hydrated
                         end
                     end
+                    member = HydrateRosterMemberForAttach(p, m, member)
                     local shouldShow = showAll or (showParty1 and p == 1)
                     if wantRosterMember(member, shouldShow) and not memberLiveAttached(p, m, member) then
                         return false
@@ -1371,7 +2145,7 @@ local function RosterLiveWorldIdsFullyAttached()
         local data = (type(PartyUtils) == "table" and type(PartyUtils.GetPartyData) == "function") and PartyUtils.GetPartyData() or GetGroupData()
         if type(data) == "table" then
             for m = 1, c_MAX_MEMBERS do
-                local member = GetPartySlotMember(m, data)
+                local member = HydrateRosterMemberForAttach(1, m, GetPartySlotMember(m, data))
                 if wantRosterMember(member, s.showParty == true) and not memberLiveAttached(1, m, member) then
                     return false
                 end
@@ -1389,6 +2163,7 @@ end
 
 local function RosterRefreshOpts()
     local s = EnsureSettings()
+    local scenarioHpByKey = BuildScenarioHpByNameKey()
     return {
         normalizeNameKey = NormalizeNameKey,
         toWString = ToWString,
@@ -1396,6 +2171,21 @@ local function RosterRefreshOpts()
         isSocialHighlightedName = IsSocialHighlightedName,
         showPartyIcons = s.showParty == true,
         debugLog = DebugLog,
+        hydrateMember = HydrateRosterMemberForAttach,
+        applyRosterOverlays = function(icon, member)
+            if not icon then
+                return
+            end
+            member = MergeLiveRosterDeathMember(
+                icon.partyIndex,
+                icon.memberIndex,
+                member,
+                icon.playerName or (member and member.name),
+                scenarioHpByKey
+            )
+            icon.lastRosterDead = IsRosterMemberDead(member)
+            ApplyIconOverlays(icon)
+        end,
     }
 end
 
@@ -1426,8 +2216,9 @@ local function CheckRosterWorldObjChanges()
         if not member or not member.name then
             return false
         end
+        member = HydrateRosterMemberForAttach(partyIndex, memberIndex, member)
         local icon = m_icons[partyIndex][memberIndex]
-        local liveWid = tonumber(member.worldObjNum) or 0
+        local liveWid = LiveAttachWorldId(member)
         local resolvedWid = ResolveRosterIconAttachWorldId(member.name, liveWid)
         if resolvedWid ~= icon.worldObjNum then
             return true
@@ -1457,7 +2248,7 @@ local function CheckRosterWorldObjChanges()
     elseif IsWarBandActive() then
         local showAll = s.showWarband == true
         local showParty1 = s.showParty == true
-        local parties = GetBattlegroupMemberData()
+        local parties = (type(Roster.GetWarbandParties) == "function" and Roster.GetWarbandParties(nil)) or GetBattlegroupMemberData()
         if type(parties) == "table" then
             for p = 1, c_MAX_PARTIES do
                 local party = parties[p]
@@ -1490,6 +2281,37 @@ local function CheckRosterWorldObjChanges()
     return false
 end
 
+local function RebindAllRosterWorldObjects()
+    for p = 1, c_MAX_PARTIES do
+        for m = 1, c_MAX_MEMBERS do
+            local icon = m_icons[p][m]
+            if icon and icon.isEnabled and icon.worldObjNum ~= 0 then
+                icon:RebindWorldObject()
+            end
+        end
+    end
+end
+
+local function RebindAllOutsiderWorldObjects()
+    for wid, slotIdx in pairs(m_trackWidToSlot) do
+        if wid ~= nil and slotIdx ~= nil then
+            local icon = m_outsiderPool[slotIdx]
+            if icon and icon.isEnabled and icon.worldObjNum ~= 0 then
+                icon:RebindWorldObject()
+            end
+        end
+    end
+end
+
+--- Re-issue engine attach for every live roster + outsider marker (after another addon mutates world binds).
+function CustomUI.GroupIcons.RebindAllTrackedWorldObjects()
+    if type(CustomUI.IsComponentEnabled) == "function" and not CustomUI.IsComponentEnabled("GroupIcons") then
+        return
+    end
+    RebindAllRosterWorldObjects()
+    RebindAllOutsiderWorldObjects()
+end
+
 local function WarmRefreshRosterIfNeeded(dt)
     if m_postEnableWarmRefreshRemaining <= 0 then
         return
@@ -1499,10 +2321,10 @@ local function WarmRefreshRosterIfNeeded(dt)
         m_postEnableWarmRefreshPoll = 0
         return
     end
-    -- Stop early only when every *live* roster wid is attached. Do not treat sticky/distant
-    -- attaches (or a single early nearby attach) as warm-refresh success — that caused
-    -- post-/reloadui missing icons until a manual disable/enable.
+    -- Stop early only when every *live* roster wid is attached. Lua wid match after /reloadui can still
+    -- be unbound in the engine — rebind once before stopping (Enemy Detach+Attach on ObjectWindow:Attach).
     if RosterLiveWorldIdsFullyAttached() then
+        RebindAllRosterWorldObjects()
         m_postEnableWarmRefreshRemaining = 0
         m_postEnableWarmRefreshPoll = 0
         return
@@ -1512,6 +2334,7 @@ local function WarmRefreshRosterIfNeeded(dt)
         m_postEnableWarmRefreshPoll = 0
         m_postEnableWarmRefreshRemaining = m_postEnableWarmRefreshRemaining - 1
         m_needsRefreshAll = true
+        RebindAllRosterWorldObjects()
     end
 end
 
@@ -1575,13 +2398,45 @@ IsScenarioContext = function()
     return false
 end
 
+local function WantScenarioThreatStream()
+    if type(CustomUI.IsComponentEnabled) == "function" and not CustomUI.IsComponentEnabled("GroupIcons") then
+        return false
+    end
+    return EnsureSettings().showScenarioThreat == true and IsScenarioContext() == true
+end
+
+SyncScenarioStatsStream = function()
+    if type(ScenarioStats.EnsureStockSummaryHook) == "function" then
+        ScenarioStats.EnsureStockSummaryHook(function()
+            if type(ScenarioStats.MarkStopped) == "function" then
+                ScenarioStats.MarkStopped()
+            end
+            if WantScenarioThreatStream() then
+                ScenarioStats.Start()
+            end
+        end)
+    end
+    if WantScenarioThreatStream() then
+        if type(ScenarioStats.Start) == "function" then
+            ScenarioStats.Start()
+        end
+        RefreshThreatWinnersFromScenarioPlayers()
+        ApplyAllLiveIconOverlays()
+    else
+        if type(ScenarioStats.Stop) == "function" then
+            ScenarioStats.Stop()
+        end
+        ClearThreatWinners()
+        ApplyAllLiveIconOverlays()
+    end
+end
+
 -- Refresh from party data (group / solo).
 local function RefreshParty()
     if type(Roster.RefreshParty) == "function" then
         Roster.RefreshParty(GetRosterState(), RosterRefreshOpts())
         return
     end
-    InvalidatePartyAndWarbandCaches()
     local data = nil
     if type(PartyUtils) == "table" and type(PartyUtils.GetPartyData) == "function" then
         data = PartyUtils.GetPartyData()
@@ -1604,7 +2459,7 @@ local function RefreshParty()
             if nk ~= nil then
                 validStickyKeys[nk] = true
             end
-            local liveWid = tonumber(member.worldObjNum) or 0
+            local liveWid = LiveAttachWorldId(member)
             local wid = ResolveRosterIconAttachWorldId(member.name, liveWid)
             RegisterGroupMember({ name = member.name, worldObjNum = (wid ~= 0 and wid) or nil })
             if wid ~= 0 and not IsSelfMember(memberName) then
@@ -1613,6 +2468,8 @@ local function RefreshParty()
             if wid ~= 0 and not IsSelfMember(memberName) then
                 icon:Enable()
                 icon:Update(memberName, wid, member.careerLine, member.isGroupLeader == true, false)
+                icon.lastRosterDead = IsRosterMemberDead(member)
+                ApplyIconOverlays(icon)
             else
                 icon:Disable()
             end
@@ -1642,8 +2499,9 @@ local function RefreshWarband(showAll, showParty1, partiesOverride)
         Roster.RefreshWarband(GetRosterState(), showAll, showParty1, partiesOverride, RosterRefreshOpts())
         return
     end
-    InvalidatePartyAndWarbandCaches()
-    local parties = partiesOverride or GetBattlegroupMemberData()
+    local parties = (partiesOverride ~= nil and partiesOverride)
+        or (type(Roster.GetWarbandParties) == "function" and Roster.GetWarbandParties(nil))
+        or GetBattlegroupMemberData()
     if not parties then return end
     DebugLog("RefreshWarband: showAll=" .. tostring(showAll) .. " showParty1=" .. tostring(showParty1))
     showAll = showAll == true
@@ -1668,12 +2526,14 @@ local function RefreshWarband(showAll, showParty1, partiesOverride)
                 if nk ~= nil then
                     validStickyKeys[nk] = true
                 end
-                local liveWid = tonumber(member.worldObjNum) or 0
+                local liveWid = LiveAttachWorldId(member)
                 local wid = ResolveRosterIconAttachWorldId(member.name, liveWid)
                 RegisterGroupMember({ name = member.name, worldObjNum = (wid ~= 0 and wid) or nil })
                 if wid ~= 0 and not IsSelfMember(memberName) then
                     icon:Enable()
                     icon:Update(memberName, wid, member.careerLine, member.isGroupLeader == true, false)
+                    icon.lastRosterDead = IsRosterMemberDead(member)
+                    ApplyIconOverlays(icon)
                 else
                     icon:Disable()
                 end
@@ -1719,6 +2579,8 @@ RefreshAll = function()
         RequestWarbandLeaderData()
         OnWarbandLeaderListMaybeChanged()
     end
+    RefreshRosterDeathOverlays()
+    ApplyAllLiveIconOverlays()
 end
 
 ----------------------------------------------------------------
@@ -1746,6 +2608,13 @@ function CustomUI.GroupIcons.OnUpdate(timePassed)
         m_friendlyLeaderPollElapsed = 0
     end
 
+    if m_pendingRosterAttachCheck then
+        m_pendingRosterAttachCheck = false
+        if CheckRosterWorldObjChanges() then
+            m_needsRefreshAll = true
+        end
+    end
+
     if m_needsRefreshAll then
         m_needsRefreshAll = false
         RefreshAll()
@@ -1759,6 +2628,14 @@ function CustomUI.GroupIcons.OnUpdate(timePassed)
             ConsiderClassificationForTracking(cls)
         end
         PruneTrackedOutsidersAgainstRoster()
+        RefreshOutsiderDeathFlags()
+    elseif m_pendingOutsiderHealthRefresh then
+        RefreshOutsiderDeathFlags()
+    end
+    m_pendingOutsiderHealthRefresh = false
+    if m_pendingRosterDeathRefresh then
+        m_pendingRosterDeathRefresh = false
+        RefreshRosterDeathOverlays()
     end
     WarmRefreshRosterIfNeeded(dt)
 
@@ -1779,6 +2656,17 @@ function CustomUI.GroupIcons.OnUpdate(timePassed)
     else
         m_outsiderProbeElapsed = 0
     end
+
+    -- Map GetMapPointData for walking-rez skull clear: ~1Hz, not every spatial probe tick.
+    if next(m_outsiderDeadWids) then
+        m_deadMotionMapElapsed = m_deadMotionMapElapsed + dt
+        if m_deadMotionMapElapsed >= c_DEAD_MOTION_MAP_INTERVAL then
+            m_deadMotionMapElapsed = 0
+            ClearOutsiderDeadFromIndependentMotion()
+        end
+    else
+        m_deadMotionMapElapsed = 0
+    end
     m_rosterValidateElapsed = m_rosterValidateElapsed + dt
     if m_rosterValidateElapsed >= c_ROSTER_WID_VALIDATE_INTERVAL then
         m_rosterValidateElapsed = 0
@@ -1786,6 +2674,10 @@ function CustomUI.GroupIcons.OnUpdate(timePassed)
         if CheckRosterWorldObjChanges() then
             m_needsRefreshAll = true
         end
+        if next(m_outsiderDeadWids) then
+            ClearOutsiderDeadFromScenarioHealth()
+        end
+        RefreshRosterDeathOverlays()
     end
 end
 
@@ -1809,26 +2701,59 @@ function CustomUI.GroupIcons.OnGroupUpdated()
     m_needsRefreshAll = true
 end
 
+function CustomUI.GroupIcons.OnGroupStatusUpdated(memberIndex)
+    m_pendingRosterDeathRefresh = true
+    if SlotAttachNeedsRefresh(1, memberIndex) then
+        m_needsRefreshAll = true
+    elseif memberIndex == nil then
+        m_pendingRosterAttachCheck = true
+    end
+end
+
 function CustomUI.GroupIcons.OnBattlegroupUpdated()
     ScheduleWarmRefreshRosterPolling()
     OnWarbandLeaderListMaybeChanged()
     m_needsRefreshAll = true
 end
 
+function CustomUI.GroupIcons.OnBattlegroupMemberUpdated(groupIndex, memberIndex)
+    m_pendingRosterDeathRefresh = true
+    if SlotAttachNeedsRefresh(groupIndex, memberIndex) then
+        m_needsRefreshAll = true
+    elseif groupIndex == nil or memberIndex == nil then
+        m_pendingRosterAttachCheck = true
+    end
+end
+
 function CustomUI.GroupIcons.OnScenarioUpdated()
+    m_scenarioHitHp = {}
     ScheduleWarmRefreshRosterPolling()
     m_needsRefreshAll = true
+    SyncScenarioStatsStream()
+end
+
+function CustomUI.GroupIcons.OnScenarioPlayersStatsUpdated()
+    if type(CustomUI.IsComponentEnabled) == "function" and not CustomUI.IsComponentEnabled("GroupIcons") then
+        return
+    end
+    if EnsureSettings().showScenarioThreat ~= true or not IsScenarioContext() then
+        return
+    end
+    RefreshThreatWinnersFromScenarioPlayers()
+    ApplyAllLiveIconOverlays()
 end
 
 function CustomUI.GroupIcons.OnInterfaceReady()
     -- Stock UI commonly rebuilds windows from INTERFACE_RELOADED in addition to LOADING_END.
     -- Driver is CreateWindow(..., false); keep it shown so OnUpdate/warm refresh keep ticking after reload.
     EnsureGroupIconsDriverShowing()
+    RememberAttachZoneId()
     RefreshSocialNameSets()
     ScheduleWarmRefreshRosterPolling()
     RequestWarbandLeaderData()
     OnWarbandLeaderListMaybeChanged()
     m_needsRefreshAll = true
+    SyncScenarioStatsStream()
 end
 
 function CustomUI.GroupIcons.OnSocialListsUpdated()
@@ -1837,16 +2762,25 @@ function CustomUI.GroupIcons.OnSocialListsUpdated()
 end
 
 function CustomUI.GroupIcons.OnZoneChanged()
-    m_stickyRosterWidByKey = {}
-    m_knownByNameKey = {}
-    UntrackAllOutsiders()
-    ResetWorldProbeCalibration()
+    local zone = CurrentPlayerZoneId()
+    local loadingZone = (zone == nil or zone == 0)
+    local sameZone = (not loadingZone and m_lastAttachZoneId ~= nil and zone == m_lastAttachZoneId)
+    -- /reloadui can fire PLAYER_ZONE_CHANGED with 0 or the current zone; keep sticky/known ids then.
+    if not sameZone and not loadingZone then
+        m_stickyRosterWidByKey = {}
+        m_knownByNameKey = {}
+        UntrackAllOutsiders()
+        ResetWorldProbeCalibration()
+        m_lastAttachZoneId = zone
+    end
+    RememberAttachZoneId()
     RefreshSocialNameSets()
     ScheduleWarmRefreshRosterPolling()
     m_friendlyLeaderPollElapsed = 0
     RequestWarbandLeaderData()
     OnWarbandLeaderListMaybeChanged()
     m_needsRefreshAll = true
+    SyncScenarioStatsStream()
 end
 
 function CustomUI.GroupIcons.OnPlayerTargetUpdated(targetClassification, targetId, targetType)
@@ -1861,6 +2795,22 @@ function CustomUI.GroupIcons.OnPlayerTargetUpdated(targetClassification, targetI
     m_pendingOutsiderClassifications[targetClassification] = true
 end
 
+function CustomUI.GroupIcons.OnPlayerTargetHitPointsUpdated()
+    -- TargetInfo HP is updated in place; do not call UpdateFromClient. Merge dead flags next tick.
+    m_pendingOutsiderHealthRefresh = true
+end
+
+function CustomUI.GroupIcons.OnScenarioPlayerHitsUpdated(groupIndex, groupSlotNum, hits)
+    local gi = tonumber(groupIndex)
+    local mi = tonumber(groupSlotNum)
+    if gi ~= nil and mi ~= nil then
+        m_scenarioHitHp[gi] = m_scenarioHitHp[gi] or {}
+        m_scenarioHitHp[gi][mi] = tonumber(hits)
+    end
+    m_pendingOutsiderHealthRefresh = true
+    m_pendingRosterDeathRefresh = true
+end
+
 function CustomUI.GroupIcons.OnSettingsChanged()
     -- Settings tab may change Party/Warband/etc. while the component is disabled; never RefreshAll then or
     -- icons would attach (handlers are unregistered but this path is called directly from settings UI).
@@ -1872,6 +2822,7 @@ function CustomUI.GroupIcons.OnSettingsChanged()
     ResetWorldProbeCalibration()
     ScheduleWarmRefreshRosterPolling()
     m_needsRefreshAll = true
+    SyncScenarioStatsStream()
 end
 
 ----------------------------------------------------------------
@@ -1879,6 +2830,84 @@ end
 ----------------------------------------------------------------
 
 local GroupIconsComponent = {}
+
+-- Event handlers attach to CustomUIGroupIconsDriver (not Root). Programmatic
+-- WindowRegisterEventHandler bindings are cleared by destroying the driver window;
+-- WindowUnregisterEventHandler only works for handlers registered this session on that window.
+
+local function WorldEventHandlers()
+    local events = SystemData and SystemData.Events
+    if not events then
+        return nil
+    end
+    return {
+        { events.GROUP_UPDATED, "CustomUI.GroupIcons.OnGroupUpdated" },
+        { events.GROUP_STATUS_UPDATED, "CustomUI.GroupIcons.OnGroupStatusUpdated" },
+        { events.GROUP_PLAYER_ADDED, "CustomUI.GroupIcons.OnGroupUpdated" },
+        { events.BATTLEGROUP_UPDATED, "CustomUI.GroupIcons.OnBattlegroupUpdated" },
+        { events.BATTLEGROUP_MEMBER_UPDATED, "CustomUI.GroupIcons.OnBattlegroupMemberUpdated" },
+        { events.SCENARIO_GROUP_UPDATED, "CustomUI.GroupIcons.OnScenarioUpdated" },
+        { events.SCENARIO_PLAYERS_LIST_GROUPS_UPDATED, "CustomUI.GroupIcons.OnScenarioUpdated" },
+        { events.SCENARIO_BEGIN, "CustomUI.GroupIcons.OnScenarioUpdated" },
+        { events.SCENARIO_END, "CustomUI.GroupIcons.OnScenarioUpdated" },
+        { events.CITY_SCENARIO_BEGIN, "CustomUI.GroupIcons.OnScenarioUpdated" },
+        { events.CITY_SCENARIO_END, "CustomUI.GroupIcons.OnScenarioUpdated" },
+        { events.SCENARIO_PLAYERS_LIST_STATS_UPDATED, "CustomUI.GroupIcons.OnScenarioPlayersStatsUpdated" },
+        { events.SCENARIO_PLAYER_HITS_UPDATED, "CustomUI.GroupIcons.OnScenarioPlayerHitsUpdated" },
+        { events.PLAYER_ZONE_CHANGED, "CustomUI.GroupIcons.OnZoneChanged" },
+        { events.PLAYER_TARGET_UPDATED, "CustomUI.GroupIcons.OnPlayerTargetUpdated" },
+        { events.PLAYER_TARGET_HIT_POINTS_UPDATED, "CustomUI.GroupIcons.OnPlayerTargetHitPointsUpdated" },
+        { events.LOADING_END, "CustomUI.GroupIcons.OnInterfaceReady" },
+        { events.ENTER_WORLD, "CustomUI.GroupIcons.OnInterfaceReady" },
+        { events.INTERFACE_RELOADED, "CustomUI.GroupIcons.OnInterfaceReady" },
+        { events.ALL_MODULES_INITIALIZED, "CustomUI.GroupIcons.OnInterfaceReady" },
+        { events.GROUP_SETTINGS_PRIVACY_UPDATED, "CustomUI.GroupIcons.OnOpenPartyUpdated" },
+        { events.SOCIAL_OPENPARTYINTEREST_UPDATED, "CustomUI.GroupIcons.OnOpenPartyUpdated" },
+        { events.PLAYER_CHAPTER_UPDATED, "CustomUI.GroupIcons.OnPlayerChapterUpdated" },
+        { events.SOCIAL_OPENPARTY_UPDATED, "CustomUI.GroupIcons.OnOpenPartyUpdated" },
+        { events.SOCIAL_OPENPARTY_WORLD_UPDATED, "CustomUI.GroupIcons.OnOpenPartyUpdated" },
+        { events.SOCIAL_OPENPARTY_NOTIFY, "CustomUI.GroupIcons.OnOpenPartyUpdated" },
+        { events.SOCIAL_FRIENDS_UPDATED, "CustomUI.GroupIcons.OnSocialListsUpdated" },
+        { events.GUILD_MEMBER_UPDATED, "CustomUI.GroupIcons.OnSocialListsUpdated" },
+        { events.GUILD_MEMBER_ADDED, "CustomUI.GroupIcons.OnSocialListsUpdated" },
+        { events.GUILD_MEMBER_REMOVED, "CustomUI.GroupIcons.OnSocialListsUpdated" },
+    }
+end
+
+local function ResetGroupIconsDriverWindow()
+    if type(DestroyWindow) == "function" and DoesWindowExist(c_GROUPICONS_DRIVER) then
+        CustomUI.TryCallQuiet("GroupIcons.DestroyDriver", DestroyWindow, c_GROUPICONS_DRIVER)
+    end
+    if type(CreateWindow) == "function" and not DoesWindowExist(c_GROUPICONS_DRIVER) then
+        CustomUI.TryCallQuiet("GroupIcons.CreateDriver", CreateWindow, c_GROUPICONS_DRIVER, false)
+    end
+end
+
+local function RegisterWorldEvents()
+    if m_handlersRegistered then
+        return
+    end
+    local pairsList = WorldEventHandlers()
+    if not pairsList or type(WindowRegisterEventHandler) ~= "function" then
+        return
+    end
+    if not DoesWindowExist(c_GROUPICONS_DRIVER) then
+        return
+    end
+    for i = 1, #pairsList do
+        local ev, handler = pairsList[i][1], pairsList[i][2]
+        if ev then
+            CustomUI.TryCallQuiet(
+                "GroupIcons.Register " .. tostring(handler),
+                WindowRegisterEventHandler,
+                c_GROUPICONS_DRIVER,
+                ev,
+                handler
+            )
+        end
+    end
+    m_handlersRegistered = true
+end
 
 function GroupIconsComponent:Initialize()
     for p = 1, c_MAX_PARTIES do
@@ -1895,78 +2924,40 @@ function GroupIconsComponent:Initialize()
 end
 
 function GroupIconsComponent:Enable()
-    WindowRegisterEventHandler("Root", SystemData.Events.GROUP_UPDATED,           "CustomUI.GroupIcons.OnGroupUpdated")
-    WindowRegisterEventHandler("Root", SystemData.Events.GROUP_STATUS_UPDATED,    "CustomUI.GroupIcons.OnGroupUpdated")
-    WindowRegisterEventHandler("Root", SystemData.Events.GROUP_PLAYER_ADDED,      "CustomUI.GroupIcons.OnGroupUpdated")
-    WindowRegisterEventHandler("Root", SystemData.Events.BATTLEGROUP_UPDATED,     "CustomUI.GroupIcons.OnBattlegroupUpdated")
-    WindowRegisterEventHandler("Root", SystemData.Events.BATTLEGROUP_MEMBER_UPDATED, "CustomUI.GroupIcons.OnBattlegroupUpdated")
-    WindowRegisterEventHandler("Root", SystemData.Events.SCENARIO_GROUP_UPDATED,  "CustomUI.GroupIcons.OnScenarioUpdated")
-    WindowRegisterEventHandler("Root", SystemData.Events.SCENARIO_PLAYERS_LIST_GROUPS_UPDATED, "CustomUI.GroupIcons.OnScenarioUpdated")
-    WindowRegisterEventHandler("Root", SystemData.Events.SCENARIO_BEGIN, "CustomUI.GroupIcons.OnScenarioUpdated")
-    WindowRegisterEventHandler("Root", SystemData.Events.SCENARIO_END, "CustomUI.GroupIcons.OnScenarioUpdated")
-    WindowRegisterEventHandler("Root", SystemData.Events.CITY_SCENARIO_BEGIN, "CustomUI.GroupIcons.OnScenarioUpdated")
-    WindowRegisterEventHandler("Root", SystemData.Events.CITY_SCENARIO_END, "CustomUI.GroupIcons.OnScenarioUpdated")
-    WindowRegisterEventHandler("Root", SystemData.Events.PLAYER_ZONE_CHANGED,     "CustomUI.GroupIcons.OnZoneChanged")
-    WindowRegisterEventHandler("Root", SystemData.Events.PLAYER_TARGET_UPDATED,    "CustomUI.GroupIcons.OnPlayerTargetUpdated")
-    WindowRegisterEventHandler("Root", SystemData.Events.LOADING_END,             "CustomUI.GroupIcons.OnInterfaceReady")
-    WindowRegisterEventHandler("Root", SystemData.Events.ENTER_WORLD,             "CustomUI.GroupIcons.OnInterfaceReady")
-    WindowRegisterEventHandler("Root", SystemData.Events.INTERFACE_RELOADED,      "CustomUI.GroupIcons.OnInterfaceReady")
-    WindowRegisterEventHandler("Root", SystemData.Events.ALL_MODULES_INITIALIZED, "CustomUI.GroupIcons.OnInterfaceReady")
-    WindowRegisterEventHandler("Root", SystemData.Events.GROUP_SETTINGS_PRIVACY_UPDATED, "CustomUI.GroupIcons.OnOpenPartyUpdated")
-    WindowRegisterEventHandler("Root", SystemData.Events.SOCIAL_OPENPARTYINTEREST_UPDATED, "CustomUI.GroupIcons.OnOpenPartyUpdated")
-    WindowRegisterEventHandler("Root", SystemData.Events.PLAYER_CHAPTER_UPDATED, "CustomUI.GroupIcons.OnPlayerChapterUpdated")
-    WindowRegisterEventHandler("Root", SystemData.Events.SOCIAL_OPENPARTY_UPDATED, "CustomUI.GroupIcons.OnOpenPartyUpdated")
-    WindowRegisterEventHandler("Root", SystemData.Events.SOCIAL_OPENPARTY_WORLD_UPDATED, "CustomUI.GroupIcons.OnOpenPartyUpdated")
-    WindowRegisterEventHandler("Root", SystemData.Events.SOCIAL_OPENPARTY_NOTIFY, "CustomUI.GroupIcons.OnOpenPartyUpdated")
-    WindowRegisterEventHandler("Root", SystemData.Events.SOCIAL_FRIENDS_UPDATED, "CustomUI.GroupIcons.OnSocialListsUpdated")
-    WindowRegisterEventHandler("Root", SystemData.Events.GUILD_MEMBER_UPDATED, "CustomUI.GroupIcons.OnSocialListsUpdated")
-    WindowRegisterEventHandler("Root", SystemData.Events.GUILD_MEMBER_ADDED, "CustomUI.GroupIcons.OnSocialListsUpdated")
-    WindowRegisterEventHandler("Root", SystemData.Events.GUILD_MEMBER_REMOVED, "CustomUI.GroupIcons.OnSocialListsUpdated")
+    ResetGroupIconsDriverWindow()
     EnsureGroupIconsDriverShowing()
+    RegisterWorldEvents()
     -- First ticks after Enable re-run roster attach until late roster worldObj ids arrive (common after /reloadui).
     RefreshSocialNameSets()
+    RememberAttachZoneId()
     m_needsRefreshAll = true
     ScheduleWarmRefreshRosterPolling()
     RequestWarbandLeaderData()
     OnWarbandLeaderListMaybeChanged()
-    RefreshAll()
+    SyncScenarioStatsStream()
     return true
 end
 
 function GroupIconsComponent:Disable()
-    WindowUnregisterEventHandler("Root", SystemData.Events.GROUP_UPDATED)
-    WindowUnregisterEventHandler("Root", SystemData.Events.GROUP_STATUS_UPDATED)
-    WindowUnregisterEventHandler("Root", SystemData.Events.GROUP_PLAYER_ADDED)
-    WindowUnregisterEventHandler("Root", SystemData.Events.BATTLEGROUP_UPDATED)
-    WindowUnregisterEventHandler("Root", SystemData.Events.BATTLEGROUP_MEMBER_UPDATED)
-    WindowUnregisterEventHandler("Root", SystemData.Events.SCENARIO_GROUP_UPDATED)
-    WindowUnregisterEventHandler("Root", SystemData.Events.SCENARIO_PLAYERS_LIST_GROUPS_UPDATED)
-    WindowUnregisterEventHandler("Root", SystemData.Events.SCENARIO_BEGIN)
-    WindowUnregisterEventHandler("Root", SystemData.Events.SCENARIO_END)
-    WindowUnregisterEventHandler("Root", SystemData.Events.CITY_SCENARIO_BEGIN)
-    WindowUnregisterEventHandler("Root", SystemData.Events.CITY_SCENARIO_END)
-    WindowUnregisterEventHandler("Root", SystemData.Events.PLAYER_ZONE_CHANGED)
-    WindowUnregisterEventHandler("Root", SystemData.Events.PLAYER_TARGET_UPDATED)
-    WindowUnregisterEventHandler("Root", SystemData.Events.LOADING_END)
-    WindowUnregisterEventHandler("Root", SystemData.Events.ENTER_WORLD)
-    WindowUnregisterEventHandler("Root", SystemData.Events.INTERFACE_RELOADED)
-    WindowUnregisterEventHandler("Root", SystemData.Events.ALL_MODULES_INITIALIZED)
-    WindowUnregisterEventHandler("Root", SystemData.Events.GROUP_SETTINGS_PRIVACY_UPDATED)
-    WindowUnregisterEventHandler("Root", SystemData.Events.SOCIAL_OPENPARTYINTEREST_UPDATED)
-    WindowUnregisterEventHandler("Root", SystemData.Events.PLAYER_CHAPTER_UPDATED)
-    WindowUnregisterEventHandler("Root", SystemData.Events.SOCIAL_OPENPARTY_UPDATED)
-    WindowUnregisterEventHandler("Root", SystemData.Events.SOCIAL_OPENPARTY_WORLD_UPDATED)
-    WindowUnregisterEventHandler("Root", SystemData.Events.SOCIAL_OPENPARTY_NOTIFY)
-    WindowUnregisterEventHandler("Root", SystemData.Events.SOCIAL_FRIENDS_UPDATED)
-    WindowUnregisterEventHandler("Root", SystemData.Events.GUILD_MEMBER_UPDATED)
-    WindowUnregisterEventHandler("Root", SystemData.Events.GUILD_MEMBER_ADDED)
-    WindowUnregisterEventHandler("Root", SystemData.Events.GUILD_MEMBER_REMOVED)
-    if DoesWindowExist(c_GROUPICONS_DRIVER) then
-        WindowSetShowing(c_GROUPICONS_DRIVER, false)
+    if type(DestroyWindow) == "function" and DoesWindowExist(c_GROUPICONS_DRIVER) then
+        CustomUI.TryCallQuiet("GroupIcons.DestroyDriver", DestroyWindow, c_GROUPICONS_DRIVER)
     end
+    m_handlersRegistered = false
     m_postEnableWarmRefreshRemaining = 0
     m_postEnableWarmRefreshPoll = 0
     m_pendingOutsiderClassifications = {}
+    m_pendingOutsiderHealthRefresh = false
+    m_pendingRosterDeathRefresh = false
+    m_pendingRosterAttachCheck = false
+    if type(ScenarioStats.Stop) == "function" then
+        ScenarioStats.Stop()
+    end
+    ClearThreatWinners()
+    m_outsiderDeadWids = {}
+    m_deadMotionByWid = {}
+    m_deadMotionLandmarks = {}
+    m_deadMotionMapElapsed = 0
+    m_scenarioHitHp = {}
     DisableAll()
     UntrackAllOutsiders()
 end

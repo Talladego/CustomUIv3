@@ -3,13 +3,14 @@
 
         <!-- default: same tier as stock HUD roots (e.g. PlayerWindow); below secondary panels (settings, TomeWindow, EA_Window_WorldMap). Still above GroupIcons (window layer background). -->
         <!-- Root wider than the 155px HP bar so name + <icon> markup + rank fit; bar stays 155px centered. -->
-        <Window name="CustomUITargetHUDTemplate" movable="false" savesettings="false" layer="default">
+        <!-- handleinput=false matches BuffHeadContainerTemplate. OnShutdown is not on the template:
+             DestroyWindow of any instance used to shut down the whole TargetHUD controller. -->
+        <Window name="CustomUITargetHUDTemplate" movable="false" savesettings="false" handleinput="false" layer="default">
             <Size>
                 <AbsPoint x="220" y="45" />
             </Size>
             <EventHandlers>
-                <EventHandler event="OnShutdown" function="CustomUI.TargetHUD.OnShutdown" />
-                <EventHandler event="OnUpdate"   function="CustomUI.TargetHUD.OnUpdate" />
+                <EventHandler event="OnUpdate" function="CustomUI.TargetHUD.OnUpdate" />
             </EventHandlers>
             <Windows>
 
@@ -42,8 +43,9 @@
             </Windows>
         </Window>
 
-        <Window name="CustomUIHostileTargetHUD"  inherits="CustomUITargetHUDTemplate" movable="false" savesettings="false" />
-        <Window name="CustomUIFriendlyTargetHUD" inherits="CustomUITargetHUDTemplate" movable="false" savesettings="false" />
+        <Window name="CustomUIHostileTargetHUD"  inherits="CustomUITargetHUDTemplate" movable="false" savesettings="false" handleinput="false" />
+        <Window name="CustomUIFriendlyTargetHUD" inherits="CustomUITargetHUDTemplate" movable="false" savesettings="false" handleinput="false" />
+        <!-- Self HUD is created at runtime via CreateWindowFromTemplate (BuffHead Container:Create). -->
 
     </Windows>
 </Interface>

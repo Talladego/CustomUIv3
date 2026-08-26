@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+	<Windows>
+		<DynamicImage name="CustomUIQoLRedAlertFlash" texture="EA_ScreenFlash" layer="overlay" handleinput="false" popable="false">
+			<Size>
+				<AbsPoint x="70" y="100" />
+			</Size>
+			<Anchors>
+				<Anchor point="topleft" relativePoint="topleft" relativeTo="" />
+				<Anchor point="bottomright" relativePoint="bottomright" relativeTo="" />
+			</Anchors>
+			<TexCoords x="0" y="0" />
+			<TexDims x="256" y="256" />
+		</DynamicImage>
+
+		<Window name="CustomUIQoLRedAlertMessage" movable="false" handleinput="false" popable="false" layer="popup">
+			<Size>
+				<AbsPoint x="1024" y="80" />
+			</Size>
+			<Anchors>
+				<Anchor point="top" relativePoint="top" relativeTo="">
+					<AbsPoint x="0" y="275" />
+				</Anchor>
+			</Anchors>
+			<Windows>
+				<Label name="$parentText" font="font_alert_outline_giant" maxchars="128" textalign="center" wordwrap="true" autoresize="true">
+					<Size>
+						<AbsPoint x="1024" y="80" />
+					</Size>
+					<Anchors>
+						<Anchor point="top" relativePoint="top">
+							<AbsPoint x="0" y="0" />
+						</Anchor>
+					</Anchors>
+					<Color r="206" g="44" b="44" a="255" />
+				</Label>
+			</Windows>
+		</Window>
+	</Windows>
+</Interface>

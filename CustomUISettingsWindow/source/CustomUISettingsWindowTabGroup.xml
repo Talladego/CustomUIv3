@@ -103,19 +103,73 @@
                             </Windows>
                         </Window>
 						<!-- end General -->
-                        
-                        <!-- Buff Tracker -->
-                        <Window name="$parentBuffTracker" >
+
+                        <!-- Badges -->
+                        <Window name="$parentBadges" >
                             <Size>
-                                <AbsPoint x="500" y="240" />
+                                <AbsPoint x="500" y="90" />
                             </Size>
-                            <!-- README Pattern A (same as SCT): pin to ScrollChild; y = General(100) + gap(10); dual horizontal anchors, x=0. -->
+                            <!-- README Pattern A: y = General(100) + gap(10). -->
                             <Anchors>
                                 <Anchor point="topleft" relativePoint="topleft">
                                     <AbsPoint x="0" y="110" />
                                 </Anchor>
                                 <Anchor point="topright" relativePoint="topright">
                                     <AbsPoint x="0" y="110" />
+                                </Anchor>
+                            </Anchors>
+                            <Windows>
+                                <FullResizeImage name="$parentBackground" inherits="SettingsSectionBackground" />
+                                <Label name="$parentTitle" inherits="EA_Settings_SectionTitle">
+                                    <Size>
+                                        <AbsPoint x="400" y="25" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="10" y="10" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+
+                                <Window name="$parentCareer" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="40" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabGroup.OnToggleBadge" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Window name="$parentRank" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="$parentCareer">
+                                            <AbsPoint x="0" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabGroup.OnToggleBadge" />
+                                    </EventHandlers>
+                                </Window>
+                            </Windows>
+                        </Window>
+                        <!-- end Badges -->
+                        
+                        <!-- Buff Tracker -->
+                        <Window name="$parentBuffTracker" >
+                            <Size>
+                                <AbsPoint x="500" y="240" />
+                            </Size>
+                            <!-- README Pattern A: y = General(100) + gap(10) + Badges(90) + gap(10) = 210. -->
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft">
+                                    <AbsPoint x="0" y="210" />
+                                </Anchor>
+                                <Anchor point="topright" relativePoint="topright">
+                                    <AbsPoint x="0" y="210" />
                                 </Anchor>
                             </Anchors>
                             <Windows>

@@ -1,0 +1,331 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../Interface.xsd">
+  <Scripts>
+    <Script file="Source/CustomUISettingsWindowTabAutoFPS.lua"/>
+  </Scripts>
+  <Windows>
+
+    <Window name="CustomUISettingsWindowTabAutoFPS" movable="false" >
+      <Anchors>
+        <Anchor point="topleft" relativePoint="topleft" relativeTo="CustomUISettingsWindowTabbedSocket">
+          <AbsPoint x="0" y="0"/>
+        </Anchor>
+        <Anchor point="bottomright" relativePoint="bottomright" relativeTo="CustomUISettingsWindowTabbedSocket">
+          <AbsPoint x="0" y="0"/>
+        </Anchor>
+      </Anchors>
+      <EventHandlers>
+        <EventHandler event="OnInitialize" function="CustomUISettingsWindowTabAutoFPS.Initialize"/>
+      </EventHandlers>
+      <Windows>
+
+        <ScrollWindow name="$parentContents" childscrollwindow="SWTabAutoFPSContentsScrollChild" scrollbar="SWTabAutoFPSContentsScrollbar" lineheight="18" autoHideScrollBar="true">
+            <Anchors>
+                <Anchor point="topleft" relativePoint="topleft" />
+                <Anchor point="bottomright" relativePoint="bottomright" />
+            </Anchors>
+            <Windows>
+                <VerticalScrollbar name="$parentScrollbar" inherits="EA_ScrollBar_DefaultVerticalChain" layer="popup">
+                    <Anchors>
+                        <Anchor point="topright" relativePoint="topright">
+                            <AbsPoint x="0" y="0"/>
+                        </Anchor>
+                        <Anchor point="bottomright" relativePoint="bottomright">
+                            <AbsPoint x="0" y="0"/>
+                        </Anchor>
+                    </Anchors>
+                </VerticalScrollbar>
+
+                <Window name="$parentScrollChild">
+                    <Anchors>
+                        <Anchor point="topleft" relativePoint="topleft">
+                            <AbsPoint x="0" y="0" />
+                        </Anchor>
+                        <Anchor point="topleft" relativePoint="topright" relativeTo="$parentScrollbar">
+                            <AbsPoint x="0" y="0" />
+                        </Anchor>
+                    </Anchors>
+                    <Windows>
+
+                        <Window name="$parentGeneral" >
+                            <Size>
+                                <AbsPoint x="500" y="150" />
+                            </Size>
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft">
+                                  <AbsPoint x="0" y="0"/>
+                                </Anchor>
+                                <Anchor point="topright" relativePoint="topright">
+                                  <AbsPoint x="0" y="0"/>
+                                </Anchor>
+                            </Anchors>
+                            <Windows>
+                                <FullResizeImage name="$parentBackground" inherits="SettingsSectionBackground" />
+                                <Label name="$parentTitle" inherits="EA_Settings_SectionTitle">
+                                    <Size>
+                                        <AbsPoint x="400" y="25" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="10" y="10" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+
+                                <Window name="$parentAutoFPSEnabled" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="40" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabAutoFPS.OnToggleEnabled" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Window name="$parentNotifyChat" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="72" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabAutoFPS.OnToggleNotifyChat" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Window name="$parentUpshiftCombat" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="104" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabAutoFPS.OnToggleUpshiftCombat" />
+                                    </EventHandlers>
+                                </Window>
+                            </Windows>
+                        </Window>
+
+                        <!-- Pattern A: y = General 150 + gap 10 -->
+                        <Window name="$parentThresholds" >
+                            <Size>
+                                <AbsPoint x="500" y="280" />
+                            </Size>
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft">
+                                    <AbsPoint x="0" y="160"/>
+                                </Anchor>
+                                <Anchor point="topright" relativePoint="topright">
+                                    <AbsPoint x="0" y="160"/>
+                                </Anchor>
+                            </Anchors>
+                            <Windows>
+                                <FullResizeImage name="$parentBackground" inherits="SettingsSectionBackground" />
+                                <Label name="$parentTitle" inherits="EA_Settings_SectionTitle">
+                                    <Size>
+                                        <AbsPoint x="400" y="25" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="10" y="10" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+
+                                <Label name="$parentDownshiftFpsLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+                                    <Size>
+                                        <AbsPoint x="220" y="20" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="42" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+                                <ComboBox name="$parentDownshiftFps" inherits="EA_ComboBox_DefaultResizable" handleinput="true">
+                                    <Size>
+                                        <AbsPoint x="160" y="30" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="270" y="38" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnSelChanged" function="CustomUISettingsWindowTabAutoFPS.OnComboChanged" />
+                                    </EventHandlers>
+                                </ComboBox>
+
+                                <Label name="$parentDownshiftSecondsLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+                                    <Size>
+                                        <AbsPoint x="220" y="20" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="78" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+                                <ComboBox name="$parentDownshiftSeconds" inherits="EA_ComboBox_DefaultResizable" handleinput="true">
+                                    <Size>
+                                        <AbsPoint x="160" y="30" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="270" y="74" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnSelChanged" function="CustomUISettingsWindowTabAutoFPS.OnComboChanged" />
+                                    </EventHandlers>
+                                </ComboBox>
+
+                                <Label name="$parentUpshiftFpsLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+                                    <Size>
+                                        <AbsPoint x="220" y="20" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="114" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+                                <ComboBox name="$parentUpshiftFps" inherits="EA_ComboBox_DefaultResizable" handleinput="true">
+                                    <Size>
+                                        <AbsPoint x="160" y="30" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="270" y="110" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnSelChanged" function="CustomUISettingsWindowTabAutoFPS.OnComboChanged" />
+                                    </EventHandlers>
+                                </ComboBox>
+
+                                <Label name="$parentUpshiftSecondsLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+                                    <Size>
+                                        <AbsPoint x="220" y="20" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="150" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+                                <ComboBox name="$parentUpshiftSeconds" inherits="EA_ComboBox_DefaultResizable" handleinput="true">
+                                    <Size>
+                                        <AbsPoint x="160" y="30" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="270" y="146" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnSelChanged" function="CustomUISettingsWindowTabAutoFPS.OnComboChanged" />
+                                    </EventHandlers>
+                                </ComboBox>
+
+                                <Label name="$parentSampleWindowLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+                                    <Size>
+                                        <AbsPoint x="220" y="20" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="186" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+                                <ComboBox name="$parentSampleWindow" inherits="EA_ComboBox_DefaultResizable" handleinput="true">
+                                    <Size>
+                                        <AbsPoint x="160" y="30" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="270" y="182" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnSelChanged" function="CustomUISettingsWindowTabAutoFPS.OnComboChanged" />
+                                    </EventHandlers>
+                                </ComboBox>
+
+                                <Label name="$parentCooldownLabel" inherits="EA_Settings_ItemTitle" wordwrap="false" textalign="left">
+                                    <Size>
+                                        <AbsPoint x="220" y="20" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="222" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+                                <ComboBox name="$parentCooldown" inherits="EA_ComboBox_DefaultResizable" handleinput="true">
+                                    <Size>
+                                        <AbsPoint x="160" y="30" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="270" y="218" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnSelChanged" function="CustomUISettingsWindowTabAutoFPS.OnComboChanged" />
+                                    </EventHandlers>
+                                </ComboBox>
+                            </Windows>
+                        </Window>
+
+                        <!-- Pattern A: y = 160 + 280 + 10 -->
+                        <Window name="$parentStatus" >
+                            <Size>
+                                <AbsPoint x="500" y="130" />
+                            </Size>
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft">
+                                    <AbsPoint x="0" y="450"/>
+                                </Anchor>
+                                <Anchor point="topright" relativePoint="topright">
+                                    <AbsPoint x="0" y="450"/>
+                                </Anchor>
+                            </Anchors>
+                            <Windows>
+                                <FullResizeImage name="$parentBackground" inherits="SettingsSectionBackground" />
+                                <Label name="$parentTitle" inherits="EA_Settings_SectionTitle">
+                                    <Size>
+                                        <AbsPoint x="400" y="25" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="10" y="10" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+                                <Label name="$parentText" font="font_default_text" wordwrap="true" textalign="left" maxchars="512">
+                                    <Size>
+                                        <AbsPoint x="700" y="80" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="20" y="40" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+                            </Windows>
+                        </Window>
+
+                    </Windows>
+                </Window>
+            </Windows>
+        </ScrollWindow>
+
+      </Windows>
+    </Window>
+  </Windows>
+</Interface>

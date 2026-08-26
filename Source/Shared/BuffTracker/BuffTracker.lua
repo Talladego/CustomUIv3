@@ -594,6 +594,8 @@ function CustomUI.BuffTracker:Create( windowName, parentName,
         m_containerH        = containerH,
         m_requestedShow     = false,
         m_relativeScale     = 1.0,
+        m_lastAppliedScale  = nil,
+        m_lastAppliedShowing = nil,
         m_buffData          = {},
         m_targetType        = buffTargetType,
         m_maxBuffs          = maxBuffCount,
@@ -829,6 +831,8 @@ function CustomUI.BuffTracker:Shutdown()
     if self.m_containerName and DoesWindowExist( self.m_containerName ) then
         DestroyWindow( self.m_containerName )
     end
+    self.m_lastAppliedScale = nil
+    self.m_lastAppliedShowing = nil
     self.m_containerName = nil
     self.m_buffFrames    = {}
     self.m_visibleSlotCount = 0
@@ -1122,8 +1126,12 @@ end
 function CustomUI.BuffTracker:_ApplyContainerVisibility()
     if type(BuffTrackerLayout.ApplyContainerVisibility) ~= "function" then
         if self.m_containerName and DoesWindowExist( self.m_containerName ) then
-            WindowSetShowing( self.m_containerName,
-                self.m_requestedShow == true and self:_IsOwnerShowing() )
+            local desiredShowing = self.m_requestedShow == true and self:_IsOwnerShowing()
+            if self.m_lastAppliedShowing ~= desiredShowing then
+                WindowSetShowing( self.m_containerName, desiredShowing )
+                self.m_lastAppliedShowing = desiredShowing
+                CustomUI.PerfCount("buffTrackerShowingWrites")
+            end
         end
         return
     end
@@ -1141,7 +1149,17 @@ function CustomUI.BuffTracker:_ApplyContainerScale()
             ownerScale = tonumber( WindowGetScale( self.m_ownerName ) ) or 1.0
         end
 
-        WindowSetScale( self.m_containerName, ownerScale * ( self.m_relativeScale or 1.0 ) )
+        local desiredScale = ownerScale * ( self.m_relativeScale or 1.0 )
+        local last = self.m_lastAppliedScale
+        local delta = last ~= nil and (desiredScale - last) or 1
+        if delta < 0 then
+            delta = -delta
+        end
+        if last == nil or delta >= 0.0001 then
+            WindowSetScale( self.m_containerName, desiredScale )
+            self.m_lastAppliedScale = desiredScale
+            CustomUI.PerfCount("buffTrackerScaleWrites")
+        end
         return
     end
     BuffTrackerLayout.ApplyContainerScale( self )
@@ -1154,10 +1172,12 @@ function CustomUI.BuffTracker:_ApplyContainerHitArea()
            and self.m_containerH
            and DoesWindowExist( self.m_containerName ) then
             WindowSetDimensions( self.m_containerName, self.m_containerW, self.m_containerH )
+            self.m_lastAppliedScale = nil
         end
         return
     end
     BuffTrackerLayout.ApplyContainerHitArea( self )
+    self.m_lastAppliedScale = nil
 end
 
 -- Resizes the container to exactly fit the visible slots and re-anchors them
@@ -1188,9 +1208,11 @@ function CustomUI.BuffTracker:_ApplyCenterAlignment( visibleSlots )
             WindowClearAnchors( name )
             WindowAddAnchor( name, "topleft", container, "topleft", xOff, 0 )
         end
+        self.m_lastAppliedScale = nil
         return
     end
     BuffTrackerLayout.ApplyCenterAlignment( self, visibleSlots, c_ICON_SIZE, c_ICON_GAP, c_SLOT_W )
+    self.m_lastAppliedScale = nil
 end
 
 ----------------------------------------------------------------
@@ -1198,6 +1220,7 @@ end
 ----------------------------------------------------------------
 
 function CustomUI.BuffTracker:Update( elapsedTime )
+    CustomUI.PerfCount("buffTrackerUpdate")
     local wasShowing = self:IsShowing()
     self:_ApplyContainerScale()
     self:_ApplyContainerVisibility()

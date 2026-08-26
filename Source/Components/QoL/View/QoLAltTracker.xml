@@ -1,0 +1,777 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+    <Windows>
+
+        <!-- Side panel for item alt counts (anchored via Tooltips.AddExtraWindow) -->
+
+        <Window name="CustomUIAltTrackerItemPanel" layer="overlay" showing="false" handleinput="false">
+
+            <Size>
+
+                <AbsPoint x="220" y="80" />
+
+            </Size>
+
+            <Anchors>
+
+                <Anchor point="center" relativePoint="center" relativeTo="Root">
+
+                    <AbsPoint x="0" y="0" />
+
+                </Anchor>
+
+            </Anchors>
+
+            <Windows>
+
+                <FullResizeImage name="$parentBackground" inherits="EA_FullResizeImage_TintableSolidBackground" handleinput="false" alpha="0.95">
+
+                    <Anchors>
+
+                        <Anchor point="topleft" relativePoint="topleft" relativeTo="$parent" />
+
+                        <Anchor point="bottomright" relativePoint="bottomright" relativeTo="$parent" />
+
+                    </Anchors>
+
+                    <TintColor r="20" g="16" b="11" />
+
+                </FullResizeImage>
+
+                <Label name="$parentTitle" font="font_clear_small_bold" maxchars="64" handleinput="false" textalign="leftcenter">
+
+                    <Size>
+
+                        <AbsPoint x="200" y="18" />
+
+                    </Size>
+
+                    <Anchors>
+
+                        <Anchor point="topleft" relativePoint="topleft" relativeTo="$parent">
+
+                            <AbsPoint x="10" y="6" />
+
+                        </Anchor>
+
+                    </Anchors>
+
+                    <Color r="222" g="92" b="50" a="255" />
+
+                </Label>
+
+                <DynamicImage name="$parentRow1Icon" handleinput="false" texturescale="1.0" showing="false">
+
+                    <Size><AbsPoint x="14" y="14" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topleft" relativeTo="$parent"><AbsPoint x="10" y="27" /></Anchor></Anchors>
+
+                </DynamicImage>
+
+                <Label name="$parentRow1Name" font="font_clear_small" maxchars="48" handleinput="false" textalign="leftcenter" showing="false">
+
+                    <Size><AbsPoint x="124" y="16" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topright" relativeTo="$parentRow1Icon"><AbsPoint x="2" y="-1" /></Anchor></Anchors>
+
+                </Label>
+
+                <Label name="$parentRow1Count" font="font_clear_small" maxchars="16" handleinput="false" textalign="rightcenter" showing="false">
+
+                    <Size><AbsPoint x="60" y="16" /></Size>
+
+                    <Anchors><Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="26" /></Anchor></Anchors>
+
+                </Label>
+
+                <DynamicImage name="$parentRow2Icon" handleinput="false" texturescale="1.0" showing="false">
+
+                    <Size><AbsPoint x="14" y="14" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topleft" relativeTo="$parent"><AbsPoint x="10" y="43" /></Anchor></Anchors>
+
+                </DynamicImage>
+
+                <Label name="$parentRow2Name" font="font_clear_small" maxchars="48" handleinput="false" textalign="leftcenter" showing="false">
+
+                    <Size><AbsPoint x="124" y="16" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topright" relativeTo="$parentRow2Icon"><AbsPoint x="2" y="-1" /></Anchor></Anchors>
+
+                </Label>
+
+                <Label name="$parentRow2Count" font="font_clear_small" maxchars="16" handleinput="false" textalign="rightcenter" showing="false">
+
+                    <Size><AbsPoint x="60" y="16" /></Size>
+
+                    <Anchors><Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="42" /></Anchor></Anchors>
+
+                </Label>
+
+                <DynamicImage name="$parentRow3Icon" handleinput="false" texturescale="1.0" showing="false">
+
+                    <Size><AbsPoint x="14" y="14" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topleft" relativeTo="$parent"><AbsPoint x="10" y="59" /></Anchor></Anchors>
+
+                </DynamicImage>
+
+                <Label name="$parentRow3Name" font="font_clear_small" maxchars="48" handleinput="false" textalign="leftcenter" showing="false">
+
+                    <Size><AbsPoint x="124" y="16" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topright" relativeTo="$parentRow3Icon"><AbsPoint x="2" y="-1" /></Anchor></Anchors>
+
+                </Label>
+
+                <Label name="$parentRow3Count" font="font_clear_small" maxchars="16" handleinput="false" textalign="rightcenter" showing="false">
+
+                    <Size><AbsPoint x="60" y="16" /></Size>
+
+                    <Anchors><Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="58" /></Anchor></Anchors>
+
+                </Label>
+
+                <DynamicImage name="$parentRow4Icon" handleinput="false" texturescale="1.0" showing="false">
+
+                    <Size><AbsPoint x="14" y="14" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topleft" relativeTo="$parent"><AbsPoint x="10" y="75" /></Anchor></Anchors>
+
+                </DynamicImage>
+
+                <Label name="$parentRow4Name" font="font_clear_small" maxchars="48" handleinput="false" textalign="leftcenter" showing="false">
+
+                    <Size><AbsPoint x="124" y="16" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topright" relativeTo="$parentRow4Icon"><AbsPoint x="2" y="-1" /></Anchor></Anchors>
+
+                </Label>
+
+                <Label name="$parentRow4Count" font="font_clear_small" maxchars="16" handleinput="false" textalign="rightcenter" showing="false">
+
+                    <Size><AbsPoint x="60" y="16" /></Size>
+
+                    <Anchors><Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="74" /></Anchor></Anchors>
+
+                </Label>
+
+                <DynamicImage name="$parentRow5Icon" handleinput="false" texturescale="1.0" showing="false">
+
+                    <Size><AbsPoint x="14" y="14" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topleft" relativeTo="$parent"><AbsPoint x="10" y="91" /></Anchor></Anchors>
+
+                </DynamicImage>
+
+                <Label name="$parentRow5Name" font="font_clear_small" maxchars="48" handleinput="false" textalign="leftcenter" showing="false">
+
+                    <Size><AbsPoint x="124" y="16" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topright" relativeTo="$parentRow5Icon"><AbsPoint x="2" y="-1" /></Anchor></Anchors>
+
+                </Label>
+
+                <Label name="$parentRow5Count" font="font_clear_small" maxchars="16" handleinput="false" textalign="rightcenter" showing="false">
+
+                    <Size><AbsPoint x="60" y="16" /></Size>
+
+                    <Anchors><Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="90" /></Anchor></Anchors>
+
+                </Label>
+
+                <DynamicImage name="$parentRow6Icon" handleinput="false" texturescale="1.0" showing="false">
+
+                    <Size><AbsPoint x="14" y="14" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topleft" relativeTo="$parent"><AbsPoint x="10" y="107" /></Anchor></Anchors>
+
+                </DynamicImage>
+
+                <Label name="$parentRow6Name" font="font_clear_small" maxchars="48" handleinput="false" textalign="leftcenter" showing="false">
+
+                    <Size><AbsPoint x="124" y="16" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topright" relativeTo="$parentRow6Icon"><AbsPoint x="2" y="-1" /></Anchor></Anchors>
+
+                </Label>
+
+                <Label name="$parentRow6Count" font="font_clear_small" maxchars="16" handleinput="false" textalign="rightcenter" showing="false">
+
+                    <Size><AbsPoint x="60" y="16" /></Size>
+
+                    <Anchors><Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="106" /></Anchor></Anchors>
+
+                </Label>
+
+                <DynamicImage name="$parentRow7Icon" handleinput="false" texturescale="1.0" showing="false">
+
+                    <Size><AbsPoint x="14" y="14" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topleft" relativeTo="$parent"><AbsPoint x="10" y="123" /></Anchor></Anchors>
+
+                </DynamicImage>
+
+                <Label name="$parentRow7Name" font="font_clear_small" maxchars="48" handleinput="false" textalign="leftcenter" showing="false">
+
+                    <Size><AbsPoint x="124" y="16" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topright" relativeTo="$parentRow7Icon"><AbsPoint x="2" y="-1" /></Anchor></Anchors>
+
+                </Label>
+
+                <Label name="$parentRow7Count" font="font_clear_small" maxchars="16" handleinput="false" textalign="rightcenter" showing="false">
+
+                    <Size><AbsPoint x="60" y="16" /></Size>
+
+                    <Anchors><Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="122" /></Anchor></Anchors>
+
+                </Label>
+
+                <DynamicImage name="$parentRow8Icon" handleinput="false" texturescale="1.0" showing="false">
+
+                    <Size><AbsPoint x="14" y="14" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topleft" relativeTo="$parent"><AbsPoint x="10" y="139" /></Anchor></Anchors>
+
+                </DynamicImage>
+
+                <Label name="$parentRow8Name" font="font_clear_small" maxchars="48" handleinput="false" textalign="leftcenter" showing="false">
+
+                    <Size><AbsPoint x="124" y="16" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topright" relativeTo="$parentRow8Icon"><AbsPoint x="2" y="-1" /></Anchor></Anchors>
+
+                </Label>
+
+                <Label name="$parentRow8Count" font="font_clear_small" maxchars="16" handleinput="false" textalign="rightcenter" showing="false">
+
+                    <Size><AbsPoint x="60" y="16" /></Size>
+
+                    <Anchors><Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="138" /></Anchor></Anchors>
+
+                </Label>
+
+                <DynamicImage name="$parentRow9Icon" handleinput="false" texturescale="1.0" showing="false">
+
+                    <Size><AbsPoint x="14" y="14" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topleft" relativeTo="$parent"><AbsPoint x="10" y="155" /></Anchor></Anchors>
+
+                </DynamicImage>
+
+                <Label name="$parentRow9Name" font="font_clear_small" maxchars="48" handleinput="false" textalign="leftcenter" showing="false">
+
+                    <Size><AbsPoint x="124" y="16" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topright" relativeTo="$parentRow9Icon"><AbsPoint x="2" y="-1" /></Anchor></Anchors>
+
+                </Label>
+
+                <Label name="$parentRow9Count" font="font_clear_small" maxchars="16" handleinput="false" textalign="rightcenter" showing="false">
+
+                    <Size><AbsPoint x="60" y="16" /></Size>
+
+                    <Anchors><Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="154" /></Anchor></Anchors>
+
+                </Label>
+
+                <DynamicImage name="$parentRow10Icon" handleinput="false" texturescale="1.0" showing="false">
+
+                    <Size><AbsPoint x="14" y="14" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topleft" relativeTo="$parent"><AbsPoint x="10" y="171" /></Anchor></Anchors>
+
+                </DynamicImage>
+
+                <Label name="$parentRow10Name" font="font_clear_small" maxchars="48" handleinput="false" textalign="leftcenter" showing="false">
+
+                    <Size><AbsPoint x="124" y="16" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topright" relativeTo="$parentRow10Icon"><AbsPoint x="2" y="-1" /></Anchor></Anchors>
+
+                </Label>
+
+                <Label name="$parentRow10Count" font="font_clear_small" maxchars="16" handleinput="false" textalign="rightcenter" showing="false">
+
+                    <Size><AbsPoint x="60" y="16" /></Size>
+
+                    <Anchors><Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="170" /></Anchor></Anchors>
+
+                </Label>
+
+                <DynamicImage name="$parentRow11Icon" handleinput="false" texturescale="1.0" showing="false">
+
+                    <Size><AbsPoint x="14" y="14" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topleft" relativeTo="$parent"><AbsPoint x="10" y="187" /></Anchor></Anchors>
+
+                </DynamicImage>
+
+                <Label name="$parentRow11Name" font="font_clear_small" maxchars="48" handleinput="false" textalign="leftcenter" showing="false">
+
+                    <Size><AbsPoint x="124" y="16" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topright" relativeTo="$parentRow11Icon"><AbsPoint x="2" y="-1" /></Anchor></Anchors>
+
+                </Label>
+
+                <Label name="$parentRow11Count" font="font_clear_small" maxchars="16" handleinput="false" textalign="rightcenter" showing="false">
+
+                    <Size><AbsPoint x="60" y="16" /></Size>
+
+                    <Anchors><Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="186" /></Anchor></Anchors>
+
+                </Label>
+
+                <DynamicImage name="$parentRow12Icon" handleinput="false" texturescale="1.0" showing="false">
+
+                    <Size><AbsPoint x="14" y="14" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topleft" relativeTo="$parent"><AbsPoint x="10" y="203" /></Anchor></Anchors>
+
+                </DynamicImage>
+
+                <Label name="$parentRow12Name" font="font_clear_small" maxchars="48" handleinput="false" textalign="leftcenter" showing="false">
+
+                    <Size><AbsPoint x="124" y="16" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topright" relativeTo="$parentRow12Icon"><AbsPoint x="2" y="-1" /></Anchor></Anchors>
+
+                </Label>
+
+                <Label name="$parentRow12Count" font="font_clear_small" maxchars="16" handleinput="false" textalign="rightcenter" showing="false">
+
+                    <Size><AbsPoint x="60" y="16" /></Size>
+
+                    <Anchors><Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="202" /></Anchor></Anchors>
+
+                </Label>
+
+                <DynamicImage name="$parentRow13Icon" handleinput="false" texturescale="1.0" showing="false">
+
+                    <Size><AbsPoint x="14" y="14" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topleft" relativeTo="$parent"><AbsPoint x="10" y="219" /></Anchor></Anchors>
+
+                </DynamicImage>
+
+                <Label name="$parentRow13Name" font="font_clear_small" maxchars="48" handleinput="false" textalign="leftcenter" showing="false">
+
+                    <Size><AbsPoint x="124" y="16" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topright" relativeTo="$parentRow13Icon"><AbsPoint x="2" y="-1" /></Anchor></Anchors>
+
+                </Label>
+
+                <Label name="$parentRow13Count" font="font_clear_small" maxchars="16" handleinput="false" textalign="rightcenter" showing="false">
+
+                    <Size><AbsPoint x="60" y="16" /></Size>
+
+                    <Anchors><Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="218" /></Anchor></Anchors>
+
+                </Label>
+
+                <DynamicImage name="$parentRow14Icon" handleinput="false" texturescale="1.0" showing="false">
+
+                    <Size><AbsPoint x="14" y="14" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topleft" relativeTo="$parent"><AbsPoint x="10" y="235" /></Anchor></Anchors>
+
+                </DynamicImage>
+
+                <Label name="$parentRow14Name" font="font_clear_small" maxchars="48" handleinput="false" textalign="leftcenter" showing="false">
+
+                    <Size><AbsPoint x="124" y="16" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topright" relativeTo="$parentRow14Icon"><AbsPoint x="2" y="-1" /></Anchor></Anchors>
+
+                </Label>
+
+                <Label name="$parentRow14Count" font="font_clear_small" maxchars="16" handleinput="false" textalign="rightcenter" showing="false">
+
+                    <Size><AbsPoint x="60" y="16" /></Size>
+
+                    <Anchors><Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="234" /></Anchor></Anchors>
+
+                </Label>
+
+                <DynamicImage name="$parentRow15Icon" handleinput="false" texturescale="1.0" showing="false">
+
+                    <Size><AbsPoint x="14" y="14" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topleft" relativeTo="$parent"><AbsPoint x="10" y="251" /></Anchor></Anchors>
+
+                </DynamicImage>
+
+                <Label name="$parentRow15Name" font="font_clear_small" maxchars="48" handleinput="false" textalign="leftcenter" showing="false">
+
+                    <Size><AbsPoint x="124" y="16" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topright" relativeTo="$parentRow15Icon"><AbsPoint x="2" y="-1" /></Anchor></Anchors>
+
+                </Label>
+
+                <Label name="$parentRow15Count" font="font_clear_small" maxchars="16" handleinput="false" textalign="rightcenter" showing="false">
+
+                    <Size><AbsPoint x="60" y="16" /></Size>
+
+                    <Anchors><Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="250" /></Anchor></Anchors>
+
+                </Label>
+
+                <DynamicImage name="$parentRow16Icon" handleinput="false" texturescale="1.0" showing="false">
+
+                    <Size><AbsPoint x="14" y="14" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topleft" relativeTo="$parent"><AbsPoint x="10" y="267" /></Anchor></Anchors>
+
+                </DynamicImage>
+
+                <Label name="$parentRow16Name" font="font_clear_small" maxchars="48" handleinput="false" textalign="leftcenter" showing="false">
+
+                    <Size><AbsPoint x="124" y="16" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topright" relativeTo="$parentRow16Icon"><AbsPoint x="2" y="-1" /></Anchor></Anchors>
+
+                </Label>
+
+                <Label name="$parentRow16Count" font="font_clear_small" maxchars="16" handleinput="false" textalign="rightcenter" showing="false">
+
+                    <Size><AbsPoint x="60" y="16" /></Size>
+
+                    <Anchors><Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="266" /></Anchor></Anchors>
+
+                </Label>
+
+                <DynamicImage name="$parentRow17Icon" handleinput="false" texturescale="1.0" showing="false">
+
+                    <Size><AbsPoint x="14" y="14" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topleft" relativeTo="$parent"><AbsPoint x="10" y="283" /></Anchor></Anchors>
+
+                </DynamicImage>
+
+                <Label name="$parentRow17Name" font="font_clear_small" maxchars="48" handleinput="false" textalign="leftcenter" showing="false">
+
+                    <Size><AbsPoint x="124" y="16" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topright" relativeTo="$parentRow17Icon"><AbsPoint x="2" y="-1" /></Anchor></Anchors>
+
+                </Label>
+
+                <Label name="$parentRow17Count" font="font_clear_small" maxchars="16" handleinput="false" textalign="rightcenter" showing="false">
+
+                    <Size><AbsPoint x="60" y="16" /></Size>
+
+                    <Anchors><Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="282" /></Anchor></Anchors>
+
+                </Label>
+
+                <DynamicImage name="$parentRow18Icon" handleinput="false" texturescale="1.0" showing="false">
+
+                    <Size><AbsPoint x="14" y="14" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topleft" relativeTo="$parent"><AbsPoint x="10" y="299" /></Anchor></Anchors>
+
+                </DynamicImage>
+
+                <Label name="$parentRow18Name" font="font_clear_small" maxchars="48" handleinput="false" textalign="leftcenter" showing="false">
+
+                    <Size><AbsPoint x="124" y="16" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topright" relativeTo="$parentRow18Icon"><AbsPoint x="2" y="-1" /></Anchor></Anchors>
+
+                </Label>
+
+                <Label name="$parentRow18Count" font="font_clear_small" maxchars="16" handleinput="false" textalign="rightcenter" showing="false">
+
+                    <Size><AbsPoint x="60" y="16" /></Size>
+
+                    <Anchors><Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="298" /></Anchor></Anchors>
+
+                </Label>
+
+                <DynamicImage name="$parentRow19Icon" handleinput="false" texturescale="1.0" showing="false">
+
+                    <Size><AbsPoint x="14" y="14" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topleft" relativeTo="$parent"><AbsPoint x="10" y="315" /></Anchor></Anchors>
+
+                </DynamicImage>
+
+                <Label name="$parentRow19Name" font="font_clear_small" maxchars="48" handleinput="false" textalign="leftcenter" showing="false">
+
+                    <Size><AbsPoint x="124" y="16" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topright" relativeTo="$parentRow19Icon"><AbsPoint x="2" y="-1" /></Anchor></Anchors>
+
+                </Label>
+
+                <Label name="$parentRow19Count" font="font_clear_small" maxchars="16" handleinput="false" textalign="rightcenter" showing="false">
+
+                    <Size><AbsPoint x="60" y="16" /></Size>
+
+                    <Anchors><Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="314" /></Anchor></Anchors>
+
+                </Label>
+
+                <DynamicImage name="$parentRow20Icon" handleinput="false" texturescale="1.0" showing="false">
+
+                    <Size><AbsPoint x="14" y="14" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topleft" relativeTo="$parent"><AbsPoint x="10" y="331" /></Anchor></Anchors>
+
+                </DynamicImage>
+
+                <Label name="$parentRow20Name" font="font_clear_small" maxchars="48" handleinput="false" textalign="leftcenter" showing="false">
+
+                    <Size><AbsPoint x="124" y="16" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topright" relativeTo="$parentRow20Icon"><AbsPoint x="2" y="-1" /></Anchor></Anchors>
+
+                </Label>
+
+                <Label name="$parentRow20Count" font="font_clear_small" maxchars="16" handleinput="false" textalign="rightcenter" showing="false">
+
+                    <Size><AbsPoint x="60" y="16" /></Size>
+
+                    <Anchors><Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="330" /></Anchor></Anchors>
+
+                </Label>
+
+                <DynamicImage name="$parentRow21Icon" handleinput="false" texturescale="1.0" showing="false">
+
+                    <Size><AbsPoint x="14" y="14" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topleft" relativeTo="$parent"><AbsPoint x="10" y="347" /></Anchor></Anchors>
+
+                </DynamicImage>
+
+                <Label name="$parentRow21Name" font="font_clear_small" maxchars="48" handleinput="false" textalign="leftcenter" showing="false">
+
+                    <Size><AbsPoint x="124" y="16" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topright" relativeTo="$parentRow21Icon"><AbsPoint x="2" y="-1" /></Anchor></Anchors>
+
+                </Label>
+
+                <Label name="$parentRow21Count" font="font_clear_small" maxchars="16" handleinput="false" textalign="rightcenter" showing="false">
+
+                    <Size><AbsPoint x="60" y="16" /></Size>
+
+                    <Anchors><Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="346" /></Anchor></Anchors>
+
+                </Label>
+
+                <DynamicImage name="$parentRow22Icon" handleinput="false" texturescale="1.0" showing="false">
+
+                    <Size><AbsPoint x="14" y="14" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topleft" relativeTo="$parent"><AbsPoint x="10" y="363" /></Anchor></Anchors>
+
+                </DynamicImage>
+
+                <Label name="$parentRow22Name" font="font_clear_small" maxchars="48" handleinput="false" textalign="leftcenter" showing="false">
+
+                    <Size><AbsPoint x="124" y="16" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topright" relativeTo="$parentRow22Icon"><AbsPoint x="2" y="-1" /></Anchor></Anchors>
+
+                </Label>
+
+                <Label name="$parentRow22Count" font="font_clear_small" maxchars="16" handleinput="false" textalign="rightcenter" showing="false">
+
+                    <Size><AbsPoint x="60" y="16" /></Size>
+
+                    <Anchors><Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="362" /></Anchor></Anchors>
+
+                </Label>
+
+                <DynamicImage name="$parentRow23Icon" handleinput="false" texturescale="1.0" showing="false">
+
+                    <Size><AbsPoint x="14" y="14" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topleft" relativeTo="$parent"><AbsPoint x="10" y="379" /></Anchor></Anchors>
+
+                </DynamicImage>
+
+                <Label name="$parentRow23Name" font="font_clear_small" maxchars="48" handleinput="false" textalign="leftcenter" showing="false">
+
+                    <Size><AbsPoint x="124" y="16" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topright" relativeTo="$parentRow23Icon"><AbsPoint x="2" y="-1" /></Anchor></Anchors>
+
+                </Label>
+
+                <Label name="$parentRow23Count" font="font_clear_small" maxchars="16" handleinput="false" textalign="rightcenter" showing="false">
+
+                    <Size><AbsPoint x="60" y="16" /></Size>
+
+                    <Anchors><Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="378" /></Anchor></Anchors>
+
+                </Label>
+
+                <DynamicImage name="$parentRow24Icon" handleinput="false" texturescale="1.0" showing="false">
+
+                    <Size><AbsPoint x="14" y="14" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topleft" relativeTo="$parent"><AbsPoint x="10" y="395" /></Anchor></Anchors>
+
+                </DynamicImage>
+
+                <Label name="$parentRow24Name" font="font_clear_small" maxchars="48" handleinput="false" textalign="leftcenter" showing="false">
+
+                    <Size><AbsPoint x="124" y="16" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topright" relativeTo="$parentRow24Icon"><AbsPoint x="2" y="-1" /></Anchor></Anchors>
+
+                </Label>
+
+                <Label name="$parentRow24Count" font="font_clear_small" maxchars="16" handleinput="false" textalign="rightcenter" showing="false">
+
+                    <Size><AbsPoint x="60" y="16" /></Size>
+
+                    <Anchors><Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="394" /></Anchor></Anchors>
+
+                </Label>
+
+                <DynamicImage name="$parentRow25Icon" handleinput="false" texturescale="1.0" showing="false">
+
+                    <Size><AbsPoint x="14" y="14" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topleft" relativeTo="$parent"><AbsPoint x="10" y="411" /></Anchor></Anchors>
+
+                </DynamicImage>
+
+                <Label name="$parentRow25Name" font="font_clear_small" maxchars="48" handleinput="false" textalign="leftcenter" showing="false">
+
+                    <Size><AbsPoint x="124" y="16" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topright" relativeTo="$parentRow25Icon"><AbsPoint x="2" y="-1" /></Anchor></Anchors>
+
+                </Label>
+
+                <Label name="$parentRow25Count" font="font_clear_small" maxchars="16" handleinput="false" textalign="rightcenter" showing="false">
+
+                    <Size><AbsPoint x="60" y="16" /></Size>
+
+                    <Anchors><Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="410" /></Anchor></Anchors>
+
+                </Label>
+
+                <DynamicImage name="$parentRow26Icon" handleinput="false" texturescale="1.0" showing="false">
+
+                    <Size><AbsPoint x="14" y="14" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topleft" relativeTo="$parent"><AbsPoint x="10" y="427" /></Anchor></Anchors>
+
+                </DynamicImage>
+
+                <Label name="$parentRow26Name" font="font_clear_small" maxchars="48" handleinput="false" textalign="leftcenter" showing="false">
+
+                    <Size><AbsPoint x="124" y="16" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topright" relativeTo="$parentRow26Icon"><AbsPoint x="2" y="-1" /></Anchor></Anchors>
+
+                </Label>
+
+                <Label name="$parentRow26Count" font="font_clear_small" maxchars="16" handleinput="false" textalign="rightcenter" showing="false">
+
+                    <Size><AbsPoint x="60" y="16" /></Size>
+
+                    <Anchors><Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="426" /></Anchor></Anchors>
+
+                </Label>
+
+                <DynamicImage name="$parentRow27Icon" handleinput="false" texturescale="1.0" showing="false">
+
+                    <Size><AbsPoint x="14" y="14" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topleft" relativeTo="$parent"><AbsPoint x="10" y="443" /></Anchor></Anchors>
+
+                </DynamicImage>
+
+                <Label name="$parentRow27Name" font="font_clear_small" maxchars="48" handleinput="false" textalign="leftcenter" showing="false">
+
+                    <Size><AbsPoint x="124" y="16" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topright" relativeTo="$parentRow27Icon"><AbsPoint x="2" y="-1" /></Anchor></Anchors>
+
+                </Label>
+
+                <Label name="$parentRow27Count" font="font_clear_small" maxchars="16" handleinput="false" textalign="rightcenter" showing="false">
+
+                    <Size><AbsPoint x="60" y="16" /></Size>
+
+                    <Anchors><Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="442" /></Anchor></Anchors>
+
+                </Label>
+
+                <DynamicImage name="$parentRow28Icon" handleinput="false" texturescale="1.0" showing="false">
+
+                    <Size><AbsPoint x="14" y="14" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topleft" relativeTo="$parent"><AbsPoint x="10" y="459" /></Anchor></Anchors>
+
+                </DynamicImage>
+
+                <Label name="$parentRow28Name" font="font_clear_small" maxchars="48" handleinput="false" textalign="leftcenter" showing="false">
+
+                    <Size><AbsPoint x="124" y="16" /></Size>
+
+                    <Anchors><Anchor point="topleft" relativePoint="topright" relativeTo="$parentRow28Icon"><AbsPoint x="2" y="-1" /></Anchor></Anchors>
+
+                </Label>
+
+                <Label name="$parentRow28Count" font="font_clear_small" maxchars="16" handleinput="false" textalign="rightcenter" showing="false">
+
+                    <Size><AbsPoint x="60" y="16" /></Size>
+
+                    <Anchors><Anchor point="topright" relativePoint="topright" relativeTo="$parent"><AbsPoint x="-10" y="458" /></Anchor></Anchors>
+
+                </Label>
+
+            </Windows>
+
+        </Window>
+
+
+
+        <!-- Transparent hover target over backpack money display -->
+
+        <Window name="CustomUIAltTrackerMoneyHover" layer="popup" showing="false" handleinput="true" backgroundTintDisabled="true">
+
+            <Size>
+
+                <AbsPoint x="220" y="22" />
+
+            </Size>
+
+            <Anchors>
+
+                <Anchor point="topleft" relativePoint="topleft" relativeTo="EA_Window_BackpackMoney">
+
+                    <AbsPoint x="0" y="0" />
+
+                </Anchor>
+
+            </Anchors>
+
+            <EventHandlers>
+
+                <EventHandler event="OnMouseOver" function="CustomUI.QoL.AltTracker.OnMoneyMouseOver" />
+
+                <EventHandler event="OnMouseOverEnd" function="CustomUI.QoL.AltTracker.OnMoneyMouseOverEnd" />
+
+            </EventHandlers>
+
+        </Window>
+
+    </Windows>
+
+</Interface>
+
+

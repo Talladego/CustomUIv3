@@ -37,7 +37,9 @@
             </Size>
         </StatusBar>
 
-        <!-- Target HUD HP: same CastBar strip as foreground + background (like Player-Health + Enemy-Health). Foreground = current HP (archetype tint); background = missing HP (red tint in Lua). -->
+        <!-- Target HUD HP: CastBar strip (same atlas coords as EA_StatusBar_DefaultTintableBar),
+             scaled to the 55px row. Foreground = current HP (archetype tint); background = missing HP (red tint in Lua).
+             Fill clip is handled in Lua via StatusBarStopInterpolating before SetCurrentValue. -->
         <HorizontalResizeImage name="CustomUIUnitFramesHPBarTargetHudForeground" texture="EA_HUD_01" slice="CastBar" alpha="1.0" textureScale="3.928571">
             <Size>
                 <AbsPoint x="50" y="55" />

@@ -9,7 +9,7 @@
         <!-- Settings Window -->
         <Window name="CustomUISettingsWindowTabbed" movable="true" savesettings="false" layer="secondary">
             <Size>
-                <AbsPoint x="1040" y="800" />
+                <AbsPoint x="1300" y="800" />
             </Size>
             <Anchors>
                 <Anchor point="center" relativePoint="center" />
@@ -42,7 +42,7 @@
                 <!-- Tabs  -->
                 <Window name="$parentTabButtons">
                     <Size>
-                        <AbsPoint x="625" y="35" />
+                        <AbsPoint x="1250" y="35" />
                     </Size>
                     <Anchors>
                         <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentTitleBar"/>
@@ -123,10 +123,24 @@
                                 </Anchor>
                             </Anchors>
                         </Button>
+                        <Button name="$parentAutoFPS" inherits="CustomUI_Templates_SettingsWindowTabButton" id="9">
+                            <Anchors>
+                                <Anchor point="right" relativePoint="left" relativeTo="$parentKillTracker">
+                                    <AbsPoint x="0" y="0" />
+                                </Anchor>
+                            </Anchors>
+                        </Button>
+                        <Button name="$parentQoL" inherits="CustomUI_Templates_SettingsWindowTabButton" id="10">
+                            <Anchors>
+                                <Anchor point="right" relativePoint="left" relativeTo="$parentAutoFPS">
+                                    <AbsPoint x="0" y="0" />
+                                </Anchor>
+                            </Anchors>
+                        </Button>
 
 		                <Window name="$parentSeparatorRight" inherits="EA_Window_TabSeparatorRightSide" layer="background" popable="false">
 		                  <Anchors>
-		                    <Anchor point="bottomright" relativePoint="topleft" relativeTo="$parentKillTracker">
+		                    <Anchor point="bottomright" relativePoint="topleft" relativeTo="$parentQoL">
 		                      <AbsPoint x="0" y="-6" />
 		                    </Anchor>
 		                    <Anchor point="bottomright" relativePoint="bottomright" >
@@ -158,6 +172,8 @@
                 <Window name ="SWTabGroupIcons" inherits ="CustomUISettingsWindowTabGroupIcons"/>  
                 <Window name ="SWTabSCT" inherits ="CustomUISettingsWindowTabSCT"/>
                 <Window name ="SWTabKillTracker" inherits ="CustomUISettingsWindowTabKillTracker"/>
+                <Window name ="SWTabAutoFPS" inherits ="CustomUISettingsWindowTabAutoFPS"/>
+                <Window name ="SWTabQoL" inherits ="CustomUISettingsWindowTabQoL"/>
                 
                 
                 <Button name="$parentOkayButton" inherits="EA_Button_DefaultResizeable" >

@@ -8,10 +8,23 @@ if CustomUI.DebugLogging == nil then
     CustomUI.DebugLogging = false
 end
 
+-- OnUpdate invocation counters (no os.clock in-game). Default off; /cui perf on to enable.
+if CustomUI.PerfDebug == nil then
+    CustomUI.PerfDebug = false
+end
+
+CustomUI.Perf = CustomUI.Perf or
+{
+    total = {},
+    frame = {},
+    maxFrame = {},
+    elapsed = 0,
+}
+
 CustomUI.Name = "CustomUI"
 -- Semver (MAJOR.MINOR.PATCH), matching RedAlert / ScenarioBalance / DungeonCoach.
 -- One addon version for the whole modular package; components are toggles, not separately versioned releases.
-CustomUI.Version = "1.1.0"
+CustomUI.Version = "1.2.0"
 CustomUI.SlashCommands = CustomUI.SlashCommands or { "customui", "cui" }
 CustomUI.Components = CustomUI.Components or {}
 CustomUI.ComponentOrder = CustomUI.ComponentOrder or {}
@@ -31,9 +44,10 @@ CustomUI.State = CustomUI.State or
 -- Keep LINK text ASCII only (see docs/api/lua-chat-strings.md).
 local c_CHAT_PREFIX_TEXT = "CustomUI"
 local c_CHAT_PREFIX_COLOR = { 255, 198, 80 }
--- Stock chat icons used by WarTriage for on/off status lines.
-local c_ICON_ENABLED  = L"<icon57>"
-local c_ICON_DISABLED = L"<icon58>"
+-- Stock chat checkbox icons (WarTriage / EZGuard). Prefer zero-padded IDs — short
+-- `<icon57>` on LINK-prefixed System lines can render as mangled `@con57>` / `con57>`.
+local c_ICON_ENABLED  = L"<icon00057>"
+local c_ICON_DISABLED = L"<icon00058>"
 
 CustomUI.FollowLeader = CustomUI.FollowLeader or
 {
@@ -433,12 +447,83 @@ function CustomUI.PrintComponentStatuses()
         if CustomUI.IsComponentEnabled(componentName) then
             icon = c_ICON_ENABLED
         end
-        CustomUI.PrintMessage(L"--- " .. icon .. L" " .. towstring(componentName))
+        -- Plain ASCII prefix (no LINK) so `<icon…>` is not escaped/mangled on the same line.
+        -- ScenarioBalance: icon tags must stay outside LINK/ColorText wrappers.
+        local output = L"[CustomUI] --- " .. icon .. L" " .. towstring(componentName)
+        if EA_ChatWindow and EA_ChatWindow.Print then
+            EA_ChatWindow.Print(output, SystemData.SystemLogFilters.GENERAL)
+        else
+            TextLogAddEntry("System", SystemData.SystemLogFilters.GENERAL, output)
+        end
+    end
+end
+
+function CustomUI.PerfCount(key, amount)
+    if CustomUI.PerfDebug ~= true or type(key) ~= "string" or key == "" then
+        return
+    end
+
+    amount = tonumber(amount) or 1
+    local perf = CustomUI.Perf
+    perf.total[key] = (perf.total[key] or 0) + amount
+    perf.frame[key] = (perf.frame[key] or 0) + amount
+end
+
+function CustomUI.PerfEndFrame(elapsedTime)
+    if CustomUI.PerfDebug ~= true then
+        return
+    end
+
+    local elapsed = tonumber(elapsedTime) or 0
+    if elapsed > 0 then
+        CustomUI.Perf.elapsed = (CustomUI.Perf.elapsed or 0) + elapsed
+    end
+
+    local frameCounts = CustomUI.Perf.frame
+    local maxFrame = CustomUI.Perf.maxFrame
+    for key, count in pairs(frameCounts) do
+        if count > (maxFrame[key] or 0) then
+            maxFrame[key] = count
+        end
+    end
+
+    CustomUI.Perf.frame = {}
+end
+
+function CustomUI.PerfReset()
+    CustomUI.Perf.total = {}
+    CustomUI.Perf.frame = {}
+    CustomUI.Perf.maxFrame = {}
+    CustomUI.Perf.elapsed = 0
+end
+
+function CustomUI.PrintPerfReport()
+    if CustomUI.PerfDebug ~= true then
+        CustomUI.PrintMessage(L"PerfDebug is off. Use /cui perf on, then fight or idle, then /cui perf.")
+        return
+    end
+
+    local keys = {
+        "buffTrackerUpdate",
+        "buffTrackerScaleWrites",
+        "buffTrackerShowingWrites",
+        "groupWindowTrackerUpdates",
+    }
+
+    local elapsed = tonumber(CustomUI.Perf.elapsed) or 0
+    CustomUI.PrintMessage(L"Perf counters (elapsed " .. towstring(string.format("%.1f", elapsed)) .. L"s):")
+    for i = 1, #keys do
+        local key = keys[i]
+        local total = CustomUI.Perf.total[key] or 0
+        local maxFrame = CustomUI.Perf.maxFrame[key] or 0
+        CustomUI.PrintMessage(
+            towstring(key) .. L": total=" .. towstring(total) .. L" max/frame=" .. towstring(maxFrame)
+        )
     end
 end
 
 function CustomUI.PrintHelp()
-    CustomUI.PrintMessage(L"Commands: /customui, /customui status, /customui components, /customui enable <name>, /customui disable <name>, /customui toggle <name>, /customui clear icon cache, /customui followmacro, /customui help")
+    CustomUI.PrintMessage(L"Commands: /customui, /customui status, /customui components, /customui enable <name>, /customui disable <name>, /customui toggle <name>, /customui autofps, /customui clear icon cache, /customui followmacro, /customui perf [on|off|reset], /customui help")
 end
 
 local function NormalizePlayerName(nameValue)
@@ -742,11 +827,10 @@ function CustomUI.HandleSlashCommand(input)
     if trimmedInput == "" then
         if type(CustomUI.ShowSettings) == "function" then
             CustomUI.ShowSettings()
-        else
-            if CustomUI.PrintMessage then
-                CustomUI.PrintMessage(L"Settings module not installed.")
-            end
+        elseif CustomUI.PrintMessage then
+            CustomUI.PrintMessage(L"Settings module not installed.")
         end
+        CustomUI.PrintHelp()
         return
     end
 
@@ -769,6 +853,37 @@ function CustomUI.HandleSlashCommand(input)
 
     if command == "help" then
         CustomUI.PrintHelp()
+        return
+    end
+
+    if command == "autofps" then
+        if CustomUI.AutoFPS and type(CustomUI.AutoFPS.PrintStatus) == "function" then
+            CustomUI.AutoFPS.PrintStatus()
+        else
+            CustomUI.PrintMessage(L"AutoFPS is not loaded.")
+        end
+        return
+    end
+
+    if command == "perf" then
+        local arg = string.lower(string.gsub((argument or ""):match("^%s*(.-)%s*$") or "", "%s+", " "))
+        if arg == "on" then
+            CustomUI.PerfDebug = true
+            CustomUI.PerfReset()
+            CustomUI.PrintMessage(L"PerfDebug enabled; counters reset.")
+            return
+        end
+        if arg == "off" then
+            CustomUI.PerfDebug = false
+            CustomUI.PrintMessage(L"PerfDebug disabled.")
+            return
+        end
+        if arg == "reset" then
+            CustomUI.PerfReset()
+            CustomUI.PrintMessage(L"Perf counters reset.")
+            return
+        end
+        CustomUI.PrintPerfReport()
         return
     end
 
@@ -1055,16 +1170,24 @@ local ROOT_WINDOW_NAMES = {
     "CustomUIGroupIconsWorldProbe",
     "CustomUIGroupIconsDriver",
     "CustomUIKillTrackerWindow",
+    "CustomUIKillTrackerScoreWindow",
+    "CustomUIAutoFPSDriver",
+    "CustomUIQoLDriver",
     "CustomUIGlobalUpdateDriver",
 }
 
 local originalUpdateFromClient = nil
 
 function CustomUI.OnGlobalUpdate(timePassed)
+    CustomUI.PerfEndFrame(timePassed)
     CustomUI.TargetUpdateFlag = false
     if type(CustomUI.TargetPresence) == "table"
         and type(CustomUI.TargetPresence.OnGlobalUpdate) == "function" then
         CustomUI.TargetPresence.OnGlobalUpdate(timePassed)
+    end
+    if type(CustomUI.TargetHUD) == "table"
+        and type(CustomUI.TargetHUD.OnGlobalUpdate) == "function" then
+        CustomUI.TargetHUD.OnGlobalUpdate(timePassed)
     end
 end
 

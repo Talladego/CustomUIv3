@@ -34,11 +34,21 @@ local function isResurrectionDialog()
 	return false
 end
 
+local function isPlayerDead()
+	local hp = GameData and GameData.Player and GameData.Player.hitPoints
+	local current = hp and tonumber(hp.current)
+	return current ~= nil and current <= 0
+end
+
 function Rezz.OnTwoButtonDialog()
 	if not isFeatureEnabled() then
 		return
 	end
 	if not isResurrectionDialog() then
+		return
+	end
+	-- Only auto-accept while dead; alive dialogs that share rez button events stay manual.
+	if not isPlayerDead() then
 		return
 	end
 	BroadcastEvent(RESURRECTION_ACCEPT)

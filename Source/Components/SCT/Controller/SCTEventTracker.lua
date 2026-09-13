@@ -26,6 +26,42 @@ local function SctStopAnimations(windowName)
     WindowStopScaleAnimation(windowName)
 end
 
+local function SctDisplayedOwnsWindow(self, windowName)
+    if self == nil or windowName == nil or self.m_DisplayedEvents == nil then
+        return false
+    end
+    for index = self.m_DisplayedEvents:Begin(), self.m_DisplayedEvents:End() do
+        local frame = self.m_DisplayedEvents[index]
+        if frame ~= nil then
+            local name = nil
+            if type(frame.GetName) == "function" then
+                name = frame:GetName()
+            end
+            if name == nil then
+                name = frame.m_Name
+            end
+            if name == windowName then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+--- Clear a leaked window name so pending dispatch cannot stall forever.
+local function SctDestroyOrphanWindow(windowName)
+    if windowName == nil or not DoesWindowExist(windowName) then
+        return
+    end
+    SctStopAnimations(windowName)
+    if FrameManager ~= nil and type(FrameManager.Remove) == "function" then
+        FrameManager:Remove(windowName)
+    end
+    if type(DestroyWindow) == "function" then
+        DestroyWindow(windowName)
+    end
+end
+
 CustomUI.SCT.EventTracker = setmetatable({}, { __index = StockEventTracker })
 CustomUI.SCT.EventTracker.__index = CustomUI.SCT.EventTracker
 
@@ -122,6 +158,9 @@ function CustomUI.SCT.EventTracker:Update(elapsedTime)
 
         if eventType == COMBAT_EVENT then
             local newName = self.m_Anchor .. "Event" .. self.m_DisplayedEvents:End()
+            if DoesWindowExist(newName) and not SctDisplayedOwnsWindow(self, newName) then
+                SctDestroyOrphanWindow(newName)
+            end
             if not DoesWindowExist(newName) then
                 local eventData = self.m_PendingEvents:PopFront()
                 local animData = self:InitializeAnimationData(eventType)
@@ -151,6 +190,9 @@ function CustomUI.SCT.EventTracker:Update(elapsedTime)
             end
         else
             local newName = self.m_Anchor .. "PointGain" .. self.m_DisplayedEvents:End()
+            if DoesWindowExist(newName) and not SctDisplayedOwnsWindow(self, newName) then
+                SctDestroyOrphanWindow(newName)
+            end
             if not DoesWindowExist(newName) then
                 local eventData = self.m_PendingEvents:PopFront()
                 local animData = self:InitializeAnimationData(eventType)

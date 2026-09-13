@@ -527,6 +527,15 @@ function AutoFPS.OnZoneChanged()
     PauseSampling()
 end
 
+--- Restore preferred graphics before logout / exit so a downshift does not stick in UserSettings.xml.
+function AutoFPS.OnSessionEnding()
+    local s = AutoFPS.EnsureSettings()
+    local current = GetPerfLevel()
+    if IsStock(s.manualPerfLevel) and IsStock(current) and current ~= s.manualPerfLevel then
+        ApplyLevel(s.manualPerfLevel, "restore")
+    end
+end
+
 function AutoFPS.GetAverageFps()
     return m_avgFps
 end
@@ -588,6 +597,9 @@ local function EventSpecs()
         { events.PLAYER_ZONE_CHANGED, "CustomUI.AutoFPS.OnZoneChanged" },
         { events.ENTER_WORLD, "CustomUI.AutoFPS.OnLoadingEnd" },
         { events.RELOAD_INTERFACE, "CustomUI.AutoFPS.OnLoadingEnd" },
+        { events.LOG_OUT, "CustomUI.AutoFPS.OnSessionEnding" },
+        { events.EXIT_GAME, "CustomUI.AutoFPS.OnSessionEnding" },
+        { events.QUIT, "CustomUI.AutoFPS.OnSessionEnding" },
     }
 end
 
@@ -658,6 +670,12 @@ function AutoFPSComponent:Disable()
 end
 
 function AutoFPSComponent:Shutdown()
+    -- Same restore path as Disable — abnormal unload must not leave a downshifted preset.
+    local s = AutoFPS.EnsureSettings()
+    local current = GetPerfLevel()
+    if IsStock(s.manualPerfLevel) and IsStock(current) and current ~= s.manualPerfLevel then
+        ApplyLevel(s.manualPerfLevel, "restore")
+    end
     UnregisterEvents()
     SetDriverShowing(false)
     ResetSampler()

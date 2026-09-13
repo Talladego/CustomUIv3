@@ -1867,14 +1867,13 @@ local function ResolveLocalPlayerWarbandPartyIndex()
 end
 
 local function ShowWarbandParty1DualModeWindows()
-    m_warbandPartyOnlyDataPartyIndex = nil
-    if GameData and GameData.Party then
-        GameData.Party.partyDirty = true
-        GameData.Party.warbandDirty = true
-    end
+    local previousPartyIndex = m_warbandPartyOnlyDataPartyIndex
     local dataParty = ResolveLocalPlayerWarbandPartyIndex()
     if dataParty == nil then
-        HideExtraGroupWindows(1)
+        -- Keep last known party index so self HP/AP updates still resolve the correct party.
+        if previousPartyIndex == nil then
+            HideExtraGroupWindows(1)
+        end
         return
     end
     m_warbandPartyOnlyDataPartyIndex = dataParty
@@ -2026,10 +2025,12 @@ local function ApplyModeVisibility()
         return
     end
 
-    m_warbandPartyOnlyDataPartyIndex = nil
-
     EnsureUnitFramesGroupsSettings()
     local currentMode = GetActiveUnitFramesDisplayMode()
+    local previousPartyOnlyIndex = m_warbandPartyOnlyDataPartyIndex
+    if currentMode ~= "warband_party1" then
+        m_warbandPartyOnlyDataPartyIndex = nil
+    end
 
     if currentMode ~= m_debugLastMode then
         m_debugLastMode = currentMode
@@ -2056,6 +2057,9 @@ local function ApplyModeVisibility()
             ShowWarbandDualModeWindows()
         elseif currentMode == "warband_party1" then
             ShowWarbandParty1DualModeWindows()
+            if m_warbandPartyOnlyDataPartyIndex == nil then
+                m_warbandPartyOnlyDataPartyIndex = previousPartyOnlyIndex
+            end
         elseif currentMode == "party" then
             ShowPartyDualModeWindows()
         end
@@ -2182,6 +2186,28 @@ function UnitFrames.OnVisibilityStateChanged()
     end
     InvalidateScenarioGroupMapCache()
     ApplyModeVisibility()
+end
+
+--- GROUP_STATUS_UPDATED is the party HP/AP heartbeat — refresh bars in place, never a full mode rebuild.
+function UnitFrames.OnGroupStatusUpdated(memberIndex)
+    if not m_enabled or not m_windowsInitialized then
+        return
+    end
+
+    local mode = GetActiveUnitFramesDisplayMode()
+    if mode == "party" then
+        -- Rebuild party rows only (no HideAllCustomWindows / stock churn).
+        ShowPartyDualModeWindows()
+    elseif mode == "warband" then
+        ShowWarbandDualModeWindows()
+    elseif mode == "warband_party1" then
+        ShowWarbandParty1DualModeWindows()
+    else
+        -- Scenario HP uses SCENARIO_PLAYER_HITS_UPDATED; ignore party status spam here.
+        return
+    end
+    RefreshTargetBorders()
+    RefreshMouseOverBorders()
 end
 
 --- Scenario roster or assigned-slot changes: drop cached hits so GetScenarioPlayerGroups().health wins until fresh hits arrive.
@@ -2514,7 +2540,7 @@ function UnitFrames.Initialize()
 
     if not m_eventsRegistered and DoesWindowExist(c_ROOT_WINDOW_NAME) then
         WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.GROUP_UPDATED, "CustomUI.UnitFrames.OnVisibilityStateChanged")
-        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.GROUP_STATUS_UPDATED, "CustomUI.UnitFrames.OnVisibilityStateChanged")
+        WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.GROUP_STATUS_UPDATED, "CustomUI.UnitFrames.OnGroupStatusUpdated")
         WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.GROUP_PLAYER_ADDED, "CustomUI.UnitFrames.OnVisibilityStateChanged")
         WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.BATTLEGROUP_UPDATED, "CustomUI.UnitFrames.OnVisibilityStateChanged")
         WindowRegisterEventHandler(c_ROOT_WINDOW_NAME, SystemData.Events.BATTLEGROUP_MEMBER_UPDATED, "CustomUI.UnitFrames.OnWarbandMemberUpdated")

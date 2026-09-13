@@ -14,14 +14,16 @@ local DEFAULT_SETTINGS = {
 		centerMessage = true,
 	},
 	autoSurrender = {
-		enabled = true,
+		-- Opt-in: voting/surrender automation must not arm on a fresh profile.
+		enabled = false,
 		statusMessages = true,
 		useKillRule = true,
 		scoreDiff = 100,
 		preStartRetry = 30,
 	},
 	rezzAccept = {
-		enabled = true,
+		-- Opt-in: auto-accept rez dialogs are unsafe as a default.
+		enabled = false,
 	},
 	altTracker = {
 		enabled = true,
@@ -233,7 +235,7 @@ function QoL.ShutdownSubModules()
 	SetDriverShowing(false)
 end
 
-local QoLComponent = { Name = "QoL", DefaultEnabled = true }
+local QoLComponent = { Name = "QoL", DefaultEnabled = false }
 
 function QoLComponent:Initialize()
 	QoL.InitializeSubModules()

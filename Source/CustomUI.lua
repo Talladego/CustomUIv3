@@ -24,7 +24,7 @@ CustomUI.Perf = CustomUI.Perf or
 CustomUI.Name = "CustomUI"
 -- Semver (MAJOR.MINOR.PATCH), matching RedAlert / ScenarioBalance / DungeonCoach.
 -- One addon version for the whole modular package; components are toggles, not separately versioned releases.
-CustomUI.Version = "1.2.0"
+CustomUI.Version = "1.2.1"
 CustomUI.SlashCommands = CustomUI.SlashCommands or { "customui", "cui" }
 CustomUI.Components = CustomUI.Components or {}
 CustomUI.ComponentOrder = CustomUI.ComponentOrder or {}
@@ -1189,6 +1189,10 @@ function CustomUI.OnGlobalUpdate(timePassed)
         and type(CustomUI.TargetHUD.OnGlobalUpdate) == "function" then
         CustomUI.TargetHUD.OnGlobalUpdate(timePassed)
     end
+    if type(CustomUI.TargetWindow) == "table"
+        and type(CustomUI.TargetWindow.TryPendingStockRehook) == "function" then
+        CustomUI.TargetWindow.TryPendingStockRehook()
+    end
 end
 
 local function HookTargetInfo()
@@ -1217,6 +1221,16 @@ local function HookTargetInfo()
 
         CustomUI.TargetUpdateFlag = true
     end
+end
+
+local function UnhookTargetInfo()
+    if originalUpdateFromClient == nil then
+        return
+    end
+    if type(TargetInfo) == "table" then
+        TargetInfo.UpdateFromClient = originalUpdateFromClient
+    end
+    originalUpdateFromClient = nil
 end
 
 local function EnsureRootWindowInstances()
@@ -1260,6 +1274,7 @@ function CustomUI.Shutdown()
     CustomUI.UnregisterSlashCommands()
     CustomUI.UnregisterFollowLeaderHandlers()
     CustomUI.ShutdownComponents()
+    UnhookTargetInfo()
 
     CustomUI.State.initialized = false
 end

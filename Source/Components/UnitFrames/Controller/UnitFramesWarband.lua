@@ -107,9 +107,8 @@ end
 function UnitFramesWarband.BuildPartyGroupData(opts)
     opts = opts or {}
 
-    if GameData and GameData.Party then
-        GameData.Party.partyDirty = true
-    end
+    -- Do not force GameData.Party.partyDirty here — that can wipe PartyUtils-hydrated
+    -- worldObjNum after /reloadui (same guidance as GroupIcons attach path).
 
     local data = nil
     if type(PartyUtils) == "table" and type(PartyUtils.GetPartyData) == "function" then

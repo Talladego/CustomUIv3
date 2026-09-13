@@ -44,6 +44,7 @@ local m_handlersRegistered = false
 -- True until both stock target layout windows are registered with LayoutEditor and hide has been applied.
 local m_stockTargetHidePending = false
 local m_stockTargetUnhookPending = false
+local m_stockTargetRehookPending = false
 local m_stockTargetUnhooked = false
 local m_stockReplaceTracked = {} -- Primary/Secondary layout: true if we hid, false if already user-hidden
 
@@ -310,11 +311,12 @@ end
 
 local function TryRehookStockTargetHandlers()
     if not m_stockTargetUnhooked then
+        m_stockTargetRehookPending = false
         return
     end
     if not DoesWindowExist(c_STOCK_HOSTILE_TARGET_WINDOW) then
-        -- Stock UI not loaded / window missing; nothing to restore yet.
-        m_stockTargetUnhooked = false
+        -- Keep unhooked flag; stock may recreate later. Retry via TryPendingStockRehook.
+        m_stockTargetRehookPending = true
         return
     end
 
@@ -323,6 +325,14 @@ local function TryRehookStockTargetHandlers()
     WindowRegisterEventHandler(c_STOCK_HOSTILE_TARGET_WINDOW, e.PLAYER_TARGET_UPDATED, "TargetWindow.UpdateTarget")
     WindowRegisterEventHandler(c_STOCK_HOSTILE_TARGET_WINDOW, e.PLAYER_TARGET_EFFECTS_UPDATED, "TargetWindow.OnEffectsUpdated")
     m_stockTargetUnhooked = false
+    m_stockTargetRehookPending = false
+end
+
+function CustomUI.TargetWindow.TryPendingStockRehook()
+    -- Only when Disable/Shutdown asked to restore and the stock window was missing.
+    if m_stockTargetRehookPending then
+        TryRehookStockTargetHandlers()
+    end
 end
 
 -- Must call TargetInfo:UpdateFromClient() at most once per PLAYER_TARGET_UPDATED — GetUpdatedTargets()
@@ -550,6 +560,12 @@ function CustomUI.TargetWindow.Shutdown()
         m_friendlyFrame.m_BuffTracker:Shutdown()
         m_friendlyFrame:Destroy()
         m_friendlyFrame = nil
+    end
+
+    -- XML OnShutdown may skip Disable(); restore stock handlers/windows if we had unhooked them.
+    if m_stockTargetUnhooked then
+        TryRehookStockTargetHandlers()
+        ShowStockTargetWindows()
     end
 
     m_initialized = false

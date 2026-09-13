@@ -83,13 +83,7 @@ end
 
 function CustomUISettingsWindowTabTarget.ApplyCurrent()
     local enabled = ButtonGetPressedFlag(CustomUISettingsWindowTabTarget.contentsName .. "GeneralTargetWindowEnabledButton")
-    CustomUI.Settings.Components = CustomUI.Settings.Components or {}
-    CustomUI.Settings.Components.TargetWindow = enabled
-    if enabled then
-        CustomUI.EnableComponent("TargetWindow")
-    else
-        CustomUI.DisableComponent("TargetWindow")
-    end
+    CustomUI.SetComponentEnabled("TargetWindow", enabled)
 
     local prefix = CustomUISettingsWindowTabTarget.contentsName
     local badgeCfg = CustomUI.TargetWindow.GetSettings().badges

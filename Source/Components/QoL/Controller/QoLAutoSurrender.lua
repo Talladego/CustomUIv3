@@ -54,7 +54,7 @@ local eventsRegistered  = false
 
 local function getDefaults()
     return {
-        enabled = true,
+        enabled = false,
         statusMessages = true,
         useKillRule = true,
         scoreDiff = 100,
@@ -336,6 +336,8 @@ local function shouldSendSurrender()
     if notParticipating or voteInProgress then return false end
     if waitingForScenarioStart or isPreStartPhase() then return false end
     if deferForScore then return false end
+    -- Timer probes and vote starts share the same "not winning/tied" gate.
+    if isTeamWinning() then return false end
     if needsTimerProbe then return true end
     return canStartSurrender()
 end
@@ -351,7 +353,9 @@ local function sendSurrender(isProbe)
 end
 
 local function castVote()
-    if isLosingEnough() then
+    -- Match canStartSurrender: never auto-YES while tied or ahead on points,
+    -- even if the kill-lead rule alone would look like a loss.
+    if (not isTeamWinning()) and isLosingEnough() then
         SendChatText(L".yes", ChatSettings.Channels[0].serverCmd)
         Status("Voting yes to surrender" .. scoreLine() .. ".")
     else

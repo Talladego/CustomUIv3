@@ -97,13 +97,7 @@ end
 
 function CustomUISettingsWindowTabTargetHUD.ApplyCurrent()
     local enabled = ButtonGetPressedFlag(CustomUISettingsWindowTabTargetHUD.contentsName .. "GeneralTargetHUDWindowEnabledButton")
-    CustomUI.Settings.Components = CustomUI.Settings.Components or {}
-    CustomUI.Settings.Components.TargetHUD = enabled
-    if enabled then
-        CustomUI.EnableComponent("TargetHUD")
-    else
-        CustomUI.DisableComponent("TargetHUD")
-    end
+    CustomUI.SetComponentEnabled("TargetHUD", enabled)
 
     for i = 1, #SIDE_SECTIONS do
         ReadSideButtonsToSettings(SIDE_SECTIONS[i])

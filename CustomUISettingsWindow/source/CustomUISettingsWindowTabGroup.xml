@@ -5,15 +5,6 @@
   <Windows>
 
 
-    <Window name="EA_Window_SettingsTabbedScrollLimit" inherits="EA_Window_DefaultLabelToggleCircle">
-        <Size>
-            <AbsPoint x="160" y="32" />
-        </Size>
-        <EventHandlers>
-            <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabGroup.OnScrollLimitSelect" />
-        </EventHandlers>
-    </Window>
-
     <!--*******************************************************************-->
     <!--                      Whole Window Definition                      -->
     <!--*******************************************************************-->

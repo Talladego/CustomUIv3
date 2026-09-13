@@ -117,9 +117,12 @@ function CustomUI.SCT.InstallHandlers()
     local rows = sctEngineHandlers()
     if not rows then return end
     CustomUI.SCT._stockWasRegistered = {}
+    -- Only restore stock handlers we actually displaced. If EventText is not loaded,
+    -- another addon (or nothing) owned those events — do not Register stock on disable.
+    local eventTextLoaded = type(EA_System_EventText) == "table"
     for _, row in ipairs(rows) do
         UnregisterEventHandler(row.id, row.stock)
-        CustomUI.SCT._stockWasRegistered[row.id] = true
+        CustomUI.SCT._stockWasRegistered[row.id] = eventTextLoaded
     end
     for _, row in ipairs(rows) do
         RegisterEventHandler(row.id, row.custom)

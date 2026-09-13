@@ -296,7 +296,12 @@ local function ApplyMemberRvrIndicatorLayout(index, indicator)
     end
     local Badge = CustomUI.PortraitCareerBadge
     local portraitFrame = MemberPortraitFrameName(index)
+    if not DoesWindowExist(portraitFrame) then
+        return
+    end
     local axisX = Badge and Badge.AxisXForPortraitFrame(portraitFrame) or 0
+    -- Match TargetFrame / PlayerStatus: top of PortraitFrame, no WindowSetDimensions
+    -- (dimensions + SetRelativeScale can zero out the RvR-Flag slice).
     indicator:SetAnchor({
         Point = "top",
         RelativePoint = "top",
@@ -307,11 +312,8 @@ local function ApplyMemberRvrIndicatorLayout(index, indicator)
     indicator:SetRelativeScale(c_MEMBER_RVR_RELATIVE_SCALE)
 
     local indicatorName = MemberRowName(index) .. "RvRFlagIndicator"
-    if Badge and DoesWindowExist(indicatorName) then
-        WindowSetDimensions(indicatorName, Badge.RVR_W, Badge.RVR_H)
-        if type(WindowSetLayer) == "function" then
-            WindowSetLayer(indicatorName, Window.Layers.POPUP)
-        end
+    if DoesWindowExist(indicatorName) and type(WindowSetLayer) == "function" and Window.Layers then
+        WindowSetLayer(indicatorName, Window.Layers.POPUP)
     end
 end
 
@@ -368,21 +370,36 @@ local function ClampPercent(value)
     return math.floor(numberValue + 0.5)
 end
 
+local function DestroyOrphanMemberRvrWindow(indicatorName)
+    if indicatorName == nil or not DoesWindowExist(indicatorName) then
+        return
+    end
+    if FrameManager ~= nil and type(FrameManager.Remove) == "function" then
+        FrameManager:Remove(indicatorName)
+    end
+    if type(DestroyWindow) == "function" then
+        DestroyWindow(indicatorName)
+    end
+end
+
 local function EnsureMemberRvrIndicator(index)
     local indicator = m_memberRvrIndicators[index]
+    local indicatorName = MemberRowName(index) .. "RvRFlagIndicator"
     if indicator ~= nil then
-        return indicator
+        if DoesWindowExist(indicatorName) then
+            return indicator
+        end
+        -- Stale Frame wrapper after a window loss; drop and recreate.
+        m_memberRvrIndicators[index] = nil
+        indicator = nil
     end
 
     if type(RvRIndicator) ~= "table" or type(RvRIndicator.Create) ~= "function" then
         return nil
     end
 
-    local indicatorName = MemberRowName(index) .. "RvRFlagIndicator"
     -- Recover from a prior partial init (Create succeeded, layout failed before cache).
-    if DoesWindowExist(indicatorName) and type(DestroyWindow) == "function" then
-        DestroyWindow(indicatorName)
-    end
+    DestroyOrphanMemberRvrWindow(indicatorName)
 
     indicator = RvRIndicator:Create(indicatorName, MemberRowName(index))
     if indicator == nil then
@@ -397,11 +414,24 @@ local function EnsureMemberRvrIndicator(index)
 end
 
 local function SetMemberRvrIndicatorShowing(index, isShowing)
+    local wantShowing = isShowing == true
     local indicator = EnsureMemberRvrIndicator(index)
-    if indicator ~= nil then
-        ApplyMemberRvrIndicatorLayout(index, indicator)
-        indicator:SetTargetType(SystemData.TargetObjectType.ALLY_PLAYER)
-        indicator:Show(isShowing == true)
+    if indicator == nil then
+        return
+    end
+    ApplyMemberRvrIndicatorLayout(index, indicator)
+    indicator:SetTargetType(SystemData.TargetObjectType.ALLY_PLAYER)
+    -- FORCE_OVERRIDE: parent row hide/show can desync Frame.m_Showing from the engine flag,
+    -- so a plain Show(true) may no-op while the flag stays hidden.
+    if Frame ~= nil and Frame.FORCE_OVERRIDE ~= nil then
+        indicator:Show(wantShowing, Frame.FORCE_OVERRIDE)
+    else
+        indicator:Show(wantShowing)
+    end
+    local indicatorName = MemberRowName(index) .. "RvRFlagIndicator"
+    if DoesWindowExist(indicatorName) then
+        WindowSetShowing(indicatorName, wantShowing)
+        indicator.m_Showing = wantShowing
     end
 end
 
@@ -410,6 +440,8 @@ local function ShutdownMemberRvrIndicators()
         local indicator = m_memberRvrIndicators[index]
         if indicator ~= nil and type(indicator.Destroy) == "function" then
             indicator:Destroy()
+        else
+            DestroyOrphanMemberRvrWindow(MemberRowName(index) .. "RvRFlagIndicator")
         end
         m_memberRvrIndicators[index] = nil
     end
@@ -463,6 +495,7 @@ local function BuildMemberStatusSnapshot(member)
         tostring(member.online),
         tostring(member.isDistant),
         tostring(member.isInSameRegion),
+        tostring(member.isRVRFlagged == true),
     }, "|")
 end
 
@@ -476,7 +509,10 @@ local function ApplyRawMemberStatus(member, status)
     member.moraleLevel = status.moraleLevel
     member.level = status.level
     member.battleLevel = status.battleLevel
-    member.isRVRFlagged = status.isRVRFlagged
+    -- Status polls can omit isRVRFlagged; do not wipe a known true with nil.
+    if status.isRVRFlagged ~= nil then
+        member.isRVRFlagged = status.isRVRFlagged
+    end
     member.zoneNum = status.zoneNum
     member.online = status.online
     member.isDistant = status.isDistant
@@ -1154,6 +1190,7 @@ function CustomUI.GroupWindow.OnRvRFlagUpdated()
     if not m_enabled then
         return
     end
+    RefreshAllMemberStatuses()
     UpdateMemberRows()
 end
 

@@ -32,3 +32,4 @@ ehthumbs.db
 # Documentation
 **/*.md
 !**/README.md
+!docs/CODE_QUALITY_*.md

@@ -8,7 +8,7 @@ local QoL = CustomUI.QoL
 local c_DRIVER = "CustomUIQoLDriver"
 
 local DEFAULT_SETTINGS = {
-	-- Opt-in mute: stock BUTTON_CLICK is 300; checked sets 0.
+	-- Opt-in mute: Sound.BUTTON_CLICK = 0 (NicoAddon pattern); stock id 300.
 	muteButtonClickSound = false,
 	redAlert = {
 		enabled = true,
@@ -182,7 +182,7 @@ function QoL.SyncSubFeatures(announceChanges)
 		end
 	end
 
-	-- Always enabled while QoL is on; checkbox only chooses mute vs stock.
+	-- Always armed while QoL is on; checkbox sets Sound.BUTTON_CLICK to 0 vs stock.
 	if BCS then
 		BCS.Enable()
 	end

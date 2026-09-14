@@ -1,6 +1,13 @@
 ----------------------------------------------------------------
 -- CustomUI.QoL.ButtonClickSound — mute UI button click SFX
--- Stock: GameData.Sound.BUTTON_CLICK = 300; mute sets 0.
+--
+-- Stock buttons: Sound.Play(Sound.BUTTON_CLICK) (defaultbutton.xml).
+-- soundutils.lua copies GameData.Sound.BUTTON_CLICK (300) into
+-- Sound.BUTTON_CLICK once at load — a number snapshot, not a live
+-- GameData lookup. Mutating GameData.Sound.BUTTON_CLICK does nothing.
+--
+-- Working approach (NicoAddon): Sound.BUTTON_CLICK = 0
+-- PlaySound(0) is a no-op; unmute restores the stock id (300).
 ----------------------------------------------------------------
 if not CustomUI then CustomUI = {} end
 CustomUI.QoL = CustomUI.QoL or {}
@@ -8,40 +15,68 @@ CustomUI.QoL.ButtonClickSound = CustomUI.QoL.ButtonClickSound or {}
 
 local BCS = CustomUI.QoL.ButtonClickSound
 
+-- GameData.Sound.BUTTON_CLICK reference id (see GameData.Sound dump).
 local c_STOCK_BUTTON_CLICK = 300
 local c_MUTED_BUTTON_CLICK = 0
 
 local m_handlersRegistered = false
-local m_active = false
+local m_stockId = c_STOCK_BUTTON_CLICK
+local m_stockCaptured = false
 
 local function isMuteRequested()
 	local s = CustomUI.QoL.EnsureSettings()
 	return s.muteButtonClickSound == true
 end
 
-local function setButtonClickSound(value)
-	if type(GameData) ~= "table" or type(GameData.Sound) ~= "table" then
+local function captureStockId()
+	if m_stockCaptured then
+		return
+	end
+	-- Capture only while still non-zero (after mute, Sound.BUTTON_CLICK is 0).
+	if type(Sound) == "table" and type(Sound.BUTTON_CLICK) == "number" and Sound.BUTTON_CLICK > 0 then
+		m_stockId = Sound.BUTTON_CLICK
+	elseif type(GameData) == "table"
+		and type(GameData.Sound) == "table"
+		and type(GameData.Sound.BUTTON_CLICK) == "number"
+		and GameData.Sound.BUTTON_CLICK > 0
+	then
+		m_stockId = GameData.Sound.BUTTON_CLICK
+	else
+		m_stockId = c_STOCK_BUTTON_CLICK
+	end
+	m_stockCaptured = true
+end
+
+local function setSoundButtonClick(value)
+	if type(Sound) ~= "table" then
 		return false
 	end
-	GameData.Sound.BUTTON_CLICK = value
+	Sound.BUTTON_CLICK = value
 	return true
 end
 
 function BCS.Apply()
-	local mute = isMuteRequested()
-	local value = mute and c_MUTED_BUTTON_CLICK or c_STOCK_BUTTON_CLICK
-	if setButtonClickSound(value) then
-		m_active = mute
+	if type(Sound) ~= "table" then
+		return
+	end
+	captureStockId()
+	if isMuteRequested() then
+		setSoundButtonClick(c_MUTED_BUTTON_CLICK)
+	else
+		setSoundButtonClick(m_stockId)
 	end
 end
 
 function BCS.Restore()
-	setButtonClickSound(c_STOCK_BUTTON_CLICK)
-	m_active = false
+	if type(Sound) == "table" then
+		-- Prefer last captured stock; fall back to dump id 300.
+		setSoundButtonClick(m_stockCaptured and m_stockId or c_STOCK_BUTTON_CLICK)
+	end
 end
 
 function BCS.OnWorldReady()
-	-- Engine may reset GameData.Sound on load; re-apply mute if still requested.
+	-- Engine / interface reload may reset Sound.*; re-apply mute.
+	m_stockCaptured = false
 	BCS.Apply()
 end
 

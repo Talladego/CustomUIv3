@@ -24,7 +24,7 @@ CustomUI.Perf = CustomUI.Perf or
 CustomUI.Name = "CustomUI"
 -- Semver (MAJOR.MINOR.PATCH), matching RedAlert / ScenarioBalance / DungeonCoach.
 -- One addon version for the whole modular package; components are toggles, not separately versioned releases.
-CustomUI.Version = "1.2.3"
+CustomUI.Version = "1.2.4"
 CustomUI.SlashCommands = CustomUI.SlashCommands or { "customui", "cui" }
 CustomUI.Components = CustomUI.Components or {}
 CustomUI.ComponentOrder = CustomUI.ComponentOrder or {}

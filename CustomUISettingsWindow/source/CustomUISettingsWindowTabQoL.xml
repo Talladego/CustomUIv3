@@ -234,6 +234,32 @@
                             </Windows>
                         </Window>
 
+                        <Window name="$parentUiSound" >
+                            <Size><AbsPoint x="500" y="100" /></Size>
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft"><AbsPoint x="0" y="870"/></Anchor>
+                                <Anchor point="topright" relativePoint="topright"><AbsPoint x="0" y="870"/></Anchor>
+                            </Anchors>
+                            <Windows>
+                                <FullResizeImage name="$parentBackground" inherits="SettingsSectionBackground" />
+                                <Label name="$parentTitle" inherits="EA_Settings_SectionTitle">
+                                    <Size><AbsPoint x="400" y="25" /></Size>
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="10" y="10" /></Anchor></Anchors>
+                                </Label>
+                                <Window name="$parentMuteButtonClick" inherits="EA_LabelCheckButtonWide">
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="45" y="40" /></Anchor></Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabQoL.OnToggleMuteButtonClick" />
+                                    </EventHandlers>
+                                </Window>
+                                <Label name="$parentInfo" font="font_default_text_small" wordwrap="true" textalign="left" maxchars="256">
+                                    <Size><AbsPoint x="420" y="40" /></Size>
+                                    <Anchors><Anchor point="topleft" relativePoint="topleft"><AbsPoint x="45" y="72" /></Anchor></Anchors>
+                                </Label>
+                            </Windows>
+                        </Window>
+
                     </Windows>
                 </Window>
             </Windows>

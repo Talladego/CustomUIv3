@@ -136,6 +136,9 @@ function CustomUISettingsWindowTabQoL.Initialize()
     LabelSetText(c .. "AltTrackerPruneDaysLabel", L"Prune stale characters")
     LabelSetText(c .. "AltTrackerPruneDaysSuffix", L"days (0 = off)")
     LabelSetText(c .. "AltTrackerInfo", L"Tracks bag items and gold across characters on this PC. Stale alts are removed on login.")
+    LabelSetText(c .. "UiSoundTitle", L"UI Sound")
+    LabelSetText(c .. "UiSoundMuteButtonClickLabel", L"Mute button click sound")
+    LabelSetText(c .. "UiSoundInfo", L"Disables the standard UI button click sound while QoL is enabled.")
     SyncCombos()
     FillDaysEdit(c .. "AltTrackerPruneDaysEdit", EnsureQoLSettings().altTracker.pruneStaleDays)
 end
@@ -153,6 +156,7 @@ function CustomUISettingsWindowTabQoL.UpdateSettings()
     ButtonSetPressedFlag(c .. "AltTrackerTrackGoldButton", s.altTracker.trackGold == true)
     ButtonSetPressedFlag(c .. "AltTrackerIncludeBankButton", s.altTracker.includeBank == true)
     ButtonSetPressedFlag(c .. "AltTrackerCrossFactionButton", s.altTracker.showCrossFaction == true)
+    ButtonSetPressedFlag(c .. "UiSoundMuteButtonClickButton", s.muteButtonClickSound == true)
     FillDaysEdit(c .. "AltTrackerPruneDaysEdit", s.altTracker.pruneStaleDays)
     SyncCombos()
 end
@@ -176,6 +180,7 @@ function CustomUISettingsWindowTabQoL.ApplyCurrent()
     s.altTracker.includeBank = ButtonGetPressedFlag(c .. "AltTrackerIncludeBankButton") == true
     s.altTracker.showCrossFaction = ButtonGetPressedFlag(c .. "AltTrackerCrossFactionButton") == true
     s.altTracker.pruneStaleDays = ReadDaysEdit(c .. "AltTrackerPruneDaysEdit", s.altTracker.pruneStaleDays or 30)
+    s.muteButtonClickSound = ButtonGetPressedFlag(c .. "UiSoundMuteButtonClickButton") == true
     if CustomUI and type(CustomUI.SetComponentEnabled) == "function" and type(CustomUI.IsComponentEnabled) == "function" then
         if not CustomUI.IsComponentEnabled("QoL") then
             CustomUI.SetComponentEnabled("QoL", true)
@@ -224,6 +229,10 @@ function CustomUISettingsWindowTabQoL.OnToggleAltTrackerBank()
 end
 
 function CustomUISettingsWindowTabQoL.OnToggleAltTrackerCrossFaction()
+    EA_LabelCheckButton.Toggle()
+end
+
+function CustomUISettingsWindowTabQoL.OnToggleMuteButtonClick()
     EA_LabelCheckButton.Toggle()
 end
 

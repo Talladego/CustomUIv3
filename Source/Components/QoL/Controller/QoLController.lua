@@ -8,6 +8,8 @@ local QoL = CustomUI.QoL
 local c_DRIVER = "CustomUIQoLDriver"
 
 local DEFAULT_SETTINGS = {
+	-- Opt-in mute: stock BUTTON_CLICK is 300; checked sets 0.
+	muteButtonClickSound = false,
 	redAlert = {
 		enabled = true,
 		thresholdPercent = 50,
@@ -140,6 +142,7 @@ function QoL.SyncSubFeatures(announceChanges)
 	local AS = CustomUI.QoL.AutoSurrender
 	local RZ = CustomUI.QoL.RezzAccept
 	local ALT = CustomUI.QoL.AltTracker
+	local BCS = CustomUI.QoL.ButtonClickSound
 
 	if s.redAlert.enabled then
 		RA.Enable()
@@ -179,6 +182,11 @@ function QoL.SyncSubFeatures(announceChanges)
 		end
 	end
 
+	-- Always enabled while QoL is on; checkbox only chooses mute vs stock.
+	if BCS then
+		BCS.Enable()
+	end
+
 	if announceChanges ~= true then
 		seedFeatureState(s)
 	end
@@ -208,6 +216,7 @@ function QoL.InitializeSubModules()
 	if CustomUI.QoL.AutoSurrender then CustomUI.QoL.AutoSurrender.Initialize() end
 	if CustomUI.QoL.RezzAccept then CustomUI.QoL.RezzAccept.Initialize() end
 	if CustomUI.QoL.AltTracker then CustomUI.QoL.AltTracker.Initialize() end
+	if CustomUI.QoL.ButtonClickSound then CustomUI.QoL.ButtonClickSound.Initialize() end
 	seedFeatureState()
 end
 
@@ -220,6 +229,7 @@ function QoL.DisableSubModules()
 	if CustomUI.QoL.AutoSurrender then CustomUI.QoL.AutoSurrender.Disable() end
 	if CustomUI.QoL.RezzAccept then CustomUI.QoL.RezzAccept.Disable() end
 	if CustomUI.QoL.AltTracker then CustomUI.QoL.AltTracker.Disable() end
+	if CustomUI.QoL.ButtonClickSound then CustomUI.QoL.ButtonClickSound.Disable() end
 	m_lastFeatureState.redAlert = false
 	m_lastFeatureState.autoSurrender = false
 	m_lastFeatureState.rezzAccept = false
@@ -232,6 +242,7 @@ function QoL.ShutdownSubModules()
 	if CustomUI.QoL.AutoSurrender then CustomUI.QoL.AutoSurrender.Shutdown() end
 	if CustomUI.QoL.RezzAccept then CustomUI.QoL.RezzAccept.Shutdown() end
 	if CustomUI.QoL.AltTracker then CustomUI.QoL.AltTracker.Shutdown() end
+	if CustomUI.QoL.ButtonClickSound then CustomUI.QoL.ButtonClickSound.Shutdown() end
 	SetDriverShowing(false)
 end
 

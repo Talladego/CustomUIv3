@@ -2,7 +2,7 @@
 
 CustomUI is a modular Return of Reckoning addon that replaces and enhances stock UI components behind a single settings surface and slash-command workflow.
 
-**Version:** CustomUI `1.2.2` (see `CustomUI.Version` / `CustomUI.mod`). Companion settings addon: CustomUISettingsWindow `1.3.2`. One addon-level semver (not per-component); the active profile also stores `CustomUI.Settings.version` on init.
+**Version:** CustomUI `1.2.3` (see `CustomUI.Version` / `CustomUI.mod`). Companion settings addon: CustomUISettingsWindow `1.3.3`. One addon-level semver (not per-component); the active profile also stores `CustomUI.Settings.version` on init.
 
 ## Documentation
 
@@ -42,7 +42,7 @@ Place **CustomUI** and **CustomUISettingsWindow** under the game’s `Interface\
 | `GroupIcons` | — (career icons on world objects for party / warband / scenario members) | ✅ Implemented, enabled by default on a fresh profile |
 | `SCT` | `easystem_eventtext` combat/point-gain floating text | ✅ Complete, `DefaultEnabled = false` |
 | `KillTracker` | — (RvR Order/Destruction kill feed) | ✅ Implemented, `DefaultEnabled = false`; `/cui` → **Kills** tab |
-| `QoL` | — (RedAlert, AutoSurrender, RezzAccept, AltTracker) | ✅ Implemented, `DefaultEnabled = false`; `/cui` → **QoL** tab |
+| `QoL` | — (RedAlert, AutoSurrender, RezzAccept, AltTracker, mute button click sound) | ✅ Implemented, `DefaultEnabled = false`; `/cui` → **QoL** tab |
 | `AutoFPS` | — (dynamic FPS / graphics helpers) | ✅ Implemented, `DefaultEnabled = false`; `/cui` → **AutoFPS** tab |
 
 All registered components default to **disabled** except `GroupIcons`, which currently omits `DefaultEnabled = false` and therefore comes up enabled on a fresh profile. `PlayerPetWindow` is shipped and has full lifecycle code, but it is still owned through `PlayerStatusWindow` rather than being registered as a separate top-level component.
@@ -334,6 +334,7 @@ CustomUI/
 					QoLAutoSurrender.lua
 					QoLRedAlert.lua
 					QoLRezzAccept.lua
+					QoLButtonClickSound.lua
 					QoLAltTracker.lua
 					QoLAltTrackerData.lua
 					QoLAltTrackerTooltips.lua

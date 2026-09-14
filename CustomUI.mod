@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ModuleFile xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-    <UiMod name="CustomUI" version="1.2.2" date="2026-09-14">
+    <UiMod name="CustomUI" version="1.2.3" date="2026-09-14">
         <Author name="Talladego" email="" />
         <Description text="Modular Return of Reckoning UI replacement addon with component toggles and shared systems." />
         <VersionSettings gameVersion="1.4.8" windowsVersion="1.0" savedVariablesVersion="1.0" />
@@ -129,6 +129,7 @@
             <File name="Source/Components/QoL/Controller/QoLRezzAccept.lua" />
             <File name="Source/Components/QoL/Controller/QoLRedAlert.lua" />
             <File name="Source/Components/QoL/Controller/QoLAutoSurrender.lua" />
+            <File name="Source/Components/QoL/Controller/QoLButtonClickSound.lua" />
             <File name="Source/Components/QoL/Controller/QoLController.lua" />
             <File name="Source/Components/QoL/View/QoLRedAlert.xml" />
             <File name="Source/Components/QoL/View/QoLDriver.xml" />

@@ -29,6 +29,8 @@ local CAREER_DRAW = 14
 
 local m_origCreate = nil
 local m_origClear = nil
+local m_createWrapper = nil
+local m_clearWrapper = nil
 local m_hooksInstalled = false
 local m_panelAttached = false
 local m_moneyTooltipVisible = false
@@ -635,16 +637,17 @@ function Tips.InstallHooks()
 
 	if type(Tooltips.CreateItemTooltip) == "function" then
 		m_origCreate = Tooltips.CreateItemTooltip
-		Tooltips.CreateItemTooltip = function(itemData, ...)
+		m_createWrapper = function(itemData, ...)
 			local win = m_origCreate(itemData, ...)
 			pcall(Tips.ShowItemPanel, itemData, win)
 			return win
 		end
+		Tooltips.CreateItemTooltip = m_createWrapper
 	end
 
 	if type(Tooltips.ClearTooltip) == "function" then
 		m_origClear = Tooltips.ClearTooltip
-		Tooltips.ClearTooltip = function(...)
+		m_clearWrapper = function(...)
 			pcall(Tips.HideItemPanel)
 			pcall(Tips.HideGoldPanel)
 			m_moneyTooltipVisible = false
@@ -652,6 +655,7 @@ function Tips.InstallHooks()
 				return m_origClear(...)
 			end
 		end
+		Tooltips.ClearTooltip = m_clearWrapper
 	end
 
 	m_hooksInstalled = true
@@ -661,14 +665,17 @@ function Tips.RemoveHooks()
 	if not m_hooksInstalled then
 		return
 	end
-	if m_origCreate and type(Tooltips) == "table" then
+	-- Only restore if our wrapper is still installed (FollowLeader pattern).
+	if m_origCreate and type(Tooltips) == "table" and Tooltips.CreateItemTooltip == m_createWrapper then
 		Tooltips.CreateItemTooltip = m_origCreate
 	end
-	if m_origClear and type(Tooltips) == "table" then
+	if m_origClear and type(Tooltips) == "table" and Tooltips.ClearTooltip == m_clearWrapper then
 		Tooltips.ClearTooltip = m_origClear
 	end
 	m_origCreate = nil
 	m_origClear = nil
+	m_createWrapper = nil
+	m_clearWrapper = nil
 	m_hooksInstalled = false
 	Tips.HideItemPanel()
 	Tips.HideGoldPanel()

@@ -8,14 +8,21 @@ CustomUI.QoL.AltTracker = CustomUI.QoL.AltTracker or {}
 local AT = CustomUI.QoL.AltTracker
 local LOGIN_DELAY = 1.0
 local MONEY_SNAPSHOT_DELAYS = { 0.5, 2.0, 5.0, 10.0 }
+-- Extra bag/crafting passes after login (money already retries; inventory used to be one-shot).
+local INVENTORY_RESCAN_DELAYS = { 1.0, 3.0, 8.0 }
 
 local m_enabled = false
 local m_handlersRegistered = false
 local m_loginTimer = 0
 local m_pendingLoginRescan = false
 local m_moneySnapshotTimers = {}
+local m_inventoryRescanTimers = {}
+local m_backpackWasShowing = false
+local m_emptyItemsBackpackRescanDone = false
 local m_origPlayerUpdateMoney = nil
 local m_origBackpackUpdateMoney = nil
+local m_playerUpdateMoneyWrapper = nil
+local m_backpackUpdateMoneyWrapper = nil
 
 local function getSettings()
 	return CustomUI.QoL.EnsureSettings().altTracker
@@ -107,37 +114,46 @@ end
 function AT.InstallMoneyHooks()
 	if Player and type(Player.UpdateMoney) == "function" and m_origPlayerUpdateMoney == nil then
 		m_origPlayerUpdateMoney = Player.UpdateMoney
-		Player.UpdateMoney = function(currentMoney)
+		m_playerUpdateMoneyWrapper = function(currentMoney)
 			m_origPlayerUpdateMoney(currentMoney)
 			AT.OnMoneyUpdated(currentMoney)
 		end
+		Player.UpdateMoney = m_playerUpdateMoneyWrapper
 	end
 	if EA_Window_Backpack and type(EA_Window_Backpack.UpdateMoney) == "function" and m_origBackpackUpdateMoney == nil then
 		m_origBackpackUpdateMoney = EA_Window_Backpack.UpdateMoney
-		EA_Window_Backpack.UpdateMoney = function(currentMoney)
+		m_backpackUpdateMoneyWrapper = function(currentMoney)
 			m_origBackpackUpdateMoney(currentMoney)
 			AT.OnMoneyUpdated(currentMoney)
 		end
+		EA_Window_Backpack.UpdateMoney = m_backpackUpdateMoneyWrapper
 	end
 end
 
 function AT.RemoveMoneyHooks()
-	if m_origPlayerUpdateMoney and Player then
+	-- Only restore if our wrapper is still installed (FollowLeader pattern).
+	if m_origPlayerUpdateMoney and Player and Player.UpdateMoney == m_playerUpdateMoneyWrapper then
 		Player.UpdateMoney = m_origPlayerUpdateMoney
-		m_origPlayerUpdateMoney = nil
 	end
-	if m_origBackpackUpdateMoney and EA_Window_Backpack then
+	m_origPlayerUpdateMoney = nil
+	m_playerUpdateMoneyWrapper = nil
+	if m_origBackpackUpdateMoney and EA_Window_Backpack
+		and EA_Window_Backpack.UpdateMoney == m_backpackUpdateMoneyWrapper then
 		EA_Window_Backpack.UpdateMoney = m_origBackpackUpdateMoney
-		m_origBackpackUpdateMoney = nil
 	end
+	m_origBackpackUpdateMoney = nil
+	m_backpackUpdateMoneyWrapper = nil
 end
 
 function AT.OnWorldReady()
 	if not m_enabled then
 		return
 	end
+	m_backpackWasShowing = false
+	m_emptyItemsBackpackRescanDone = false
 	AT.ScheduleLoginRescan()
 	AT.ScheduleMoneySnapshots()
+	AT.ScheduleInventoryRescans()
 	if EA_Window_Backpack and type(EA_Window_Backpack.UpdateMoney) == "function" then
 		if Player and Player.previousMoney ~= nil then
 			pcall(EA_Window_Backpack.UpdateMoney, Player.previousMoney)
@@ -156,6 +172,45 @@ function AT.ScheduleMoneySnapshots()
 	for i = 1, #MONEY_SNAPSHOT_DELAYS do
 		m_moneySnapshotTimers[i] = MONEY_SNAPSHOT_DELAYS[i]
 	end
+end
+
+function AT.ScheduleInventoryRescans()
+	m_inventoryRescanTimers = {}
+	for i = 1, #INVENTORY_RESCAN_DELAYS do
+		m_inventoryRescanTimers[i] = INVENTORY_RESCAN_DELAYS[i]
+	end
+end
+
+local function currentCharItemsEmpty()
+	local data = getData()
+	if data == nil or type(data.GetCurrentCharRecord) ~= "function" then
+		return false
+	end
+	local ok, rec = pcall(data.GetCurrentCharRecord)
+	if not ok or type(rec) ~= "table" or type(rec.items) ~= "table" then
+		return false
+	end
+	return next(rec.items) == nil
+end
+
+function AT.MaybeRescanOnBackpackOpen()
+	if not m_enabled then
+		return
+	end
+	local showing = false
+	if DoesWindowExist("EA_Window_Backpack") and type(WindowGetShowing) == "function" then
+		showing = WindowGetShowing("EA_Window_Backpack") == true
+	end
+	if showing and not m_backpackWasShowing then
+		if not m_emptyItemsBackpackRescanDone and currentCharItemsEmpty() then
+			local data = getData()
+			if data and type(data.RescanPlayerLocs) == "function" then
+				pcall(data.RescanPlayerLocs)
+			end
+			m_emptyItemsBackpackRescanDone = true
+		end
+	end
+	m_backpackWasShowing = showing
 end
 
 function AT.RegisterHandlers()
@@ -237,6 +292,18 @@ function AT.OnUpdate(timePassed)
 			end
 		end
 	end
+	if #m_inventoryRescanTimers > 0 then
+		for i = #m_inventoryRescanTimers, 1, -1 do
+			m_inventoryRescanTimers[i] = m_inventoryRescanTimers[i] - timePassed
+			if m_inventoryRescanTimers[i] <= 0 then
+				if data and type(data.RescanPlayerLocs) == "function" then
+					pcall(data.RescanPlayerLocs)
+				end
+				table.remove(m_inventoryRescanTimers, i)
+			end
+		end
+	end
+	AT.MaybeRescanOnBackpackOpen()
 	AT.SyncMoneyHoverVisibility()
 end
 
@@ -316,6 +383,9 @@ function AT.Disable()
 	m_enabled = false
 	m_pendingLoginRescan = false
 	m_moneySnapshotTimers = {}
+	m_inventoryRescanTimers = {}
+	m_backpackWasShowing = false
+	m_emptyItemsBackpackRescanDone = false
 	AT.RemoveMoneyHooks()
 	AT.UnregisterHandlers()
 	local tips = getTips()

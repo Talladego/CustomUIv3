@@ -2,7 +2,7 @@
 
 CustomUI is a modular Return of Reckoning addon that replaces and enhances stock UI components behind a single settings surface and slash-command workflow.
 
-**Version:** CustomUI `1.2.0` (see `CustomUI.Version` / `CustomUI.mod`). Companion settings addon: CustomUISettingsWindow `1.3.0`. One addon-level semver (not per-component); the active profile also stores `CustomUI.Settings.version` on init.
+**Version:** CustomUI `1.2.2` (see `CustomUI.Version` / `CustomUI.mod`). Companion settings addon: CustomUISettingsWindow `1.3.2`. One addon-level semver (not per-component); the active profile also stores `CustomUI.Settings.version` on init.
 
 ## Documentation
 

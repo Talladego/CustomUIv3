@@ -63,6 +63,7 @@ local prevMoraleLevel         = 0
 local prevHitpointLevel       = 1
 local m_handlersRegistered    = false
 local m_stockPlayerUnhooked   = false
+local m_stockPlayerRehookPending = false
 local m_stockReplaceTracked   = {} -- PlayerWindow: true if we hid, false if already user-hidden
 -- Set-bonus point grants can land a tick after PLAYER_EQUIPMENT_SLOT_UPDATED.
 local m_nagRefreshRemaining   = 0
@@ -169,10 +170,12 @@ end
 
 local function RehookStockPlayerWindowHandlers()
     if not m_stockPlayerUnhooked then
+        m_stockPlayerRehookPending = false
         return
     end
     if not DoesWindowExist("PlayerWindow") then
-        m_stockPlayerUnhooked = false
+        -- Keep unhooked flag; stock may recreate later. Retry via TryPendingStockRehook.
+        m_stockPlayerRehookPending = true
         return
     end
     local w = "PlayerWindow"
@@ -196,6 +199,14 @@ local function RehookStockPlayerWindowHandlers()
     WindowRegisterEventHandler(w, e.PLAYER_BATTLE_LEVEL_UPDATED,        "PlayerWindow.UpdatePlayerLevel")
     WindowRegisterEventHandler(w, e.ADVANCED_WAR_RELIC_UPDATE,          "PlayerWindow.UpdateRelicBonuses")
     m_stockPlayerUnhooked = false
+    m_stockPlayerRehookPending = false
+end
+
+function CustomUI.PlayerStatusWindow.TryPendingStockRehook()
+    -- Only when Disable/Shutdown asked to restore and the stock window was missing.
+    if m_stockPlayerRehookPending then
+        RehookStockPlayerWindowHandlers()
+    end
 end
 
 local MoraleLevelSliceMap = {
@@ -379,7 +390,19 @@ end
 
 function CustomUI.PlayerStatusWindow.Shutdown()
     UnregisterHandlers()
-    CustomUI.PlayerStatusWindow.playerBuffs:Shutdown()
+    if CustomUI.PlayerStatusWindow.playerBuffs ~= nil
+        and type(CustomUI.PlayerStatusWindow.playerBuffs.Shutdown) == "function" then
+        CustomUI.PlayerStatusWindow.playerBuffs:Shutdown()
+    end
+    -- XML OnShutdown may skip Disable(); restore stock handlers/windows if we had unhooked them.
+    if m_stockPlayerUnhooked then
+        RehookStockPlayerWindowHandlers()
+        if type(CustomUI.RestoreStockAfterReplace) == "function" then
+            CustomUI.RestoreStockAfterReplace("PlayerWindow", m_stockReplaceTracked)
+        elseif LayoutEditor.windowsList["PlayerWindow"] then
+            LayoutEditor.UserShow("PlayerWindow")
+        end
+    end
 end
 
 function CustomUI.PlayerStatusWindow.OnShown()

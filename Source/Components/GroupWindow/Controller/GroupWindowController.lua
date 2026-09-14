@@ -1120,6 +1120,11 @@ function CustomUI.GroupWindow.Shutdown()
     m_statusPollElapsed = 0
     m_containerShown = false
 
+    -- XML OnShutdown may skip Disable(); restore stock handlers if we had unhooked them.
+    if m_stockGroupUnhooked then
+        RehookStockGroupWindowHandlers()
+        ShowStockGroupInLayoutEditor()
+    end
 end
 
 function CustomUI.GroupWindow.OnHidden()

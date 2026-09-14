@@ -24,7 +24,7 @@ CustomUI.Perf = CustomUI.Perf or
 CustomUI.Name = "CustomUI"
 -- Semver (MAJOR.MINOR.PATCH), matching RedAlert / ScenarioBalance / DungeonCoach.
 -- One addon version for the whole modular package; components are toggles, not separately versioned releases.
-CustomUI.Version = "1.2.1"
+CustomUI.Version = "1.2.2"
 CustomUI.SlashCommands = CustomUI.SlashCommands or { "customui", "cui" }
 CustomUI.Components = CustomUI.Components or {}
 CustomUI.ComponentOrder = CustomUI.ComponentOrder or {}
@@ -658,6 +658,9 @@ local function ApplyFollowLeaderActionToMacroSlots(macroName, leaderName)
         CustomUI.FollowLeader.trackedSlots = {}
         return
     end
+    if not ActionBars or type(ActionBars.BarAndButtonIdFromSlot) ~= "function" then
+        return
+    end
     local slots = GetMacroSlots(macroId)
     if #slots > 0 then
         CustomUI.FollowLeader.trackedSlots = slots
@@ -1192,6 +1195,10 @@ function CustomUI.OnGlobalUpdate(timePassed)
     if type(CustomUI.TargetWindow) == "table"
         and type(CustomUI.TargetWindow.TryPendingStockRehook) == "function" then
         CustomUI.TargetWindow.TryPendingStockRehook()
+    end
+    if type(CustomUI.PlayerStatusWindow) == "table"
+        and type(CustomUI.PlayerStatusWindow.TryPendingStockRehook) == "function" then
+        CustomUI.PlayerStatusWindow.TryPendingStockRehook()
     end
 end
 

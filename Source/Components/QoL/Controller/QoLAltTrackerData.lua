@@ -249,23 +249,38 @@ function Data.RescanLoc(locKey)
 	local rec = Data.GetCurrentCharRecord()
 	local tallies = {}
 	local itemData
-	if type(def.getData) == "function" then
-		local ok, data = pcall(def.getData)
-		if ok and type(data) == "table" then
-			for slot = 1, #data do
-				itemData = data[slot]
-				if type(DataUtils) == "table" and type(DataUtils.IsValidItem) == "function" then
-					if DataUtils.IsValidItem(itemData) then
-						local uid = itemData.uniqueID
-						local stack = tonumber(itemData.stackCount) or 1
-						tallies[uid] = (tallies[uid] or 0) + stack
-					end
-				elseif itemData and tonumber(itemData.uniqueID) and itemData.uniqueID ~= 0 then
-					local uid = itemData.uniqueID
-					local stack = tonumber(itemData.stackCount) or 1
-					tallies[uid] = (tallies[uid] or 0) + stack
-				end
+	local protectEmptyWipe = (locKey == "bag" or locKey == "crafting" or locKey == "currency")
+	if type(def.getData) ~= "function" then
+		if not protectEmptyWipe then
+			applyLocCounts(rec, locKey, tallies)
+		end
+		return
+	end
+	local ok, data = pcall(def.getData)
+	if not ok or type(data) ~= "table" then
+		-- Bag/crafting/currency not ready: leave prior tallies intact.
+		if not protectEmptyWipe then
+			applyLocCounts(rec, locKey, tallies)
+		end
+		return
+	end
+	-- Empty bag/crafting tables at login are usually "not ready", not truly empty.
+	-- Applying them would wipe good AltTracker data (e.g. Talladego resin).
+	if protectEmptyWipe and #data == 0 then
+		return
+	end
+	for slot = 1, #data do
+		itemData = data[slot]
+		if type(DataUtils) == "table" and type(DataUtils.IsValidItem) == "function" then
+			if DataUtils.IsValidItem(itemData) then
+				local uid = itemData.uniqueID
+				local stack = tonumber(itemData.stackCount) or 1
+				tallies[uid] = (tallies[uid] or 0) + stack
 			end
+		elseif itemData and tonumber(itemData.uniqueID) and itemData.uniqueID ~= 0 then
+			local uid = itemData.uniqueID
+			local stack = tonumber(itemData.stackCount) or 1
+			tallies[uid] = (tallies[uid] or 0) + stack
 		end
 	end
 	applyLocCounts(rec, locKey, tallies)

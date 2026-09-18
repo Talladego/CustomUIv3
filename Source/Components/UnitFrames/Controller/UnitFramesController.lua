@@ -302,6 +302,9 @@ local SafeLayoutUserHide
 local m_stockOnMenuClickSetBackgroundOpacity = nil
 local m_stockOnOpacitySlide = nil
 local m_stockRoRGroupScoreboardPacket = nil
+local g_onMenuClickSetBackgroundOpacityWrapper = nil
+local g_onOpacitySlideWrapper = nil
+local g_rorGroupScoreboardPacketWrapper = nil
 local m_stockReplaceTracked = {} -- stock warband/scenario windows we hid for replace
 local m_grpStatsPacketCallback = nil
 local m_eventsRegistered = false
@@ -2475,10 +2478,11 @@ local function EnsureArchtypePacketListener()
 
     if type(RoRGroupScoreboard) == "table" and type(RoRGroupScoreboard.Packet) == "function" then
         m_stockRoRGroupScoreboardPacket = RoRGroupScoreboard.Packet
-        RoRGroupScoreboard.Packet = function(text)
+        g_rorGroupScoreboardPacketWrapper = function(text)
             m_stockRoRGroupScoreboardPacket(text)
             RefreshUnitFramesArchetypeColors()
         end
+        RoRGroupScoreboard.Packet = g_rorGroupScoreboardPacketWrapper
         if type(UnitFramesArchetypes.SyncCacheFromScoreboard) == "function" then
             UnitFramesArchetypes.SyncCacheFromScoreboard()
         end
@@ -2494,10 +2498,14 @@ local function RemoveArchtypePacketListener()
     end
 
     if m_stockRoRGroupScoreboardPacket ~= nil then
-        if type(RoRGroupScoreboard) == "table" then
+        -- Only restore if our wrapper is still installed (FollowLeader pattern).
+        if type(RoRGroupScoreboard) == "table"
+            and RoRGroupScoreboard.Packet == g_rorGroupScoreboardPacketWrapper
+        then
             RoRGroupScoreboard.Packet = m_stockRoRGroupScoreboardPacket
         end
         m_stockRoRGroupScoreboardPacket = nil
+        g_rorGroupScoreboardPacketWrapper = nil
     end
 end
 
@@ -2575,7 +2583,7 @@ function UnitFrames.Enable()
     and type(BattlegroupHUD.OnMenuClickSetBackgroundOpacity) == "function"
     and m_stockOnMenuClickSetBackgroundOpacity == nil then
         m_stockOnMenuClickSetBackgroundOpacity = BattlegroupHUD.OnMenuClickSetBackgroundOpacity
-        BattlegroupHUD.OnMenuClickSetBackgroundOpacity = function()
+        g_onMenuClickSetBackgroundOpacityWrapper = function()
             local contextWindow = BattlegroupHUD.contextMenuOpenedFrom
             if IsUnitFramesMemberWindowName(contextWindow) then
                 -- Delegate to stock to preserve slider min/max and behavior parity.
@@ -2585,13 +2593,14 @@ function UnitFrames.Enable()
 
             m_stockOnMenuClickSetBackgroundOpacity()
         end
+        BattlegroupHUD.OnMenuClickSetBackgroundOpacity = g_onMenuClickSetBackgroundOpacityWrapper
     end
 
     if type(BattlegroupHUD) == "table"
     and type(BattlegroupHUD.OnOpacitySlide) == "function"
     and m_stockOnOpacitySlide == nil then
         m_stockOnOpacitySlide = BattlegroupHUD.OnOpacitySlide
-        BattlegroupHUD.OnOpacitySlide = function(slidePos)
+        g_onOpacitySlideWrapper = function(slidePos)
             local contextWindow = BattlegroupHUD.contextMenuOpenedFrom
             if IsUnitFramesMemberWindowName(contextWindow) then
                 local resolvedAlpha = ClampAlpha(slidePos)
@@ -2602,6 +2611,7 @@ function UnitFrames.Enable()
 
             m_stockOnOpacitySlide(slidePos)
         end
+        BattlegroupHUD.OnOpacitySlide = g_onOpacitySlideWrapper
     end
 
     EnsureArchtypePacketListener()
@@ -2643,17 +2653,24 @@ function UnitFrames.Disable()
     HideCustomShowStock()
 
     if m_stockOnMenuClickSetBackgroundOpacity ~= nil then
-        if type(BattlegroupHUD) == "table" then
+        -- Only restore if our wrapper is still installed (FollowLeader pattern).
+        if type(BattlegroupHUD) == "table"
+            and BattlegroupHUD.OnMenuClickSetBackgroundOpacity == g_onMenuClickSetBackgroundOpacityWrapper
+        then
             BattlegroupHUD.OnMenuClickSetBackgroundOpacity = m_stockOnMenuClickSetBackgroundOpacity
         end
         m_stockOnMenuClickSetBackgroundOpacity = nil
+        g_onMenuClickSetBackgroundOpacityWrapper = nil
     end
 
     if m_stockOnOpacitySlide ~= nil then
-        if type(BattlegroupHUD) == "table" then
+        if type(BattlegroupHUD) == "table"
+            and BattlegroupHUD.OnOpacitySlide == g_onOpacitySlideWrapper
+        then
             BattlegroupHUD.OnOpacitySlide = m_stockOnOpacitySlide
         end
         m_stockOnOpacitySlide = nil
+        g_onOpacitySlideWrapper = nil
     end
 
     RemoveArchtypePacketListener()
@@ -2692,17 +2709,24 @@ function UnitFrames.Shutdown()
     m_eventsRegistered = false
 
     if m_stockOnMenuClickSetBackgroundOpacity ~= nil then
-        if type(BattlegroupHUD) == "table" then
+        -- Only restore if our wrapper is still installed (FollowLeader pattern).
+        if type(BattlegroupHUD) == "table"
+            and BattlegroupHUD.OnMenuClickSetBackgroundOpacity == g_onMenuClickSetBackgroundOpacityWrapper
+        then
             BattlegroupHUD.OnMenuClickSetBackgroundOpacity = m_stockOnMenuClickSetBackgroundOpacity
         end
         m_stockOnMenuClickSetBackgroundOpacity = nil
+        g_onMenuClickSetBackgroundOpacityWrapper = nil
     end
 
     if m_stockOnOpacitySlide ~= nil then
-        if type(BattlegroupHUD) == "table" then
+        if type(BattlegroupHUD) == "table"
+            and BattlegroupHUD.OnOpacitySlide == g_onOpacitySlideWrapper
+        then
             BattlegroupHUD.OnOpacitySlide = m_stockOnOpacitySlide
         end
         m_stockOnOpacitySlide = nil
+        g_onOpacitySlideWrapper = nil
     end
 
     RemoveArchtypePacketListener()

@@ -24,7 +24,7 @@ CustomUI.Perf = CustomUI.Perf or
 CustomUI.Name = "CustomUI"
 -- Semver (MAJOR.MINOR.PATCH), matching RedAlert / ScenarioBalance / DungeonCoach.
 -- One addon version for the whole modular package; components are toggles, not separately versioned releases.
-CustomUI.Version = "1.2.8"
+CustomUI.Version = "1.2.9"
 CustomUI.SlashCommands = CustomUI.SlashCommands or { "customui", "cui" }
 CustomUI.Components = CustomUI.Components or {}
 CustomUI.ComponentOrder = CustomUI.ComponentOrder or {}
@@ -347,7 +347,11 @@ function CustomUI.UninstallChatLinkHook()
     if not m_chatLinkHooked then
         return
     end
-    if type(EA_ChatWindow) == "table" and m_prevOnHyperLinkLButtonUp ~= nil then
+    -- Only restore if our wrapper is still installed (FollowLeader pattern; #26).
+    if type(EA_ChatWindow) == "table"
+        and EA_ChatWindow.OnHyperLinkLButtonUp == OnCustomUIHyperLinkLButtonUp
+        and m_prevOnHyperLinkLButtonUp ~= nil
+    then
         EA_ChatWindow.OnHyperLinkLButtonUp = m_prevOnHyperLinkLButtonUp
     end
     m_prevOnHyperLinkLButtonUp = nil
@@ -1235,6 +1239,7 @@ local ROOT_WINDOW_NAMES = {
 }
 
 local originalUpdateFromClient = nil
+local g_updateFromClientWrapper = nil
 
 function CustomUI.OnGlobalUpdate(timePassed)
     CustomUI.PerfEndFrame(timePassed)
@@ -1263,7 +1268,7 @@ local function HookTargetInfo()
     end
 
     originalUpdateFromClient = TargetInfo.UpdateFromClient
-    TargetInfo.UpdateFromClient = function(self)
+    g_updateFromClientWrapper = function(self)
         if CustomUI.TargetUpdateFlag then
             return
         end
@@ -1283,15 +1288,18 @@ local function HookTargetInfo()
 
         CustomUI.TargetUpdateFlag = true
     end
+    TargetInfo.UpdateFromClient = g_updateFromClientWrapper
 end
 
 local function UnhookTargetInfo()
     if originalUpdateFromClient == nil then
         return
     end
-    if type(TargetInfo) == "table" then
+    -- Only restore if our wrapper is still installed (FollowLeader pattern; #22).
+    if type(TargetInfo) == "table" and TargetInfo.UpdateFromClient == g_updateFromClientWrapper then
         TargetInfo.UpdateFromClient = originalUpdateFromClient
     end
+    g_updateFromClientWrapper = nil
     originalUpdateFromClient = nil
 end
 

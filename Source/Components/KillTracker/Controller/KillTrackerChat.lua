@@ -371,7 +371,8 @@ function Chat.RemoveHook()
 	if not Chat._hooked then
 		return
 	end
-	if Chat._originalTextLogAddEntry then
+	-- Only restore if our wrapper is still installed (FollowLeader pattern; #21).
+	if TextLogAddEntry == HookedTextLogAddEntry and Chat._originalTextLogAddEntry then
 		TextLogAddEntry = Chat._originalTextLogAddEntry
 	end
 	Chat._originalTextLogAddEntry = nil

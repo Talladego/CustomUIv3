@@ -497,12 +497,12 @@ local function hookInteractionRewardSelection()
     then
         return
     end
-    if EA_Window_InteractionEventRewards.SelectEventRewards == Track._originalSelectEventRewards then
+    if EA_Window_InteractionEventRewards.SelectEventRewards == Track._selectEventRewardsWrapper then
         return
     end
 
     Track._originalSelectEventRewards = EA_Window_InteractionEventRewards.SelectEventRewards
-    EA_Window_InteractionEventRewards.SelectEventRewards = function()
+    Track._selectEventRewardsWrapper = function()
         local selectButton = "EA_Window_InteractionEventRewardsSelect"
         if type(ButtonGetDisabledFlag) == "function"
             and DoesWindowExist(selectButton)
@@ -519,6 +519,7 @@ local function hookInteractionRewardSelection()
             Track.InvokeRefreshHandler()
         end
     end
+    EA_Window_InteractionEventRewards.SelectEventRewards = Track._selectEventRewardsWrapper
     Track._eventRewardSelectHooked = true
 end
 
@@ -526,12 +527,15 @@ local function unhookInteractionRewardSelection()
     if Track._eventRewardSelectHooked ~= true then
         return
     end
+    -- Only restore if our wrapper is still installed (FollowLeader pattern; #24).
     if type(EA_Window_InteractionEventRewards) == "table"
         and type(Track._originalSelectEventRewards) == "function"
+        and EA_Window_InteractionEventRewards.SelectEventRewards == Track._selectEventRewardsWrapper
     then
         EA_Window_InteractionEventRewards.SelectEventRewards = Track._originalSelectEventRewards
     end
     Track._originalSelectEventRewards = nil
+    Track._selectEventRewardsWrapper = nil
     Track._eventRewardSelectHooked = false
 end
 

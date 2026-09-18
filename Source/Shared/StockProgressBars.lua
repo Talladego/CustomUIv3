@@ -27,6 +27,8 @@ local m_active = false
 local m_influenceHooked = false
 local m_stockUpdateInfluenceBar = nil
 local m_stockUpdateTutorial = nil
+local g_updateInfluenceBarWrapper = nil
+local g_updateTutorialWrapper = nil
 local m_influenceCollapsed = false
 
 local function badgeEnabled(key)
@@ -116,15 +118,22 @@ local function unhookInfluenceUpdates()
         return
     end
     if type(EA_Window_PublicQuestTracker) == "table" then
-        if type(m_stockUpdateInfluenceBar) == "function" then
+        -- Only restore if our wrappers are still installed (FollowLeader pattern; #23).
+        if type(m_stockUpdateInfluenceBar) == "function"
+            and EA_Window_PublicQuestTracker.UpdateInfluenceBar == g_updateInfluenceBarWrapper
+        then
             EA_Window_PublicQuestTracker.UpdateInfluenceBar = m_stockUpdateInfluenceBar
         end
-        if type(m_stockUpdateTutorial) == "function" then
+        if type(m_stockUpdateTutorial) == "function"
+            and EA_Window_PublicQuestTracker.UpdateTutorial == g_updateTutorialWrapper
+        then
             EA_Window_PublicQuestTracker.UpdateTutorial = m_stockUpdateTutorial
         end
     end
     m_stockUpdateInfluenceBar = nil
     m_stockUpdateTutorial = nil
+    g_updateInfluenceBarWrapper = nil
+    g_updateTutorialWrapper = nil
     m_influenceHooked = false
 end
 
@@ -139,18 +148,20 @@ local function ensureInfluenceHooks()
     local hookedAny = false
     if type(EA_Window_PublicQuestTracker.UpdateInfluenceBar) == "function" then
         m_stockUpdateInfluenceBar = EA_Window_PublicQuestTracker.UpdateInfluenceBar
-        EA_Window_PublicQuestTracker.UpdateInfluenceBar = function(...)
+        g_updateInfluenceBarWrapper = function(...)
             m_stockUpdateInfluenceBar(...)
             afterStockInfluenceUpdate()
         end
+        EA_Window_PublicQuestTracker.UpdateInfluenceBar = g_updateInfluenceBarWrapper
         hookedAny = true
     end
     if type(EA_Window_PublicQuestTracker.UpdateTutorial) == "function" then
         m_stockUpdateTutorial = EA_Window_PublicQuestTracker.UpdateTutorial
-        EA_Window_PublicQuestTracker.UpdateTutorial = function(...)
+        g_updateTutorialWrapper = function(...)
             m_stockUpdateTutorial(...)
             afterStockInfluenceUpdate()
         end
+        EA_Window_PublicQuestTracker.UpdateTutorial = g_updateTutorialWrapper
         hookedAny = true
     end
     -- Only lock the hook flag when at least one wrapper landed (retry later if PQ tracker not ready).

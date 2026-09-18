@@ -24,7 +24,7 @@ CustomUI.Perf = CustomUI.Perf or
 CustomUI.Name = "CustomUI"
 -- Semver (MAJOR.MINOR.PATCH), matching RedAlert / ScenarioBalance / DungeonCoach.
 -- One addon version for the whole modular package; components are toggles, not separately versioned releases.
-CustomUI.Version = "1.2.4"
+CustomUI.Version = "1.2.8"
 CustomUI.SlashCommands = CustomUI.SlashCommands or { "customui", "cui" }
 CustomUI.Components = CustomUI.Components or {}
 CustomUI.ComponentOrder = CustomUI.ComponentOrder or {}
@@ -40,14 +40,20 @@ CustomUI.State = CustomUI.State or
     slashRegistered = false,
 }
 
--- Chat prefix style matches WarTriage / RedAlert: colored [CustomUI] via LINK tag.
+-- Chat prefix style matches StockPiler3 / WarTriage: colored [CustomUI] via LINK tag.
+-- data=CUI: so a hyperlink hook can open settings (/cui). Stock data="0" is inert.
 -- Keep LINK text ASCII only (see docs/api/lua-chat-strings.md).
 local c_CHAT_PREFIX_TEXT = "CustomUI"
 local c_CHAT_PREFIX_COLOR = { 255, 198, 80 }
+local c_CHAT_LINK_DATA = "CUI:"
+local c_CHAT_LINK_TAG = L"CUI:"
 -- Stock chat checkbox icons (WarTriage / EZGuard). Prefer zero-padded IDs — short
 -- `<icon57>` on LINK-prefixed System lines can render as mangled `@con57>` / `con57>`.
 local c_ICON_ENABLED  = L"<icon00057>"
 local c_ICON_DISABLED = L"<icon00058>"
+
+local m_prevOnHyperLinkLButtonUp = nil
+local m_chatLinkHooked = false
 
 CustomUI.FollowLeader = CustomUI.FollowLeader or
 {
@@ -283,10 +289,11 @@ function CustomUI.GetComponentStatusText()
     return L"components: " .. towstring(enabledCount) .. L"/" .. towstring(registeredCount) .. L" enabled"
 end
 
--- WarTriage-style: [CustomUI] with LINK color, then message body.
+-- StockPiler3-style: [CustomUI] with LINK color + clickable data=CUI:, then message body.
 local function GetChatPrefixWString(includeSpace)
     local coloredPartRaw = string.format(
-        "<LINK data=\"0\" color=\"%d,%d,%d\" text=\"%s\">",
+        "<LINK data=\"%s\" color=\"%d,%d,%d\" text=\"%s\">",
+        c_CHAT_LINK_DATA,
         c_CHAT_PREFIX_COLOR[1],
         c_CHAT_PREFIX_COLOR[2],
         c_CHAT_PREFIX_COLOR[3],
@@ -297,6 +304,54 @@ local function GetChatPrefixWString(includeSpace)
         prefix = prefix .. L" "
     end
     return prefix
+end
+
+local function IsCustomUIChatLink(linkData)
+    if linkData == nil or type(wstring) ~= "table" or type(wstring.gsub) ~= "function" then
+        return false
+    end
+    local data = linkData
+    if type(data) ~= "wstring" then
+        data = towstring(tostring(data))
+    end
+    local _, findCount = wstring.gsub(data, c_CHAT_LINK_TAG, L"")
+    return (tonumber(findCount) or 0) > 0
+end
+
+local function OnCustomUIHyperLinkLButtonUp(linkData, flags, x, y)
+    if IsCustomUIChatLink(linkData) then
+        if type(CustomUI.ShowSettings) == "function" then
+            CustomUI.ShowSettings()
+        end
+        return
+    end
+    if m_prevOnHyperLinkLButtonUp then
+        m_prevOnHyperLinkLButtonUp(linkData, flags, x, y)
+    end
+end
+
+--- Hook chat hyperlinks so clicking [CustomUI] opens settings (/cui).
+function CustomUI.InstallChatLinkHook()
+    if m_chatLinkHooked then
+        return
+    end
+    if type(EA_ChatWindow) ~= "table" or type(EA_ChatWindow.OnHyperLinkLButtonUp) ~= "function" then
+        return
+    end
+    m_prevOnHyperLinkLButtonUp = EA_ChatWindow.OnHyperLinkLButtonUp
+    EA_ChatWindow.OnHyperLinkLButtonUp = OnCustomUIHyperLinkLButtonUp
+    m_chatLinkHooked = true
+end
+
+function CustomUI.UninstallChatLinkHook()
+    if not m_chatLinkHooked then
+        return
+    end
+    if type(EA_ChatWindow) == "table" and m_prevOnHyperLinkLButtonUp ~= nil then
+        EA_ChatWindow.OnHyperLinkLButtonUp = m_prevOnHyperLinkLButtonUp
+    end
+    m_prevOnHyperLinkLButtonUp = nil
+    m_chatLinkHooked = false
 end
 
 function CustomUI.PrintMessage(message)
@@ -1267,6 +1322,7 @@ function CustomUI.Initialize()
     CustomUI.Settings.version = CustomUI.Version
 
     CustomUI.RegisterSlashCommands()
+    CustomUI.InstallChatLinkHook()
     CustomUI.RegisterFollowLeaderHandlers()
     CustomUI.RefreshFollowLeaderMacro()
     CustomUI.InitializeComponents()
@@ -1279,6 +1335,7 @@ function CustomUI.Shutdown()
     end
 
     CustomUI.UnregisterSlashCommands()
+    CustomUI.UninstallChatLinkHook()
     CustomUI.UnregisterFollowLeaderHandlers()
     CustomUI.ShutdownComponents()
     UnhookTargetInfo()

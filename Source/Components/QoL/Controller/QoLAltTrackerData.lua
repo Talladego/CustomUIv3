@@ -22,6 +22,14 @@ local LOC_DEFS = {}
 local m_pendingLocs = {}
 local m_debounceRemaining = 0
 local m_needsProcess = false
+-- Per-session: API proven live for this loc (slot event / backpack / successful non-empty apply).
+-- Until then, zero-valid stub arrays must not wipe prior SavedVariables tallies.
+local m_locReady = {
+	bag = false,
+	crafting = false,
+	currency = false,
+	bank = false,
+}
 
 local function narrow(value)
 	if CustomUI and type(CustomUI.NarrowWString) == "function" then
@@ -235,6 +243,89 @@ local function applyLocCounts(rec, locKey, tallies)
 	end
 end
 
+local function tallyValidItems(data)
+	local tallies = {}
+	local validCount = 0
+	local itemData
+	for slot = 1, #data do
+		itemData = data[slot]
+		local uid, stack
+		if type(DataUtils) == "table" and type(DataUtils.IsValidItem) == "function" then
+			if DataUtils.IsValidItem(itemData) then
+				uid = itemData.uniqueID
+				stack = tonumber(itemData.stackCount) or 1
+			end
+		elseif itemData and tonumber(itemData.uniqueID) and itemData.uniqueID ~= 0 then
+			uid = itemData.uniqueID
+			stack = tonumber(itemData.stackCount) or 1
+		end
+		if uid ~= nil then
+			validCount = validCount + 1
+			tallies[uid] = (tallies[uid] or 0) + stack
+		end
+	end
+	return tallies, validCount
+end
+
+local function windowIsShowing(name)
+	if type(name) ~= "string" or type(DoesWindowExist) ~= "function" or type(WindowGetShowing) ~= "function" then
+		return false
+	end
+	if not DoesWindowExist(name) then
+		return false
+	end
+	return WindowGetShowing(name) == true
+end
+
+--- True when the player can see this inventory UI (safe to trust a zero-item scan).
+local function locUiIsShowing(locKey)
+	if locKey == "bag" or locKey == "currency" then
+		return windowIsShowing("EA_Window_Backpack")
+	end
+	if locKey == "crafting" then
+		-- Crafting mats live in the backpack crafting tab on stock UI.
+		return windowIsShowing("EA_Window_Backpack")
+			or windowIsShowing("EA_Window_Crafting")
+			or windowIsShowing("CraftingWindow")
+	end
+	if locKey == "bank" then
+		return windowIsShowing("EA_Window_InteractionBank")
+			or windowIsShowing("BankWindow")
+	end
+	return false
+end
+
+function Data.ResetSessionReadyFlags()
+	m_locReady.bag = false
+	m_locReady.crafting = false
+	m_locReady.currency = false
+	m_locReady.bank = false
+end
+
+function Data.MarkLocReady(locKey)
+	if locKey ~= nil and m_locReady[locKey] ~= nil then
+		m_locReady[locKey] = true
+	end
+end
+
+function Data.MarkPlayerLocsReady()
+	m_locReady.bag = true
+	m_locReady.crafting = true
+	m_locReady.currency = true
+end
+
+--- Force DataUtils to re-dump from the engine (StockPiler2 session-recovery pattern).
+function Data.ForceInventoryDirty()
+	if type(GameData) ~= "table" or type(GameData.Player) ~= "table" then
+		return
+	end
+	GameData.Player.itemsDirty = true
+	GameData.Player.craftingItemsDirty = true
+	if GameData.Player.currencyItemsDirty ~= nil then
+		GameData.Player.currencyItemsDirty = true
+	end
+end
+
 function Data.RescanLoc(locKey)
 	local def
 	for i = 1, #LOC_DEFS do
@@ -247,47 +338,49 @@ function Data.RescanLoc(locKey)
 		return
 	end
 	local rec = Data.GetCurrentCharRecord()
-	local tallies = {}
-	local itemData
-	local protectEmptyWipe = (locKey == "bag" or locKey == "crafting" or locKey == "currency")
+	local protectEmptyWipe = (locKey == "bag" or locKey == "crafting"
+		or locKey == "currency" or locKey == "bank")
 	if type(def.getData) ~= "function" then
 		if not protectEmptyWipe then
-			applyLocCounts(rec, locKey, tallies)
+			applyLocCounts(rec, locKey, {})
 		end
 		return
 	end
 	local ok, data = pcall(def.getData)
 	if not ok or type(data) ~= "table" then
-		-- Bag/crafting/currency not ready: leave prior tallies intact.
+		-- Not ready / failed: leave prior tallies intact for protected locs.
 		if not protectEmptyWipe then
-			applyLocCounts(rec, locKey, tallies)
+			applyLocCounts(rec, locKey, {})
 		end
 		return
 	end
-	-- Empty bag/crafting tables at login are usually "not ready", not truly empty.
-	-- Applying them would wipe good AltTracker data (e.g. Talladego resin).
+	-- Literally empty table (rare) — usually "not ready", not truly empty.
 	if protectEmptyWipe and #data == 0 then
 		return
 	end
-	for slot = 1, #data do
-		itemData = data[slot]
-		if type(DataUtils) == "table" and type(DataUtils.IsValidItem) == "function" then
-			if DataUtils.IsValidItem(itemData) then
-				local uid = itemData.uniqueID
-				local stack = tonumber(itemData.stackCount) or 1
-				tallies[uid] = (tallies[uid] or 0) + stack
-			end
-		elseif itemData and tonumber(itemData.uniqueID) and itemData.uniqueID ~= 0 then
-			local uid = itemData.uniqueID
-			local stack = tonumber(itemData.stackCount) or 1
-			tallies[uid] = (tallies[uid] or 0) + stack
+	local tallies, validCount = tallyValidItems(data)
+	-- WAR bags are fixed slot arrays of uniqueID==0 stubs; #data is never 0.
+	-- Login retries / slot events often refetch stubs AFTER a good scan. Applying
+	-- zero tallies then wipes bag + crafting (seen on Talladegor→Talladego relog).
+	-- Only trust a zero-item result while that inventory UI is actually open.
+	if protectEmptyWipe and validCount == 0 then
+		if not locUiIsShowing(locKey) then
+			return
 		end
 	end
 	applyLocCounts(rec, locKey, tallies)
+	if validCount > 0 then
+		Data.MarkLocReady(locKey)
+	end
 end
 
 function Data.RescanPlayerLocs()
+	Data.ForceInventoryDirty()
 	Data.RescanLoc("bag")
+	-- GetCraftingItems clears itemsDirty (client bug); keep craft dirty for the craft pass.
+	if type(GameData) == "table" and type(GameData.Player) == "table" then
+		GameData.Player.craftingItemsDirty = true
+	end
 	Data.RescanLoc("crafting")
 	Data.RescanLoc("currency")
 end
@@ -301,7 +394,21 @@ function Data.ClearBank()
 	zeroLocCounts(rec, "bank")
 end
 
+--- Bank open: do not wipe immediately (logout before slot events lost bank data).
+--- Slot updates queue a full replace via RescanLoc; zero-valid stubs are protected until UI open.
+function Data.OnBankOpened()
+	Data.QueueLoc("bank")
+end
+
+function Data.OnBankSlotUpdated()
+	m_pendingLocs["bank"] = true
+	m_needsProcess = true
+	m_debounceRemaining = DEBOUNCE_SEC
+end
+
 function Data.QueueLoc(locKey)
+	-- Do NOT MarkLocReady here: login fires slot-updated with stub arrays and would
+	-- arm an empty apply that wipes a good scan from an earlier timer.
 	m_pendingLocs[locKey] = true
 	m_needsProcess = true
 	m_debounceRemaining = DEBOUNCE_SEC
@@ -663,6 +770,7 @@ function Data.PruneStaleCharacters()
 end
 
 function Data.FullLoginRescan()
+	Data.ResetSessionReadyFlags()
 	Data.GetCurrentCharRecord()
 	Data.PruneStaleCharacters()
 	Data.SnapshotMoney()

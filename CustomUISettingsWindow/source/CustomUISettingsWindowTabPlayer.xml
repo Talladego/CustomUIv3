@@ -145,6 +145,18 @@
                                     </EventHandlers>
                                 </Window>
 
+                                <Window name="$parentPet" inherits="EA_LabelCheckButton">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="$parentRank">
+                                            <AbsPoint x="0" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabPlayer.OnToggleBadge" />
+                                    </EventHandlers>
+                                </Window>
+
                                 <Window name="$parentRenown" inherits="EA_LabelCheckButton">
                                     <Anchors>
                                         <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentCareer">

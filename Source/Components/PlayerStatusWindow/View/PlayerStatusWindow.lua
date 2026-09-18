@@ -219,6 +219,26 @@ function CustomUI.PlayerStatusWindow.PaintPortraitTooltip()
     Tooltips.AnchorTooltip( CustomUI.PlayerStatusWindow.TOOLTIP_ANCHOR )
 end
 
+function CustomUI.PlayerStatusWindow.MouseOverPetHealth()
+    local pet = GameData and GameData.Player and GameData.Player.Pet
+    if pet == nil or pet.name == nil or pet.name == L"" then
+        return
+    end
+    local pct = math.floor(tonumber(pet.healthPercent) or 0)
+    Tooltips.CreateTextOnlyTooltip( SystemData.ActiveWindow.name )
+    Tooltips.SetTooltipText( 1, 1, pet.name )
+    Tooltips.SetTooltipColorDef( 1, 1, Tooltips.COLOR_HEADING )
+    Tooltips.SetTooltipText( 2, 1, L"Health: " .. pct .. L"%" )
+    Tooltips.Finalize()
+    Tooltips.AnchorTooltip( CustomUI.PlayerStatusWindow.TOOLTIP_ANCHOR )
+end
+
+function CustomUI.PlayerStatusWindow.OnLButtonUpPetHealth()
+    if SystemData and SystemData.Events and SystemData.Events.TARGET_PET then
+        BroadcastEvent( SystemData.Events.TARGET_PET )
+    end
+end
+
 ----------------------------------------------------------------
 -- Input Forwarding
 ----------------------------------------------------------------

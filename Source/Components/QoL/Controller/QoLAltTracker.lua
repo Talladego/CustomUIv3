@@ -18,7 +18,7 @@ local m_pendingLoginRescan = false
 local m_moneySnapshotTimers = {}
 local m_inventoryRescanTimers = {}
 local m_backpackWasShowing = false
-local m_emptyItemsBackpackRescanDone = false
+local m_backpackRescanDone = false
 local m_origPlayerUpdateMoney = nil
 local m_origBackpackUpdateMoney = nil
 local m_playerUpdateMoneyWrapper = nil
@@ -81,7 +81,9 @@ end
 function AT.OnBankSlotUpdated()
 	if not m_enabled then return end
 	local data = getData()
-	if data and type(data.QueueLoc) == "function" then
+	if data and type(data.OnBankSlotUpdated) == "function" then
+		data.OnBankSlotUpdated()
+	elseif data and type(data.QueueLoc) == "function" then
 		data.QueueLoc("bank")
 	end
 end
@@ -89,8 +91,11 @@ end
 function AT.OnInteractBankOpen()
 	if not m_enabled then return end
 	local data = getData()
-	if data and type(data.ClearBank) == "function" then
-		data.ClearBank()
+	-- Soft open: do not ClearBank here (logout before slot events wiped bank).
+	if data and type(data.OnBankOpened) == "function" then
+		data.OnBankOpened()
+	elseif data and type(data.QueueLoc) == "function" then
+		data.QueueLoc("bank")
 	end
 end
 
@@ -150,7 +155,11 @@ function AT.OnWorldReady()
 		return
 	end
 	m_backpackWasShowing = false
-	m_emptyItemsBackpackRescanDone = false
+	m_backpackRescanDone = false
+	local data = getData()
+	if data and type(data.ResetSessionReadyFlags) == "function" then
+		data.ResetSessionReadyFlags()
+	end
 	AT.ScheduleLoginRescan()
 	AT.ScheduleMoneySnapshots()
 	AT.ScheduleInventoryRescans()
@@ -161,7 +170,6 @@ function AT.OnWorldReady()
 			pcall(EA_Window_Backpack.UpdateMoney, GameData.Player.money)
 		end
 	end
-	local data = getData()
 	if data and type(data.SnapshotMoney) == "function" then
 		pcall(data.SnapshotMoney)
 	end
@@ -181,18 +189,6 @@ function AT.ScheduleInventoryRescans()
 	end
 end
 
-local function currentCharItemsEmpty()
-	local data = getData()
-	if data == nil or type(data.GetCurrentCharRecord) ~= "function" then
-		return false
-	end
-	local ok, rec = pcall(data.GetCurrentCharRecord)
-	if not ok or type(rec) ~= "table" or type(rec.items) ~= "table" then
-		return false
-	end
-	return next(rec.items) == nil
-end
-
 function AT.MaybeRescanOnBackpackOpen()
 	if not m_enabled then
 		return
@@ -202,12 +198,15 @@ function AT.MaybeRescanOnBackpackOpen()
 		showing = WindowGetShowing("EA_Window_Backpack") == true
 	end
 	if showing and not m_backpackWasShowing then
-		if not m_emptyItemsBackpackRescanDone and currentCharItemsEmpty() then
+		-- Once per world load: force-dirty rescan while backpack is showing so a
+		-- zero-item result is allowed only with UI open (see RescanLoc).
+		-- Do not MarkPlayerLocsReady before the scan — that armed stub wipes in 1.2.5.
+		if not m_backpackRescanDone then
 			local data = getData()
 			if data and type(data.RescanPlayerLocs) == "function" then
 				pcall(data.RescanPlayerLocs)
 			end
-			m_emptyItemsBackpackRescanDone = true
+			m_backpackRescanDone = true
 		end
 	end
 	m_backpackWasShowing = showing
@@ -385,7 +384,7 @@ function AT.Disable()
 	m_moneySnapshotTimers = {}
 	m_inventoryRescanTimers = {}
 	m_backpackWasShowing = false
-	m_emptyItemsBackpackRescanDone = false
+	m_backpackRescanDone = false
 	AT.RemoveMoneyHooks()
 	AT.UnregisterHandlers()
 	local tips = getTips()

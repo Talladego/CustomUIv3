@@ -120,6 +120,34 @@
                     </EventHandlers>
                 </DynamicImage>
 
+                <!-- Pet HP badge: left-center of portrait (9 o'clock). X matches influence's
+                     hang past the circular portrait at 6 o'clock (~(frameH-portrait)/2). -->
+                <DynamicImage name="$parentPetHealthBackground" inherits="LevelBackgroundTemplate" handleinput="true" popable="false" layer="secondary">
+                    <Anchors>
+                        <Anchor point="left" relativePoint="left" relativeTo="$parentPortraitFrame">
+                            <AbsPoint x="-14" y="0" />
+                        </Anchor>
+                    </Anchors>
+                    <EventHandlers>
+                        <EventHandler event="OnMouseOver" function="CustomUI.PlayerStatusWindow.MouseOverPetHealth" />
+                        <EventHandler event="OnLButtonUp" function="CustomUI.PlayerStatusWindow.OnLButtonUpPetHealth" />
+                    </EventHandlers>
+                </DynamicImage>
+                <Label name="$parentPetHealthText" font="font_heading_rank" maxchars="3" textalign="center" autoresize="false" warnOnTextCropped="false" popable="false" layer="popup" handleinput="true">
+                    <Size>
+                        <AbsPoint x="31" y="32" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="center" relativePoint="center" relativeTo="$parentPetHealthBackground">
+                            <AbsPoint x="-1" y="0" />
+                        </Anchor>
+                    </Anchors>
+                    <EventHandlers>
+                        <EventHandler event="OnMouseOver" function="CustomUI.PlayerStatusWindow.MouseOverPetHealth" />
+                        <EventHandler event="OnLButtonUp" function="CustomUI.PlayerStatusWindow.OnLButtonUpPetHealth" />
+                    </EventHandlers>
+                </Label>
+
                 <!-- notes regarding size and texturescale:
                                                     the abs point in the size tag should reflect original size (namely x="38" y="38") multiplied by the 'texturescale' value in the CircleImage tag.
                                             -->

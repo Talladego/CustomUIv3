@@ -21,6 +21,9 @@ Badge.PORTRAIT_BOTTOM_Y = 0
 -- PlayerStatus / full PortraitFrame corner insets (105x111).
 Badge.PORTRAIT_TOPLEFT_Y = 3
 Badge.PORTRAIT_BOTTOMLEFT_Y = 70
+-- Pet HP at 9 o'clock: nudge left so hang past the 82px portrait matches influence at
+-- 6 o'clock (frame bottom is ~(111-82)/2 outside the circle).
+Badge.PORTRAIT_LEFT_X = -14
 Badge.CROWN_W = 25
 Badge.CROWN_H = 16
 Badge.RVR_W = 23
@@ -231,6 +234,29 @@ function Badge.LayoutBottomCenter(win, portraitFrameWin, yOffset, width, height)
         "bottom",
         Badge.AxisXForPortraitFrame(portraitFrameWin),
         yOffset or 0
+    )
+    return true
+end
+
+--- Left-center of portrait frame (9 o'clock). Mirrors LayoutBottomCenter (6 o'clock).
+function Badge.LayoutLeftCenter(win, portraitFrameWin, xOffset, width, height)
+    if win == nil or portraitFrameWin == nil then
+        return false
+    end
+    if not DoesWindowExist(win) or not DoesWindowExist(portraitFrameWin) then
+        return false
+    end
+    if width ~= nil and height ~= nil then
+        WindowSetDimensions(win, width, height)
+    end
+    WindowClearAnchors(win)
+    WindowAddAnchor(
+        win,
+        "left",
+        portraitFrameWin,
+        "left",
+        xOffset or Badge.PORTRAIT_LEFT_X or 0,
+        0
     )
     return true
 end

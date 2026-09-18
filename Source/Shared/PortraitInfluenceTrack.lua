@@ -238,21 +238,57 @@ local function getLocalZoneInfluenceId()
     return nil
 end
 
+--- Returns listEntry, listReady.
+--- listReady is true only when GetLiveEventList returned a table (possibly empty).
+--- When listReady is false, the tome list is unavailable (e.g. early load) — do not
+--- treat a missing entry as "stale" or call engine live-event APIs for that id.
 local function findLiveEventListEntry(eventId)
     if type(GetLiveEventList) ~= "function" then
-        return nil
+        return nil, false
     end
     local okList, liveEventList = tryCall("findLiveEventListEntry.GetLiveEventList", GetLiveEventList)
     if not okList or type(liveEventList) ~= "table" then
-        return nil
+        return nil, false
     end
     local trackedId = tonumber(eventId)
     for _, event in ipairs(liveEventList) do
         if type(event) == "table" and tonumber(event.id) == trackedId then
-            return event
+            return event, true
         end
     end
-    return nil
+    return nil, true
+end
+
+--- Manual live-event picks can outlive the event. Once the tome list is available
+--- with at least one entry and the id is absent, fall back to Current Area so badge
+--- refresh never hammers the engine (GetLiveEventTasks logs "Event N not found"
+--- even under pcall). An empty list is treated as "not ready" so a valid pick is
+--- not wiped during early load before events populate.
+local function clearStaleManualLiveEvent(settings)
+    if type(settings) ~= "table" or settings.mode ~= Track.MODE_LIVE_EVENT then
+        return false
+    end
+    local eventId = tonumber(settings.eventId)
+    if eventId == nil then
+        settings.mode = Track.MODE_CURRENT_AREA
+        settings.eventId = nil
+        return true
+    end
+    if type(GetLiveEventList) ~= "function" then
+        return false
+    end
+    local okList, liveEventList = tryCall("clearStaleManualLiveEvent.GetLiveEventList", GetLiveEventList)
+    if not okList or type(liveEventList) ~= "table" or liveEventList[1] == nil then
+        return false
+    end
+    for _, event in ipairs(liveEventList) do
+        if type(event) == "table" and tonumber(event.id) == eventId then
+            return false
+        end
+    end
+    settings.mode = Track.MODE_CURRENT_AREA
+    settings.eventId = nil
+    return true
 end
 
 local function fetchLiveEventData(eventId, eventHint)
@@ -262,9 +298,13 @@ local function fetchLiveEventData(eventId, eventHint)
             eventData[key] = value
         end
     end
+    local listEntry = eventHint
+    if listEntry == nil then
+        listEntry = findLiveEventListEntry(eventId)
+    end
     if trimString(eventData.title) == ""
         and type(GetLiveEventData) == "function"
-        and (eventHint ~= nil or findLiveEventListEntry(eventId) ~= nil)
+        and listEntry ~= nil
     then
         local okData, apiData = tryCall("fetchLiveEventData.GetLiveEventData", GetLiveEventData, eventId)
         if okData and type(apiData) == "table" then
@@ -280,6 +320,12 @@ end
 
 local function fetchLiveEventTasks(eventId)
     if type(GetLiveEventTasks) ~= "function" then
+        return nil
+    end
+    -- Engine C++ still writes uilog "Error in function call 'GetLiveEventTasks'" for
+    -- unknown ids even when Lua wraps the call in pcall — never call unless listed.
+    local listEntry = findLiveEventListEntry(eventId)
+    if listEntry == nil then
         return nil
     end
     local okTasks, tasks = tryCall("fetchLiveEventTasks.GetLiveEventTasks", GetLiveEventTasks, eventId)
@@ -503,8 +549,9 @@ end
 
 --- Current Area → local zone influence (stock). Live event → manual selection only.
 function Track.ResolveEffectiveTrack()
-    local mode = Track.GetMode()
     local settings = ensureSettings()
+    clearStaleManualLiveEvent(settings)
+    local mode = settings.mode
 
     if mode == Track.MODE_LIVE_EVENT then
         local eventId = tonumber(settings.eventId)
@@ -512,12 +559,23 @@ function Track.ResolveEffectiveTrack()
             return { kind = "none", reason = "manual_missing" }
         end
         local listEntry = findLiveEventListEntry(eventId)
-        local eventData = fetchLiveEventData(eventId, listEntry)
+        if listEntry ~= nil then
+            local eventData = fetchLiveEventData(eventId, listEntry)
+            return {
+                kind = "live",
+                eventId = eventId,
+                title = eventData.title,
+                reason = "manual",
+            }
+        end
+        -- Saved pick not in the tome list yet (or list empty): show zone influence
+        -- without calling GetLiveEventTasks. Stale ids are cleared once the list has
+        -- other events and ours is absent.
         return {
-            kind = "live",
+            kind = "zone",
+            influenceId = getLocalZoneInfluenceId(),
             eventId = eventId,
-            title = eventData.title,
-            reason = "manual",
+            reason = "manual_unlisted",
         }
     end
 

@@ -17,6 +17,7 @@ local BUFF_CHECKBOX_KEYS = {
 local BADGE_CHECKBOX_KEYS = {
     BadgesCareer    = "career",
     BadgesRank      = "rank",
+    BadgesPet       = "pet",
     BadgesRenown    = "renown",
     BadgesInfluence = "influence",
 }
@@ -32,6 +33,8 @@ function CustomUISettingsWindowTabPlayer.Initialize()
     ButtonSetCheckButtonFlag( badges.."CareerButton", true )
     LabelSetText( badges.."RankLabel", L"Rank Badge" )
     ButtonSetCheckButtonFlag( badges.."RankButton", true )
+    LabelSetText( badges.."PetLabel", L"Pet Badge" )
+    ButtonSetCheckButtonFlag( badges.."PetButton", true )
     LabelSetText( badges.."RenownLabel", L"Renown Badge" )
     ButtonSetCheckButtonFlag( badges.."RenownButton", true )
     LabelSetText( badges.."InfluenceLabel", L"Influence Badge" )
@@ -65,6 +68,7 @@ function CustomUISettingsWindowTabPlayer.UpdateSettings()
     local badges = CustomUISettingsWindowTabPlayer.contentsName.."Badges"
     ButtonSetPressedFlag( badges.."CareerButton",    badgeCfg.career ~= false )
     ButtonSetPressedFlag( badges.."RankButton",      badgeCfg.rank ~= false )
+    ButtonSetPressedFlag( badges.."PetButton",       badgeCfg.pet ~= false )
     ButtonSetPressedFlag( badges.."RenownButton",    badgeCfg.renown ~= false )
     ButtonSetPressedFlag( badges.."InfluenceButton", badgeCfg.influence ~= false )
 

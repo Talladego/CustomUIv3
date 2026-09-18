@@ -1,5 +1,5 @@
 ----------------------------------------------------------------
--- CustomUI.QoL — coordinator for RedAlert, AutoSurrender, RezzAccept
+-- CustomUI.QoL — coordinator for RedAlert, AutoSurrender, RezzAccept, ...
 ----------------------------------------------------------------
 if not CustomUI then CustomUI = {} end
 CustomUI.QoL = CustomUI.QoL or {}
@@ -27,6 +27,14 @@ local DEFAULT_SETTINGS = {
 		-- Opt-in: auto-accept rez dialogs are unsafe as a default.
 		enabled = false,
 	},
+	autoSellTrash = {
+		-- Opt-in: sells grey junk when a vendor store opens.
+		enabled = false,
+	},
+	battleFatigueHeal = {
+		-- Opt-in: clears healer penalties when visiting a healer.
+		enabled = false,
+	},
 	altTracker = {
 		enabled = true,
 		includeBank = true,
@@ -43,6 +51,8 @@ local FEATURE_LABELS = {
 	redAlert = L"RedAlert",
 	autoSurrender = L"AutoSurrender",
 	rezzAccept = L"RezzAccept",
+	autoSellTrash = L"AutoSellTrash",
+	battleFatigueHeal = L"BattleFatigueHeal",
 	altTracker = L"AltTracker",
 }
 
@@ -50,6 +60,8 @@ local m_lastFeatureState = {
 	redAlert = nil,
 	autoSurrender = nil,
 	rezzAccept = nil,
+	autoSellTrash = nil,
+	battleFatigueHeal = nil,
 	altTracker = nil,
 }
 
@@ -74,6 +86,8 @@ local function seedFeatureState(settings)
 	m_lastFeatureState.redAlert = settings.redAlert.enabled == true
 	m_lastFeatureState.autoSurrender = settings.autoSurrender.enabled == true
 	m_lastFeatureState.rezzAccept = settings.rezzAccept.enabled == true
+	m_lastFeatureState.autoSellTrash = settings.autoSellTrash.enabled == true
+	m_lastFeatureState.battleFatigueHeal = settings.battleFatigueHeal.enabled == true
 	m_lastFeatureState.altTracker = settings.altTracker.enabled == true
 end
 
@@ -141,6 +155,8 @@ function QoL.SyncSubFeatures(announceChanges)
 	local RA = CustomUI.QoL.RedAlert
 	local AS = CustomUI.QoL.AutoSurrender
 	local RZ = CustomUI.QoL.RezzAccept
+	local AST = CustomUI.QoL.AutoSellTrash
+	local BF = CustomUI.QoL.BattleFatigueHeal
 	local ALT = CustomUI.QoL.AltTracker
 	local BCS = CustomUI.QoL.ButtonClickSound
 
@@ -169,6 +185,28 @@ function QoL.SyncSubFeatures(announceChanges)
 	end
 	if announceChanges == true then
 		announceFeatureStateIfChanged("rezzAccept", s.rezzAccept.enabled == true)
+	end
+
+	if AST then
+		if s.autoSellTrash.enabled then
+			AST.Enable()
+		else
+			AST.Disable()
+		end
+		if announceChanges == true then
+			announceFeatureStateIfChanged("autoSellTrash", s.autoSellTrash.enabled == true)
+		end
+	end
+
+	if BF then
+		if s.battleFatigueHeal.enabled then
+			BF.Enable()
+		else
+			BF.Disable()
+		end
+		if announceChanges == true then
+			announceFeatureStateIfChanged("battleFatigueHeal", s.battleFatigueHeal.enabled == true)
+		end
 	end
 
 	if ALT then
@@ -215,6 +253,8 @@ function QoL.InitializeSubModules()
 	if CustomUI.QoL.RedAlert then CustomUI.QoL.RedAlert.Initialize() end
 	if CustomUI.QoL.AutoSurrender then CustomUI.QoL.AutoSurrender.Initialize() end
 	if CustomUI.QoL.RezzAccept then CustomUI.QoL.RezzAccept.Initialize() end
+	if CustomUI.QoL.AutoSellTrash then CustomUI.QoL.AutoSellTrash.Initialize() end
+	if CustomUI.QoL.BattleFatigueHeal then CustomUI.QoL.BattleFatigueHeal.Initialize() end
 	if CustomUI.QoL.AltTracker then CustomUI.QoL.AltTracker.Initialize() end
 	if CustomUI.QoL.ButtonClickSound then CustomUI.QoL.ButtonClickSound.Initialize() end
 	seedFeatureState()
@@ -228,11 +268,15 @@ function QoL.DisableSubModules()
 	if CustomUI.QoL.RedAlert then CustomUI.QoL.RedAlert.Disable() end
 	if CustomUI.QoL.AutoSurrender then CustomUI.QoL.AutoSurrender.Disable() end
 	if CustomUI.QoL.RezzAccept then CustomUI.QoL.RezzAccept.Disable() end
+	if CustomUI.QoL.AutoSellTrash then CustomUI.QoL.AutoSellTrash.Disable() end
+	if CustomUI.QoL.BattleFatigueHeal then CustomUI.QoL.BattleFatigueHeal.Disable() end
 	if CustomUI.QoL.AltTracker then CustomUI.QoL.AltTracker.Disable() end
 	if CustomUI.QoL.ButtonClickSound then CustomUI.QoL.ButtonClickSound.Disable() end
 	m_lastFeatureState.redAlert = false
 	m_lastFeatureState.autoSurrender = false
 	m_lastFeatureState.rezzAccept = false
+	m_lastFeatureState.autoSellTrash = false
+	m_lastFeatureState.battleFatigueHeal = false
 	m_lastFeatureState.altTracker = false
 	SetDriverShowing(false)
 end
@@ -241,6 +285,8 @@ function QoL.ShutdownSubModules()
 	if CustomUI.QoL.RedAlert then CustomUI.QoL.RedAlert.Shutdown() end
 	if CustomUI.QoL.AutoSurrender then CustomUI.QoL.AutoSurrender.Shutdown() end
 	if CustomUI.QoL.RezzAccept then CustomUI.QoL.RezzAccept.Shutdown() end
+	if CustomUI.QoL.AutoSellTrash then CustomUI.QoL.AutoSellTrash.Shutdown() end
+	if CustomUI.QoL.BattleFatigueHeal then CustomUI.QoL.BattleFatigueHeal.Shutdown() end
 	if CustomUI.QoL.AltTracker then CustomUI.QoL.AltTracker.Shutdown() end
 	if CustomUI.QoL.ButtonClickSound then CustomUI.QoL.ButtonClickSound.Shutdown() end
 	SetDriverShowing(false)

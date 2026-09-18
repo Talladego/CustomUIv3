@@ -100,6 +100,8 @@ local function RegisterHandlers()
     WindowRegisterEventHandler(w, e.LOADING_END,                        "CustomUI.PlayerStatusWindow.UpdatePlayer")
     WindowRegisterEventHandler(w, e.ENTER_WORLD,                        "CustomUI.PlayerStatusWindow.UpdatePlayer")
     WindowRegisterEventHandler(w, e.PLAYER_ZONE_CHANGED,                "CustomUI.PlayerStatusWindow.UpdatePlayer")
+    WindowRegisterEventHandler(w, e.PLAYER_PET_UPDATED,                 "CustomUI.PlayerStatusWindow.UpdatePetHealthBadge")
+    WindowRegisterEventHandler(w, e.PLAYER_PET_HEALTH_UPDATED,          "CustomUI.PlayerStatusWindow.UpdatePetHealthBadge")
     m_handlersRegistered = true
 end
 
@@ -134,6 +136,8 @@ local function UnregisterHandlers()
     WindowUnregisterEventHandler(w, e.LOADING_END)
     WindowUnregisterEventHandler(w, e.ENTER_WORLD)
     WindowUnregisterEventHandler(w, e.PLAYER_ZONE_CHANGED)
+    WindowUnregisterEventHandler(w, e.PLAYER_PET_UPDATED)
+    WindowUnregisterEventHandler(w, e.PLAYER_PET_HEALTH_UPDATED)
     m_handlersRegistered = false
 end
 
@@ -221,6 +225,8 @@ local c_BUFF_STRIDE    = 5
 local c_CAREER_ICON_WINDOW = "CustomUIPlayerStatusWindowCareerIcon"
 local c_CAREER_ICON_BACKGROUND_WINDOW = "CustomUIPlayerStatusWindowCareerIconBackground"
 local c_PORTRAIT_FRAME_WINDOW = "CustomUIPlayerStatusWindowPortraitFrame"
+local c_PET_HEALTH_BACKGROUND_WINDOW = "CustomUIPlayerStatusWindowPetHealthBackground"
+local c_PET_HEALTH_TEXT_WINDOW = "CustomUIPlayerStatusWindowPetHealthText"
 local c_RENOWN_RANK_BACKGROUND_WINDOW = "CustomUIPlayerStatusWindowRenownRankBackground"
 local c_RENOWN_RANK_TEXT_WINDOW = "CustomUIPlayerStatusWindowRenownRankText"
 local c_INFLUENCE_BADGE_BACKGROUND_WINDOW = "CustomUIPlayerStatusWindowInfluenceBadgeBackground"
@@ -353,6 +359,8 @@ function CustomUI.PlayerStatusWindow.Initialize()
     WindowSetShowing( c_RENOWN_RANK_TEXT_WINDOW,                          false )
     WindowSetShowing( c_INFLUENCE_BADGE_BACKGROUND_WINDOW,                false )
     WindowSetShowing( c_INFLUENCE_BADGE_TEXT_WINDOW,                      false )
+    WindowSetShowing( c_PET_HEALTH_BACKGROUND_WINDOW,                     false )
+    WindowSetShowing( c_PET_HEALTH_TEXT_WINDOW,                           false )
     WindowSetShowing( "CustomUIPlayerStatusWindowKillingSpree",          false )
     WindowSetShowing( "CustomUIPlayerStatusWindowRelicBonus",            false )
     WindowSetShowing( "CustomUIPlayerStatusWindowStatusContainerAPText", false )
@@ -590,6 +598,7 @@ function CustomUI.PlayerStatusWindow.UpdatePlayer()
     CustomUI.PlayerStatusWindow.UpdateRenownRank()
     CustomUI.PlayerStatusWindow.UpdateInfluenceBadge()
     CustomUI.PlayerStatusWindow.UpdateCareerIcon()
+    CustomUI.PlayerStatusWindow.UpdatePetHealthBadge()
     CustomUI.PlayerStatusWindow.UpdateAdvancementNag()
     CustomUI.PlayerStatusWindow.UpdateCrown()
 end
@@ -625,6 +634,74 @@ function CustomUI.PlayerStatusWindow.UpdateCareerIcon()
     end
 
     SetCareerIconShowing(false)
+end
+
+local function SetPetHealthBadgeShowing(showing)
+    WindowSetShowing(c_PET_HEALTH_BACKGROUND_WINDOW, showing)
+    WindowSetShowing(c_PET_HEALTH_TEXT_WINDOW, showing)
+end
+
+local function LayoutPetHealthBadge()
+    local Badge = CustomUI.PortraitCareerBadge
+    if Badge == nil or not DoesWindowExist(c_PET_HEALTH_BACKGROUND_WINDOW) then
+        return
+    end
+    Badge.LayoutLeftCenter(
+        c_PET_HEALTH_BACKGROUND_WINDOW,
+        c_PORTRAIT_FRAME_WINDOW,
+        Badge.PORTRAIT_LEFT_X,
+        Badge.RING_W,
+        Badge.RING_H
+    )
+    if DoesWindowExist(c_PET_HEALTH_TEXT_WINDOW) then
+        WindowSetDimensions(c_PET_HEALTH_TEXT_WINDOW, Badge.RING_W, Badge.RING_H)
+        WindowClearAnchors(c_PET_HEALTH_TEXT_WINDOW)
+        WindowAddAnchor(
+            c_PET_HEALTH_TEXT_WINDOW,
+            "center",
+            c_PET_HEALTH_BACKGROUND_WINDOW,
+            "center",
+            -1,
+            0
+        )
+    end
+end
+
+function CustomUI.PlayerStatusWindow.UpdatePetHealthBadge()
+    if not CustomUI.PlayerStatusWindow.IsBadgeEnabled("pet") then
+        SetPetHealthBadgeShowing(false)
+        return
+    end
+
+    local pet = GameData and GameData.Player and GameData.Player.Pet
+    if pet == nil or pet.name == nil or pet.name == L"" then
+        SetPetHealthBadgeShowing(false)
+        return
+    end
+
+    local pct = math.floor(tonumber(pet.healthPercent) or 0)
+    if pct < 0 then pct = 0 end
+    if pct > 100 then pct = 100 end
+
+    local color = (DefaultColor and DefaultColor.HEALTH_TEXT_FULL)
+        or (DefaultColor and DefaultColor.GREEN)
+        or { r = 20, g = 220, b = 20 }
+
+    LabelSetText(c_PET_HEALTH_TEXT_WINDOW, L"" .. pct)
+    LabelSetTextColor(c_PET_HEALTH_TEXT_WINDOW, color.r, color.g, color.b)
+    LabelSetTextAlign(c_PET_HEALTH_TEXT_WINDOW, "center")
+
+    local rootScale = 1.0
+    if DoesWindowExist(c_PS_ROOT) and type(WindowGetScale) == "function" then
+        rootScale = WindowGetScale(c_PS_ROOT) or 1.0
+    end
+    local textScale = (pct >= 100) and 0.68 or 1.0
+    if type(WindowSetScale) == "function" and DoesWindowExist(c_PET_HEALTH_TEXT_WINDOW) then
+        WindowSetScale(c_PET_HEALTH_TEXT_WINDOW, rootScale * textScale)
+    end
+
+    LayoutPetHealthBadge()
+    SetPetHealthBadgeShowing(true)
 end
 
 local function SetRenownRankShowing(showing)
@@ -1106,6 +1183,7 @@ function CustomUI.PlayerStatusWindow.GetSettings()
         rank = true,
         renown = true,
         influence = true,
+        pet = true,
     }
     for key, defaultValue in pairs(badgeDefs) do
         if v.badges[key] == nil then
@@ -1135,6 +1213,7 @@ function CustomUI.PlayerStatusWindow.ApplyBadgeSettings()
     CustomUI.PlayerStatusWindow.UpdatePlayerLevel()
     CustomUI.PlayerStatusWindow.UpdateRenownRank()
     CustomUI.PlayerStatusWindow.UpdateInfluenceBadge()
+    CustomUI.PlayerStatusWindow.UpdatePetHealthBadge()
     CustomUI.PlayerStatusWindow.UpdateAdvancementNag()
     if type(CustomUI.StockProgressBars) == "table" and type(CustomUI.StockProgressBars.Apply) == "function" then
         local playerStatusOn = type(CustomUI.IsComponentEnabled) == "function"

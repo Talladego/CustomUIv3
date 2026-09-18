@@ -1,11 +1,8 @@
 ----------------------------------------------------------------
 -- CustomUI.PlayerPetWindow — Controller
--- Responsibilities: component adapter, pet frame lifecycle, PetWindow.UpdatePet hook,
---   and event-driven updates. There is no separate View/ Lua; presentation goes through
---   PlayerPetUnitFrame and the XML. CustomUI.mod loads this file before View/PlayerPetWindow.xml
---   and does not re-include the controller in that XML.
--- Moveable replacement for the stock PetHealthWindow; uses PlayerPetUnitFrame:Create() directly,
--- bypassing UnitFrames registration. Shows when a pet exists and the component is enabled.
+-- Responsibilities: suppress stock PetHealthWindow while PlayerStatus is enabled.
+-- Pet HP is shown on the PlayerStatus portrait Pet badge; CustomUIPlayerPetFrame is
+-- never shown. CustomUI.mod loads this file before View/PlayerPetWindow.xml.
 ----------------------------------------------------------------
 
 if not CustomUI.PlayerPetWindow then
@@ -17,7 +14,7 @@ end
 ----------------------------------------------------------------
 
 local c_WINDOW_NAME = "CustomUIPlayerPetWindow"  -- layout anchor (XML)
-local c_FRAME_NAME  = "CustomUIPlayerPetFrame"   -- unit frame (runtime)
+local c_FRAME_NAME  = "CustomUIPlayerPetFrame"   -- unit frame (runtime; kept hidden)
 
 ----------------------------------------------------------------
 -- Module state
@@ -35,6 +32,18 @@ local g_ourUpdatePetWrapper = nil
 local function HideStockPetHealthWindow()
     if DoesWindowExist("PetHealthWindow") then
         WindowSetShowing("PetHealthWindow", false)
+    end
+end
+
+local function HideCustomPetFrame()
+    if petFrame then
+        petFrame:Show(false)
+    end
+    if LayoutEditor and LayoutEditor.Hide then
+        LayoutEditor.Hide(c_WINDOW_NAME)
+    end
+    if DoesWindowExist(c_WINDOW_NAME) then
+        WindowSetShowing(c_WINDOW_NAME, false)
     end
 end
 
@@ -77,6 +86,7 @@ local function InstallPetProxyHook()
         end
         if m_enabled then
             HideStockPetHealthWindow()
+            HideCustomPetFrame()
         end
         return r1, r2, r3, r4, r5
     end
@@ -93,46 +103,26 @@ local function RestorePetProxyHook()
 end
 
 ----------------------------------------------------------------
--- Local helpers
-----------------------------------------------------------------
-
-local function HasPet()
-    return GameData
-       and GameData.Player
-       and GameData.Player.Pet
-       and GameData.Player.Pet.name ~= L""
-end
-
-local function UpdateFrame()
-    local p = GameData and GameData.Player and GameData.Player.Pet
-    if not petFrame or not p then return end
-    petFrame:SetPlayersPetName(p.name)
-    petFrame:UpdateLevel(p.level)
-    petFrame:UpdateHealth(p.healthPercent)
-end
-
-----------------------------------------------------------------
 -- Lifecycle
 ----------------------------------------------------------------
 
 function CustomUI.PlayerPetWindow.Initialize()
     LayoutEditor.RegisterWindow( c_WINDOW_NAME,
                                  L"CustomUI: Player Pet",
-                                 L"Moveable player pet health and level display.",
+                                 L"Stock pet health suppress anchor (portrait Pet badge replaces the frame).",
                                  false, false, true, nil )
-    LayoutEditor.UserHide( c_WINDOW_NAME )  -- hidden until component Enable()
+    LayoutEditor.UserHide( c_WINDOW_NAME )
 
     petFrame = PlayerPetUnitFrame:Create( c_FRAME_NAME )
     petFrame:SetParent( c_WINDOW_NAME )
     petFrame:SetScale( WindowGetScale( c_WINDOW_NAME ) )
     petFrame:SetAnchor( { Point = "topleft", RelativePoint = "topleft",
                           RelativeTo = c_WINDOW_NAME, XOffset = 0, YOffset = 0 } )
+    petFrame:Show( false )
 
     WindowRegisterEventHandler( c_WINDOW_NAME, SystemData.Events.PLAYER_PET_UPDATED,        "CustomUI.PlayerPetWindow.OnPetUpdated" )
     WindowRegisterEventHandler( c_WINDOW_NAME, SystemData.Events.PLAYER_PET_HEALTH_UPDATED, "CustomUI.PlayerPetWindow.OnPetHealthUpdated" )
 
-    -- Hook is installed in Enable() / restored in Disable() so stock call path is
-    -- not intercepted when this component is disabled.
     CustomUI.PlayerPetWindow.OnPetUpdated()
 end
 
@@ -150,42 +140,28 @@ function CustomUI.PlayerPetWindow.Shutdown()
 end
 
 ----------------------------------------------------------------
--- Event Handlers
+-- Event Handlers — stock hide only; never show CustomUIPlayerPetFrame
 ----------------------------------------------------------------
 
 function CustomUI.PlayerPetWindow.OnPetUpdated()
-    if not petFrame then return end
-
-    if HasPet() then
-        UpdateFrame()
-        petFrame:SetPetPortrait()
-        petFrame:Show( true )
-        if m_enabled then
-            LayoutEditor.Show( c_WINDOW_NAME )
-        end
-        -- Re-apply stock hide each time a pet appears because PetWindow:UpdatePet()
-        -- calls FadeInComponent(m_UnitFrame) which un-hides PetHealthWindow.
-        if m_enabled then
-            EnsurePetHealthWindowRegistered()
-            if type(CustomUI.HideStockForReplace) == "function" then
-                CustomUI.HideStockForReplace("PetHealthWindow", m_stockReplaceTracked)
-            elseif LayoutEditor.windowsList and LayoutEditor.windowsList["PetHealthWindow"] then
-                LayoutEditor.UserHide("PetHealthWindow")
-            end
-            HideStockPetHealthWindow()
-        end
-
-    else
-        petFrame:Show( false )
-        LayoutEditor.Hide( c_WINDOW_NAME )
+    HideCustomPetFrame()
+    if not m_enabled then
+        return
     end
+    -- Re-apply stock hide each time a pet appears because PetWindow:UpdatePet()
+    -- calls FadeInComponent(m_UnitFrame) which un-hides PetHealthWindow.
+    EnsurePetHealthWindowRegistered()
+    if type(CustomUI.HideStockForReplace) == "function" then
+        CustomUI.HideStockForReplace("PetHealthWindow", m_stockReplaceTracked)
+    elseif LayoutEditor.windowsList and LayoutEditor.windowsList["PetHealthWindow"] then
+        LayoutEditor.UserHide("PetHealthWindow")
+    end
+    HideStockPetHealthWindow()
 end
 
 function CustomUI.PlayerPetWindow.OnPetHealthUpdated()
-    local p = GameData and GameData.Player and GameData.Player.Pet
-    if petFrame and p and p.name ~= L"" then
-        petFrame:UpdateHealth(p.healthPercent)
-    end
+    -- Portrait Pet badge owns HP display; keep custom frame hidden.
+    HideCustomPetFrame()
 end
 
 ----------------------------------------------------------------
@@ -201,7 +177,8 @@ local PlayerPetWindowComponent = {
 function PlayerPetWindowComponent:Enable()
     m_enabled = true
     InstallPetProxyHook()
-    LayoutEditor.UserShow( self.WindowName )
+    LayoutEditor.UserHide( self.WindowName )
+    HideCustomPetFrame()
     EnsurePetHealthWindowRegistered()
     if type(CustomUI.HideStockForReplace) == "function" then
         CustomUI.HideStockForReplace("PetHealthWindow", m_stockReplaceTracked)
@@ -217,9 +194,7 @@ function PlayerPetWindowComponent:Disable()
     m_enabled = false
     RestorePetProxyHook()
     LayoutEditor.UserHide( self.WindowName )
-    if DoesWindowExist( self.WindowName ) then
-        WindowSetShowing( self.WindowName, false )
-    end
+    HideCustomPetFrame()
     -- Restore visibility only if we hid it; keep "Pet Health" registered (stock has no LE entry of its own).
     if type(CustomUI.RestoreStockAfterReplace) == "function" then
         CustomUI.RestoreStockAfterReplace("PetHealthWindow", m_stockReplaceTracked)
@@ -235,11 +210,7 @@ function PlayerPetWindowComponent:ResetToDefaults()
     elseif DoesWindowExist(self.WindowName) then
         WindowRestoreDefaultSettings(self.WindowName)
     end
-
-    if petFrame and DoesWindowExist(self.WindowName) then
-        petFrame:SetScale(WindowGetScale(self.WindowName))
-    end
-
+    HideCustomPetFrame()
     return true
 end
 

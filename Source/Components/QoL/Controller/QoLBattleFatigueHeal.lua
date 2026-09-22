@@ -112,6 +112,11 @@ function Heal.OnShowHealer(penaltyCount, costToRemove)
 		return
 	end
 	purchaseAll(count)
+	if type(CustomUI.PrintMessage) == "function" then
+		CustomUI.PrintMessage(
+			L"BattleFatigueHeal: cleared " .. towstring(count) .. L" penalty(ies)."
+		)
+	end
 	if type(GetComputerTime) == "function" then
 		m_lastHealTime = GetComputerTime()
 	else

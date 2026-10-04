@@ -163,13 +163,11 @@ end
 
 function CustomUISettingsWindowTabbed.Initialize()
 
-    if CustomUI and type(CustomUI.ShowSettings) ~= "function" then
-        CustomUI.ShowSettings = function()
-            WindowUtils.ToggleShowing("CustomUISettingsWindowTabbed")
-        end
+    local title = L"CustomUI Settings"
+    if CustomUI and CustomUI.Version then
+        title = title .. L" v" .. towstring(CustomUI.Version)
     end
-
-    LabelSetText( "CustomUISettingsWindowTabbedTitleBarText", L"CustomUI Settings" )
+    LabelSetText( "CustomUISettingsWindowTabbedTitleBarText", title )
     
     CustomUISettingsWindowTabbed.SetTabLabels()
     

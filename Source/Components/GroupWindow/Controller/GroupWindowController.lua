@@ -559,6 +559,7 @@ local function RefreshMemberStatus(index)
 end
 
 local function RefreshAllMemberStatuses()
+    CustomUI.Perf.Begin("GW.Status")
     RefreshGroupState()
 
     local didAnyChange = false
@@ -568,6 +569,7 @@ local function RefreshAllMemberStatuses()
         end
     end
 
+    CustomUI.Perf.End("GW.Status")
     return didAnyChange
 end
 

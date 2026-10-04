@@ -2,7 +2,7 @@
 
 <Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
     <Scripts>
-        <Script file="Source/CustomUISettingsWindowTabbed.lua" />
+        <Script file="Source/SettingsWindow/CustomUISettingsWindowTabbed.lua" />
     </Scripts>
     <Windows>
 

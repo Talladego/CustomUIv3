@@ -1393,6 +1393,7 @@ end
 function CustomUI.BuffTracker:UpdateBuffs( updatedBuffsTable, isFullList )
     if not updatedBuffsTable then return end
 
+    CustomUI.Perf.Begin("BT.UpdateBuffs")
     if isFullList then
         local seen = self.m_scratchSeen or {}
         self.m_scratchSeen = seen
@@ -1459,6 +1460,7 @@ function CustomUI.BuffTracker:UpdateBuffs( updatedBuffsTable, isFullList )
     end
 
     self:_RequestRebuild()
+    CustomUI.Perf.End("BT.UpdateBuffs")
 end
 
 ----------------------------------------------------------------
@@ -1472,6 +1474,7 @@ function CustomUI.BuffTracker:OnBuffsChanged()
         return
     end
 
+    CustomUI.Perf.Begin("BT.Rebuild")
     local whitelist         = self.m_whitelist
     local whitelistAbility  = self.m_whitelistAbility
     local blacklist         = self.m_blacklist
@@ -1599,4 +1602,5 @@ function CustomUI.BuffTracker:OnBuffsChanged()
             end
         end
     end
+    CustomUI.Perf.End("BT.Rebuild")
 end

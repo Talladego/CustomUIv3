@@ -2,23 +2,33 @@
 
 CustomUI is a modular Return of Reckoning addon that replaces and enhances stock UI components behind a single settings surface and slash-command workflow.
 
-**Version:** CustomUI `1.2.4` (see `CustomUI.Version` / `CustomUI.mod`). Companion settings addon: CustomUISettingsWindow `1.3.3`. One addon-level semver (not per-component); the active profile also stores `CustomUI.Settings.version` on init.
+**Version:** CustomUI `1.3.0` (see `CustomUI.Version` / `CustomUI.mod`). One addon-level semver (not per-component); the active profile also stores `CustomUI.Settings.version` on init. Settings UI is included in the same AddOn (`Source/SettingsWindow/`).
 
 ## Documentation
 
-**This README is the architecture and conventions reference.** Runtime backlog and validation checklists live in [TODO.md](TODO.md). Settings-window XML/layout pitfalls live in [CustomUISettingsWindow/README.md](CustomUISettingsWindow/README.md); settings-specific backlog in [CustomUISettingsWindow/TODO.md](CustomUISettingsWindow/TODO.md).
+**This README is the architecture and conventions reference.** Runtime backlog and validation checklists live in [TODO.md](TODO.md). Settings-window XML/layout pitfalls live in [Source/SettingsWindow/README.md](Source/SettingsWindow/README.md); settings-specific backlog in [Source/SettingsWindow/TODO.md](Source/SettingsWindow/TODO.md).
 
 | Document | Purpose |
 |----------|---------|
 | [README.md](README.md) | Architecture, components, conventions, runtime usage |
 | [TODO.md](TODO.md) | Open issues, in-game validation, optional follow-ups |
 | [guard_whitelist.csv](guard_whitelist.csv) | Guard / Save Da Runts ability IDs (ingested into `DefaultWhitelistAbility`) |
-| [CustomUISettingsWindow/README.md](CustomUISettingsWindow/README.md) | Settings UI — tab layout, XML pitfalls, diagnostics |
-| [CustomUISettingsWindow/TODO.md](CustomUISettingsWindow/TODO.md) | Settings addon backlog |
+| [Source/SettingsWindow/README.md](Source/SettingsWindow/README.md) | Settings UI — tab layout, XML pitfalls, diagnostics |
+| [Source/SettingsWindow/TODO.md](Source/SettingsWindow/TODO.md) | Settings UI backlog |
 
 ## Installation
 
-Place **CustomUI** and **CustomUISettingsWindow** under the game’s `Interface\AddOns\` as sibling folders, each with its own `.mod` and full script/XML tree (overwrite files to update; `/reloadui` in the client picks up changes).
+From this repo, deploy runtime files only (mirrors StockPiler3):
+
+```powershell
+.\tools\deploy.ps1
+```
+
+That copies `CustomUI.mod` + `Source\` to `Interface\AddOns\CustomUI\`, prunes docs / `.git` / editor clutter from the destination, and **removes** any legacy sibling `Interface\AddOns\CustomUISettingsWindow\` folder (settings are now inside CustomUI). Use `-WhatIf` to preview; override with `-AddOnsRoot "D:\Games\...\Interface\AddOns"`.
+
+Manual install: place **CustomUI** only under the game’s `Interface\AddOns\` (`CustomUI.mod` + `Source\`). Delete any old `CustomUISettingsWindow` AddOn folder. Reload UI (`/reloadui`).
+
+Optional: enable **LibPerf** for frametime hitch breadcrumbs (`/libperf CustomUI on 250` → `logs/libperf_CustomUI.log`).
 
 ## What this addon does
 
@@ -96,7 +106,7 @@ Controller helpers live in `GroupIconsController.lua` (lifecycle/event hub), `Gr
 - **Live `worldObjNum` rule**: an icon attaches only when the current refresh yields a non-zero entity id from party/warband/scenario row data. Cached ids refresh `LearnKnown` / sticky maps but are **not** used alone for attach (invalid ids tend to snap UI to the screen origin).
 - **Outsiders**: `PLAYER_TARGET_UPDATED` for hostile / friendly / mouseover classifications is queued and resolved next `OnUpdate` after stock TargetInfo updates. Non-roster players get realm-colored rings attached with **`AttachWindowToWorldObject`** (same as roster). The invisible probe runs on **`c_OUTSIDER_PROBE_INTERVAL`** (~5 Hz) with **`MoveWindowToWorldObject(probe, wid)` only** — to detect dead/unloaded entities and untrack; icon windows are **not** moved each frame. FIFO cap `48` evicts the oldest *non-priority* track: entity IDs for the current **hostile** and **friendly** player targets in `TargetInfo` are never chosen for eviction first.
 - **Self**: never shown.
-- **Settings**: `CustomUI.Settings.GroupIcons` (party / warband / scenario roster toggles, outsider hostile+friendly, archetype ring colors); UI lives in **CustomUISettingsWindow**.
+- **Settings**: `CustomUI.Settings.GroupIcons` (party / warband / scenario roster toggles, outsider hostile+friendly, archetype ring colors); UI tab in `Source/SettingsWindow/`.
 
 ### UnitFrames (party / warband / scenario rows)
 
@@ -105,17 +115,15 @@ The controller is now split across `Controller/UnitFramesController.lua`, `UnitF
 - **Dual-mode**: scenario roster path (`GameData.GetScenarioPlayerGroups`) vs open-world warband (`GetBattlegroupMemberData` / `PartyUtils`) vs idle — when idle, custom rows hide and stock **`BattlegroupHUD`** / **`FloatingScenarioGroup*`** windows are restored (`CustomUI.UnitFramesEvents` holds the window name lists).
 - **Tick root**: **`CustomUIUnitFramesRoot`** — `OnUpdate` plus engine handlers (distance scan, hover border sync); created in `EnsureRootWindowInstances` and shown only while the component is enabled so the client keeps ticking hidden roots.
 - **Stock parity hooks**: BattlegroupHUD background-opacity menu/slider updates propagate into CustomUI row tint.
-- **Settings**: `CustomUI.UnitFrames.WindowSettings` etc.; tab UI in **CustomUISettingsWindow**.
+- **Settings**: `CustomUI.UnitFrames.WindowSettings` etc.; tab UI in `Source/SettingsWindow/`.
 
 ## Settings window
 
-`/cui` and `/customui` call `WindowUtils.ToggleShowing("CustomUISettingsWindowTabbed")` (see
-`Source/CustomUI.lua`). The visible UI lives in the separate **CustomUISettingsWindow**
-add-on, which must be enabled alongside CustomUI. Tabs are **not** created via
-`CustomUI.SettingsWindow.RegisterTab` at runtime: that broker and its
-`Source/Settings/` shell were removed; the active UI is a fixed tab strip in
-`CustomUISettingsWindowTabbed.lua` / `.xml` plus one `CustomUISettingsWindowTab<Name>.*`
-pair per feature.
+`/cui` and `/customui` call `CustomUI.ShowSettings()` (`Source/CustomUI.lua`), which toggles
+`CustomUISettingsWindowTabbed`. The UI lives under **`Source/SettingsWindow/`** in the same
+AddOn (created from `CustomUI.mod` on initialize). Title bar shows **CustomUI Settings v{version}**.
+Tabs are a fixed strip in `CustomUISettingsWindowTabbed.lua` / `.xml` plus one
+`CustomUISettingsWindowTab<Name>.*` pair per feature — not a runtime `RegisterTab` broker.
 
 Each per-tab script binds controls to the matching component’s public APIs (for
 example `CustomUI.IsComponentEnabled`, `CustomUI.PlayerStatusWindow.GetSettings()`).
@@ -137,9 +145,8 @@ previews live; Cancel/Reset restores the baseline captured on open or last Apply
 Component settings persist in **`CustomUI.Settings`** (declared in `CustomUI.mod` → `SavedVariables.lua` under the active UI profile). After changing settings, keep CustomUI **enabled** through **`/reloadui` or logout** so the profile file is written; disabling the whole mod before reload can leave an empty or missing save file.
 
 Tab layout, `SWTab<Name>Contents*` naming, and the XML section-stacking rules are in
-[CustomUISettingsWindow/README.md](CustomUISettingsWindow/README.md). Open work is in
-[TODO.md](TODO.md) and [CustomUISettingsWindow/TODO.md](CustomUISettingsWindow/TODO.md).
-The old in-addon `RegisterTab` broker was removed; do not reintroduce it.
+[Source/SettingsWindow/README.md](Source/SettingsWindow/README.md). Open work is in
+[TODO.md](TODO.md) and [Source/SettingsWindow/TODO.md](Source/SettingsWindow/TODO.md).
 
 
 ## Shared subsystems
@@ -216,7 +223,7 @@ Each component uses:
 
 **Load order (important):** `CustomUI.mod` lists each component’s `Controller/*.lua` **before** that component’s `View/*.xml` so the `CustomUI.<Name>.*` API exists when the template is parsed. **Do not** add a second `<Script file="...Controller/...">` in the same XML; that re-executes the controller. The one exception to “controller not in XML” is **PlayerStatusWindow**: `PlayerStatusWindow.xml` loads **only** `View/PlayerStatusWindow.lua` (no controller script) because the mod already included `PlayerStatusWindowController.lua` earlier.
 
-**File headers:** `Source/CustomUI.lua` and the top of each `*Controller.lua` / `View/*.lua` state what belongs in that file (state vs presentation, engine hooks vs tooltips, etc.). **SCT** now keeps shared scaffold in `SCTOverrides.lua`, icon resolution in `SCTAbilityIconResolver.lua`, entry classes in `SCTEventEntry.lua`, tracker runtime in `SCTEventTracker.lua`, handler swapping in `SCTHandlers.lua`, and component ownership in `SCTController.lua` (no separate View lua); templates live under `View/` — the `/cui` settings grid is the **CustomUISettingsWindow** addon. Match those headers when you add new code.
+**File headers:** `Source/CustomUI.lua` and the top of each `*Controller.lua` / `View/*.lua` state what belongs in that file (state vs presentation, engine hooks vs tooltips, etc.). **SCT** now keeps shared scaffold in `SCTOverrides.lua`, icon resolution in `SCTAbilityIconResolver.lua`, entry classes in `SCTEventEntry.lua`, tracker runtime in `SCTEventTracker.lua`, handler swapping in `SCTHandlers.lua`, and component ownership in `SCTController.lua` (no separate View lua); templates live under `View/` — the `/cui` settings grid lives in `Source/SettingsWindow/`. Match those headers when you add new code.
 
 ### Window visibility contract
 
@@ -232,11 +239,9 @@ CustomUI/
 	CustomUI.mod
 	README.md
 	TODO.md
-	CustomUISettingsWindow/   ← separate UiMod; README + TODO + tab XML/Lua
-		CustomUISettingsWindow.mod
-		source/ …
 	Source/
 		CustomUI.lua
+		SettingsWindow/       ← /cui settings UI (tab XML/Lua + README)
 		Shared/
 			Archetypes.lua
 			Shared.xml
@@ -315,7 +320,7 @@ CustomUI/
 					CustomUI_SCTAbilityNameSuffix.xml
 					SCTAbilityIcon.xml
 					SCT.xml                       ← CustomUISCTWindow + OnUpdate
-					(settings tab: CustomUISettingsWindowTabSCT.* — not in this mod)
+					(settings tab: Source/SettingsWindow/CustomUISettingsWindowTabSCT.*)
 			KillTracker/
 				Controller/
 					KillTrackerParser.lua
@@ -327,7 +332,7 @@ CustomUI/
 					KillTrackerController.lua     ← RegisterComponent adapter
 				View/
 					KillTracker.xml               ← CustomUIKillTrackerWindow + row template
-					(settings tab: CustomUISettingsWindowTabKillTracker.* — not in this mod)
+					(settings tab: Source/SettingsWindow/CustomUISettingsWindowTabKillTracker.*)
 			QoL/
 				Controller/
 					QoLController.lua
@@ -367,7 +372,7 @@ All of the above are loaded from `CustomUI.mod` on the main path and are require
 
 ### Removed legacy settings / player chrome
 
-The old in-addon `CustomUI.SettingsWindow` / `MiniSettingsWindow` shells and per-component `*Tab.xml` + `CustomUI.<Name>.Tab` handlers were removed after the standalone **CustomUISettingsWindow** became the shipped `/cui` UI. Do not reintroduce `Source/Settings/`, `CustomUI.SettingsWindow.RegisterTab`, component `View/*Tab.xml`, or `CustomUI.<Name>.Tab`; add settings UI in `CustomUISettingsWindow` instead.
+The old in-addon `CustomUI.SettingsWindow` / `MiniSettingsWindow` shells and per-component `*Tab.xml` + `CustomUI.<Name>.Tab` handlers were removed; `/cui` uses **`Source/SettingsWindow/`**. Do not reintroduce `CustomUI.SettingsWindow.RegisterTab`, component `View/*Tab.xml`, or `CustomUI.<Name>.Tab`; add settings tabs under `Source/SettingsWindow/` instead.
 
 Also removed from CustomUI (do not reintroduce):
 
@@ -391,7 +396,7 @@ Also removed from CustomUI (do not reintroduce):
 - Prefer registering handlers in `Enable` and unregistering in `Disable` for clear lifecycle management.
 
 ### Window Creation Pattern
-- Keep `CustomUI.mod` as a **manifest** (`<File>` load order and `OnInitialize` entry only; no `<CreateWindow>` for component roots).
+- Keep `CustomUI.mod` as a **manifest** (`<File>` load order and `OnInitialize` entry). Component roots are **not** created in the `.mod`; the settings shell **`CustomUISettingsWindowTabbed`** is created there (`show="false"`).
 - **Root** top-level windows (names in each component’s `View/*.xml`) are instantiated once at the start of `CustomUI.Initialize` via `EnsureRootWindowInstances()` in `Source/CustomUI.lua` (`CreateWindow(name, false)`), so they exist even when a component is **disabled** in settings and its `Initialize()` never runs (layout editor, saved positions, `DoesWindowExist`).
 - Each component’s `Initialize()` still calls `RegisterWindow`, `LayoutEditor.UserHide`, and `CreateWindowFromTemplate` for child widgets (target templates, etc.) as documented elsewhere.
 
@@ -425,11 +430,11 @@ Large controllers were split into helper modules loaded **before** their coordin
 7. In `Enable`: `UserShow` the CustomUI window, `UserHide` the stock window.
 8. In `Disable`: `UserHide` the CustomUI window, `UserShow` (and if needed `UnregisterWindow`) the stock window.
 9. Keep manifest load order explicit in `CustomUI.mod`: core shared files first, then each component's controller then xml.
-10. Settings UI: use the separate **CustomUISettingsWindow** addon for tabs and handlers; components expose data via `GetSettings()`-style APIs (see SCT: `GetSettingsRowDescriptors`, `SliderPosToScale`). Do not add in-addon `CustomUI.SettingsWindow.RegisterTab` or per-component `*Tab.xml`.
+10. Settings UI: add tabs under **`Source/SettingsWindow/`**; components expose data via `GetSettings()`-style APIs (see SCT: `GetSettingsRowDescriptors`, `SliderPosToScale`). Do not add `CustomUI.SettingsWindow.RegisterTab` or per-component `View/*Tab.xml`.
 
 ## Runtime usage
 
-- Open settings: `/customui` or `/cui` (window **CustomUISettingsWindowTabbed** from the **CustomUISettingsWindow** addon). The old in-addon settings windows were removed.
+- Open settings: `/customui` or `/cui` (window **CustomUISettingsWindowTabbed** in `Source/SettingsWindow/`).
 - `/customui mini` — prints a deprecation notice; use `/cui` instead.
 - Status / load banner: `/customui status` (same as post-init chat: version, `enabled/registered` count, then each registered component with enable/disable icons). Init also calls this once.
 - List components: `/customui components`
@@ -437,6 +442,8 @@ Large controllers were split into helper modules loaded **before** their coordin
 - Disable component: `/customui disable <name>`
 - Toggle component: `/customui toggle <name>`
 - UnitFrames scenario-mode debug log: `/customui ufdebug <on|off|status>`
+- Call-count debug (BuffTracker / GroupWindow): `/customui perf [on|off|reset]` then `/customui perf` to print
+- Hitch log (optional **LibPerf**): `/libperf CustomUI on 250` → `logs/libperf_CustomUI.log`; `/libperf CustomUI summary`
 - Help: `/customui help`
 
 ## Notes
@@ -445,7 +452,7 @@ Large controllers were split into helper modules loaded **before** their coordin
 - Window names in XML (e.g. `CustomUIGroupWindow`) are widget IDs and remain stable even if Lua namespaces are refactored.
 - `buffData.abilityId` is the stable server ability ID and is the correct key for buff grouping. `buffData.effectIndex` is a dynamic per-cast slot that changes every cast and must not be used as a grouping key.
 - **Anchor convention (easy to get backwards):** `Point` is the anchor point on the *target* window (the one you are anchoring *to*). `RelativePoint` is the point on the *element being anchored*. So `WindowAddAnchor(name, "bottom", target, "top", x, y)` means: attach the `bottom` of `target` to the `top` of `name`. In XML, `point` and `relativePoint` follow the same convention.
-- **Lua `local function` order:** a local helper is only visible to code *below* it in the file. Callers that appear earlier must use a forward declaration (`local Foo` then `function Foo() end`) or the helper must be moved above. Otherwise calls resolve to a missing global (`nil` function) at runtime. See `CustomUISettingsWindow/README.md` §6.
+- **Lua `local function` order:** a local helper is only visible to code *below* it in the file. Callers that appear earlier must use a forward declaration (`local Foo` then `function Foo() end`) or the helper must be moved above. Otherwise calls resolve to a missing global (`nil` function) at runtime. See `Source/SettingsWindow/README.md` section 6.
 
 ## SCT component details
 

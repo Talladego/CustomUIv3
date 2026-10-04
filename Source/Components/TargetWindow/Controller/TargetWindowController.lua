@@ -350,6 +350,7 @@ local function RefreshBothTargetsFromClient(targetClassification, targetId, targ
         return
     end
 
+    CustomUI.Perf.Begin("TW.Target")
     local oldNumberOfTargets = CountShowingTargetFrames()
 
     local oldHostileEntityId = TargetInfo:UnitEntityId(c_HOSTILE_UNIT_ID)
@@ -416,6 +417,7 @@ local function RefreshBothTargetsFromClient(targetClassification, targetId, targ
             Sound.Play(Sound.TARGET_SELECT)
         end
     end
+    CustomUI.Perf.End("TW.Target")
 end
 
 -- Re-bind unit frames to whatever TargetInfo already holds (e.g. after Disable left stock UI

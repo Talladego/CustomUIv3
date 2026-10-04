@@ -518,6 +518,15 @@ function CustomUI.SCT.OnUpdate(timePassed)
        or (DoesWindowExist("LoadingWindow") and WindowGetShowing("LoadingWindow"))
     then return end
 
+    local trackers = CustomUI.SCT.EventTrackers or {}
+    local hasTrackers = next(trackers) ~= nil
+    if not hasTrackers then
+        CustomUI.SCT.FlushThrottle(timePassed)
+        return
+    end
+
+    CustomUI.Perf.Begin("SCT.OnUpdate")
+
     -- One Settings() read for all crit lines this tick (EventEntry:Update runs per visible float).
     CustomUI.SCT._frameCritShake, CustomUI.SCT._frameCritPulse, CustomUI.SCT._frameCritFlash =
         CustomUI.SCT.GetCritFlags()
@@ -525,7 +534,7 @@ function CustomUI.SCT.OnUpdate(timePassed)
     CustomUI.SCT.FlushThrottle(timePassed)
 
     local inCombat = GameData and GameData.Player and GameData.Player.inCombat
-    for id, tracker in pairs(CustomUI.SCT.EventTrackers or {}) do
+    for id, tracker in pairs(trackers) do
         tracker:Update(timePassed)
         local throttleDepth = tracker._sctThrottleQueue and #tracker._sctThrottleQueue or 0
         local queuesEmpty = tracker.m_DisplayedEvents:Front() == nil
@@ -539,6 +548,8 @@ function CustomUI.SCT.OnUpdate(timePassed)
             end
         end
     end
+
+    CustomUI.Perf.End("SCT.OnUpdate")
 end
 
 function CustomUI.SCT.OnShutdown()

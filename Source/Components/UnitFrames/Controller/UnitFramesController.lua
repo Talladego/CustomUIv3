@@ -63,7 +63,7 @@ local c_UF_LEADER_CROWN_TEX_H = 16
 -- Match GroupIconsController c_CROWN_ANCHOR_OPTICAL_OFFSET_X (same atlas crown glyph bias).
 local c_UF_LEADER_CROWN_ANCHOR_OPTICAL_OFFSET_X = -2
 local c_UF_LEADER_CROWN_ANCHOR_TOUCH_OFFSET_Y = 5 -- sync GroupIconsController c_CROWN_ANCHOR_TOUCH_OFFSET_Y
-local c_SCENARIO_DISTANCE_POLL_INTERVAL = 1.0
+local c_SCENARIO_DISTANCE_POLL_INTERVAL = 0.5
 local c_DISTANT_DISTANCE = 250
 local c_OPACITY_MIN = 0
 local c_OPACITY_MAX = 1
@@ -1267,17 +1267,16 @@ local function ResolveScenarioPlayer(player)
 end
 
 local function ScanScenarioDistancesFromMapPoints()
+    CustomUI.Perf.Begin("UF.ScenDist")
     local groups = BuildScenarioGroupMap()
-    local distanceByKey = {}
+    local distanceByKey = m_scenarioDistanceByKey
     local updated = 0
-    if type(UnitFramesScenario.ScanDistancesFromMapPoints) == "function" then
-        distanceByKey, updated = UnitFramesScenario.ScanDistancesFromMapPoints(groups, {
+    if type(UnitFramesScenario.TickDistanceScan) == "function" then
+        distanceByKey, updated = UnitFramesScenario.TickDistanceScan(groups, {
             fixMapNameKeyFn = FixScenarioMapNameKey,
             mapWindowName = "EA_Window_OverheadMapMapDisplay",
             distantDistance = c_DISTANT_DISTANCE,
         })
-    else
-        distanceByKey = {}
     end
 
     local previous = m_scenarioDistanceByKey
@@ -1291,6 +1290,7 @@ local function ScanScenarioDistancesFromMapPoints()
             ShowScenarioDualModeWindows()
         end
     end
+    CustomUI.Perf.End("UF.ScenDist")
 end
 
 --- showBars is legacy (reserved). dimFrames: frame-wide DimOverlay only (offline / distant) — no per-widget alpha fade.
@@ -2028,6 +2028,7 @@ local function ApplyModeVisibility()
         return
     end
 
+    CustomUI.Perf.Begin("UF.ApplyMode")
     EnsureUnitFramesGroupsSettings()
     local currentMode = GetActiveUnitFramesDisplayMode()
     local previousPartyOnlyIndex = m_warbandPartyOnlyDataPartyIndex
@@ -2070,6 +2071,7 @@ local function ApplyModeVisibility()
 
     RefreshTargetBorders()
     RefreshMouseOverBorders()
+    CustomUI.Perf.End("UF.ApplyMode")
 end
 
 local function HideCustomShowStock()
@@ -2168,6 +2170,7 @@ function UnitFrames.OnScenarioPlayerHitsUpdated(groupIndex, groupSlotNum, hits)
     if gi == nil or mi == nil then
         return
     end
+    CustomUI.Perf.Begin("UF.Hits")
     m_scenarioHitHp[gi] = m_scenarioHitHp[gi] or {}
     m_scenarioHitHp[gi][mi] = tonumber(hits)
     if m_enabled and m_windowsInitialized and GetActiveUnitFramesDisplayMode() == "scenario" then
@@ -2175,6 +2178,7 @@ function UnitFrames.OnScenarioPlayerHitsUpdated(groupIndex, groupSlotNum, hits)
     else
         RefreshTargetBorders()
     end
+    CustomUI.Perf.End("UF.Hits")
 end
 
 function UnitFrames.OnScenarioLifecycleRefresh()
@@ -2199,11 +2203,14 @@ function UnitFrames.OnGroupStatusUpdated(memberIndex)
 
     local mode = GetActiveUnitFramesDisplayMode()
     if mode == "party" then
+        CustomUI.Perf.Begin("UF.Status")
         -- Rebuild party rows only (no HideAllCustomWindows / stock churn).
         ShowPartyDualModeWindows()
     elseif mode == "warband" then
+        CustomUI.Perf.Begin("UF.Status")
         ShowWarbandDualModeWindows()
     elseif mode == "warband_party1" then
+        CustomUI.Perf.Begin("UF.Status")
         ShowWarbandParty1DualModeWindows()
     else
         -- Scenario HP uses SCENARIO_PLAYER_HITS_UPDATED; ignore party status spam here.
@@ -2211,6 +2218,7 @@ function UnitFrames.OnGroupStatusUpdated(memberIndex)
     end
     RefreshTargetBorders()
     RefreshMouseOverBorders()
+    CustomUI.Perf.End("UF.Status")
 end
 
 --- Scenario roster or assigned-slot changes: drop cached hits so GetScenarioPlayerGroups().health wins until fresh hits arrive.
@@ -2226,15 +2234,25 @@ function UnitFrames.OnWarbandMemberUpdated()
     end
 
     local mode = GetActiveUnitFramesDisplayMode()
+    local didWork = false
     if mode == "warband" then
+        CustomUI.Perf.Begin("UF.Status")
         ShowWarbandDualModeWindows()
+        didWork = true
     elseif mode == "warband_party1" then
+        CustomUI.Perf.Begin("UF.Status")
         ShowWarbandParty1DualModeWindows()
+        didWork = true
     elseif mode == "party" then
+        CustomUI.Perf.Begin("UF.Status")
         ShowPartyDualModeWindows()
+        didWork = true
     end
     RefreshTargetBorders()
     RefreshMouseOverBorders()
+    if didWork then
+        CustomUI.Perf.End("UF.Status")
+    end
 end
 
 function UnitFrames.OnGroupsSettingsChanged()
@@ -2524,14 +2542,25 @@ function UnitFrames.Update(elapsedTime)
     end
 
     if GetActiveUnitFramesDisplayMode() == "scenario" then
-        m_scenarioDistancePollElapsed = m_scenarioDistancePollElapsed + (elapsedTime or 0)
-        if m_scenarioDistancePollElapsed >= c_SCENARIO_DISTANCE_POLL_INTERVAL then
+        local sweepActive = type(UnitFramesScenario.IsDistanceSweepActive) == "function"
+            and UnitFramesScenario.IsDistanceSweepActive() == true
+        if sweepActive then
+            -- Drain Pass B budget every frame until pip indexes are warm.
             m_scenarioDistancePollElapsed = 0
             ScanScenarioDistancesFromMapPoints()
+        else
+            m_scenarioDistancePollElapsed = m_scenarioDistancePollElapsed + (elapsedTime or 0)
+            if m_scenarioDistancePollElapsed >= c_SCENARIO_DISTANCE_POLL_INTERVAL then
+                m_scenarioDistancePollElapsed = 0
+                ScanScenarioDistancesFromMapPoints()
+            end
         end
     else
         m_scenarioDistancePollElapsed = 0
         m_scenarioDistanceByKey = {}
+        if type(UnitFramesScenario.ResetDistanceScan) == "function" then
+            UnitFramesScenario.ResetDistanceScan()
+        end
     end
 
     -- Hover hits children (bars/icons); member-root OnMouseOver rarely fires. Use global hover + parent walk.

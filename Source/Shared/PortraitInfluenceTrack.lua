@@ -138,19 +138,84 @@ local function ensureSettings()
     if type(settings.eventRewardCache) ~= "table" then
         settings.eventRewardCache = {}
     end
-    -- One-time wipe: older builds stuck false "purchased=true" via monotonic merge and never
-    -- cleared them when the NPC reported unclaimed. Claims rebuild from NPC open / Select.
-    if settings.eventRewardCacheResetV3 ~= true then
+    -- One-time wipe: V3 cleared stuck purchased=true from older monotonic merges; V4 clears
+    -- leftovers from omitted-tier carry-forward so NPC snapshots become authoritative again.
+    if settings.eventRewardCacheResetV4 ~= true then
         settings.eventRewardCache = {}
+        settings.eventRewardCacheResetV4 = true
         settings.eventRewardCacheResetV3 = true
     end
     if settings.showEndedEvents == nil then
         settings.showEndedEvents = true
     end
-    -- Drop unused legacy keys if present.
+    -- Drop unused legacy key if present (title is kept for unlisted manual picks).
     settings.liveEventKey = nil
-    settings.eventTitle = nil
     return settings
+end
+
+local function narrowName(value)
+    if type(CustomUI.NarrowWString) == "function" then
+        return CustomUI.NarrowWString(value)
+    end
+    if type(value) == "string" then
+        return value
+    end
+    return tostring(value or "")
+end
+
+local function stripCharName(name)
+    if type(name) ~= "wstring" then
+        return narrowName(name)
+    end
+    if type(wstring) == "table" and type(wstring.match) == "function" then
+        local stripped = wstring.match(name, L"([^\^]+).*")
+        if stripped ~= nil then
+            return narrowName(stripped)
+        end
+    end
+    return narrowName(name)
+end
+
+--- Shared-profile claim cache is per character (account::name@server).
+local function getCharacterCacheKey()
+    local Data = CustomUI.QoL and CustomUI.QoL.AltTracker and CustomUI.QoL.AltTracker.Data
+    if type(Data) == "table" and type(Data.MakeCharKey) == "function" then
+        local key = Data.MakeCharKey()
+        if type(key) == "string" and key ~= "" then
+            return key
+        end
+    end
+
+    local server = "unknown"
+    if GameData and GameData.Account and GameData.Account.ServerName then
+        server = narrowName(GameData.Account.ServerName)
+    end
+    local name = stripCharName(GameData and GameData.Player and GameData.Player.name or "")
+    local account = ""
+    if GameData and GameData.Account and GameData.Account.AccountName then
+        account = narrowName(GameData.Account.AccountName)
+    end
+    if account ~= "" then
+        return account .. "::" .. name .. "@" .. server
+    end
+    local slot = (GameData and GameData.Account and GameData.Account.SelectedCharacterSlot) or 0
+    return name .. "@" .. server .. "#" .. tostring(slot)
+end
+
+--- eventRewardCache[characterKey][eventId] = { tiers, updatedAt }
+local function getCharEventRewardCache(settings)
+    settings = settings or ensureSettings()
+    if type(settings.eventRewardCache) ~= "table" then
+        settings.eventRewardCache = {}
+    end
+    local charKey = getCharacterCacheKey()
+    local bucket = settings.eventRewardCache[charKey]
+    -- Old saves stored eventId at the top level ({ tiers = ... }). Ignore those; do not migrate.
+    if type(bucket) ~= "table" or type(bucket.tiers) == "table" then
+        bucket = {}
+        settings.eventRewardCache[charKey] = bucket
+    end
+    return bucket
 end
 
 local function isTruthyFlag(value)
@@ -259,35 +324,18 @@ local function findLiveEventListEntry(eventId)
     return nil, true
 end
 
---- Manual live-event picks can outlive the event. Once the tome list is available
---- with at least one entry and the id is absent, fall back to Current Area so badge
---- refresh never hammers the engine (GetLiveEventTasks logs "Event N not found"
---- even under pcall). An empty list is treated as "not ready" so a valid pick is
---- not wiped during early load before events populate.
-local function clearStaleManualLiveEvent(settings)
+--- Keep manual live-event picks across list gaps / ended events (EAOT ValidateSelection parity).
+--- Only revert when eventId is missing — never wipe a valid id because GetLiveEventList lacks it.
+local function normalizeManualLiveEventSelection(settings)
     if type(settings) ~= "table" or settings.mode ~= Track.MODE_LIVE_EVENT then
         return false
     end
-    local eventId = tonumber(settings.eventId)
-    if eventId == nil then
-        settings.mode = Track.MODE_CURRENT_AREA
-        settings.eventId = nil
-        return true
-    end
-    if type(GetLiveEventList) ~= "function" then
+    if tonumber(settings.eventId) ~= nil then
         return false
-    end
-    local okList, liveEventList = tryCall("clearStaleManualLiveEvent.GetLiveEventList", GetLiveEventList)
-    if not okList or type(liveEventList) ~= "table" or liveEventList[1] == nil then
-        return false
-    end
-    for _, event in ipairs(liveEventList) do
-        if type(event) == "table" and tonumber(event.id) == eventId then
-            return false
-        end
     end
     settings.mode = Track.MODE_CURRENT_AREA
     settings.eventId = nil
+    settings.eventTitle = nil
     return true
 end
 
@@ -379,10 +427,8 @@ local function getRewardThresholds(tasks)
 end
 
 local function getCachedEventTier(settings, eventId, level)
-    if type(settings.eventRewardCache) ~= "table" then
-        return nil
-    end
-    local entry = settings.eventRewardCache[tostring(eventId)]
+    local bucket = getCharEventRewardCache(settings)
+    local entry = bucket[tostring(eventId)]
     if type(entry) ~= "table" or type(entry.tiers) ~= "table" then
         return nil
     end
@@ -391,8 +437,8 @@ end
 
 -- Live-event claim state:
 --   • Threshold met + no purchased record → unclaimed (do not require an NPC visit).
---   • purchased comes from INTERACT_SHOW_EVENT_REWARDS and/or SelectEventRewards.
---   • purchased is monotonic: once true, never cleared.
+--   • purchased comes from INTERACT_SHOW_EVENT_REWARDS (authoritative) and SelectEventRewards
+--     (optimistic true-only until the next NPC snapshot).
 local function getLiveEventRewardsReceived(eventId, tasks, currentValue, thresholds)
     local received = {}
     if type(thresholds) ~= "table" then
@@ -426,10 +472,11 @@ local function markEventRewardTiersPurchased(eventId, purchasedLevels)
 
     local settings = ensureSettings()
     local key = tostring(id)
-    local entry = settings.eventRewardCache[key]
+    local bucket = getCharEventRewardCache(settings)
+    local entry = bucket[key]
     if type(entry) ~= "table" then
         entry = { tiers = {} }
-        settings.eventRewardCache[key] = entry
+        bucket[key] = entry
     end
     if type(entry.tiers) ~= "table" then
         entry.tiers = {}
@@ -488,55 +535,125 @@ local function readPressedEventRewardLevels()
     return purchasedLevels
 end
 
-local function hookInteractionRewardSelection()
-    if Track._eventRewardSelectHooked == true then
-        return
+local function markInfluenceDataDirty()
+    if type(GameData) == "table" and type(GameData.Player) == "table" then
+        GameData.Player.influenceDataDirty = true
     end
-    if type(EA_Window_InteractionEventRewards) ~= "table"
-        or type(EA_Window_InteractionEventRewards.SelectEventRewards) ~= "function"
-    then
-        return
+end
+
+-- Drop eventRewardCache entries for events no longer on GetLiveEventList().
+-- No-ops when the list is missing/empty (zone/load churn).
+local function pruneEventRewardCache()
+    if type(GetLiveEventList) ~= "function" then
+        return 0
     end
-    if EA_Window_InteractionEventRewards.SelectEventRewards == Track._selectEventRewardsWrapper then
-        return
+    local okList, liveEventList = tryCall("pruneEventRewardCache.GetLiveEventList", GetLiveEventList)
+    if not okList or type(liveEventList) ~= "table" or liveEventList[1] == nil then
+        return 0
     end
 
-    Track._originalSelectEventRewards = EA_Window_InteractionEventRewards.SelectEventRewards
-    Track._selectEventRewardsWrapper = function()
-        local selectButton = "EA_Window_InteractionEventRewardsSelect"
-        if type(ButtonGetDisabledFlag) == "function"
-            and DoesWindowExist(selectButton)
-            and ButtonGetDisabledFlag(selectButton) == true
-        then
-            return Track._originalSelectEventRewards()
+    local settings = ensureSettings()
+    local bucket = getCharEventRewardCache(settings)
+
+    local visibleIds = {}
+    for _, event in ipairs(liveEventList) do
+        if type(event) == "table" and event.id ~= nil then
+            visibleIds[tostring(event.id)] = true
         end
+    end
 
-        local eventId = EA_Window_InteractionEventRewards.currentEvent
-        local purchasedLevels = readPressedEventRewardLevels()
-        Track._originalSelectEventRewards()
+    local removed = 0
+    for key in pairs(bucket) do
+        if visibleIds[tostring(key)] ~= true then
+            bucket[key] = nil
+            removed = removed + 1
+        end
+    end
+    return removed
+end
 
-        if markEventRewardTiersPurchased(eventId, purchasedLevels) then
+local function hookInteractionRewardSelection()
+    -- Live-event reward NPC Select (optimistic purchased=true until next NPC snapshot).
+    if Track._eventRewardSelectHooked ~= true
+        and type(EA_Window_InteractionEventRewards) == "table"
+        and type(EA_Window_InteractionEventRewards.SelectEventRewards) == "function"
+        and EA_Window_InteractionEventRewards.SelectEventRewards ~= Track._selectEventRewardsWrapper
+    then
+        Track._originalSelectEventRewards = EA_Window_InteractionEventRewards.SelectEventRewards
+        Track._selectEventRewardsWrapper = function()
+            local selectButton = "EA_Window_InteractionEventRewardsSelect"
+            if type(ButtonGetDisabledFlag) == "function"
+                and DoesWindowExist(selectButton)
+                and ButtonGetDisabledFlag(selectButton) == true
+            then
+                return Track._originalSelectEventRewards()
+            end
+
+            local eventId = EA_Window_InteractionEventRewards.currentEvent
+            local purchasedLevels = readPressedEventRewardLevels()
+            Track._originalSelectEventRewards()
+
+            if markEventRewardTiersPurchased(eventId, purchasedLevels) then
+                pruneEventRewardCache()
+                Track.InvokeRefreshHandler()
+            end
+        end
+        EA_Window_InteractionEventRewards.SelectEventRewards = Track._selectEventRewardsWrapper
+        Track._eventRewardSelectHooked = true
+    end
+
+    -- Zone influence reward NPC Select: force DataUtils.GetInfluenceData refetch.
+    if Track._influenceRewardSelectHooked ~= true
+        and type(EA_Window_InteractionInfluenceRewards) == "table"
+        and type(EA_Window_InteractionInfluenceRewards.SelectInfluenceRewards) == "function"
+        and EA_Window_InteractionInfluenceRewards.SelectInfluenceRewards
+            ~= Track._selectInfluenceRewardsWrapper
+    then
+        Track._originalSelectInfluenceRewards = EA_Window_InteractionInfluenceRewards.SelectInfluenceRewards
+        Track._selectInfluenceRewardsWrapper = function()
+            local selectButton = "EA_Window_InteractionInfluenceRewardsSelect"
+            if type(ButtonGetDisabledFlag) == "function"
+                and DoesWindowExist(selectButton)
+                and ButtonGetDisabledFlag(selectButton) == true
+            then
+                return Track._originalSelectInfluenceRewards()
+            end
+
+            Track._originalSelectInfluenceRewards()
+            markInfluenceDataDirty()
             Track.InvokeRefreshHandler()
         end
+        EA_Window_InteractionInfluenceRewards.SelectInfluenceRewards = Track._selectInfluenceRewardsWrapper
+        Track._influenceRewardSelectHooked = true
     end
-    EA_Window_InteractionEventRewards.SelectEventRewards = Track._selectEventRewardsWrapper
-    Track._eventRewardSelectHooked = true
 end
 
 local function unhookInteractionRewardSelection()
-    if Track._eventRewardSelectHooked ~= true then
-        return
+    if Track._eventRewardSelectHooked == true then
+        if type(EA_Window_InteractionEventRewards) == "table"
+            and type(Track._originalSelectEventRewards) == "function"
+            and EA_Window_InteractionEventRewards.SelectEventRewards == Track._selectEventRewardsWrapper
+        then
+            EA_Window_InteractionEventRewards.SelectEventRewards = Track._originalSelectEventRewards
+        end
+        Track._originalSelectEventRewards = nil
+        Track._selectEventRewardsWrapper = nil
+        Track._eventRewardSelectHooked = false
     end
-    -- Only restore if our wrapper is still installed (FollowLeader pattern; #24).
-    if type(EA_Window_InteractionEventRewards) == "table"
-        and type(Track._originalSelectEventRewards) == "function"
-        and EA_Window_InteractionEventRewards.SelectEventRewards == Track._selectEventRewardsWrapper
-    then
-        EA_Window_InteractionEventRewards.SelectEventRewards = Track._originalSelectEventRewards
+
+    if Track._influenceRewardSelectHooked == true then
+        if type(EA_Window_InteractionInfluenceRewards) == "table"
+            and type(Track._originalSelectInfluenceRewards) == "function"
+            and EA_Window_InteractionInfluenceRewards.SelectInfluenceRewards
+                == Track._selectInfluenceRewardsWrapper
+        then
+            EA_Window_InteractionInfluenceRewards.SelectInfluenceRewards =
+                Track._originalSelectInfluenceRewards
+        end
+        Track._originalSelectInfluenceRewards = nil
+        Track._selectInfluenceRewardsWrapper = nil
+        Track._influenceRewardSelectHooked = false
     end
-    Track._originalSelectEventRewards = nil
-    Track._selectEventRewardsWrapper = nil
-    Track._eventRewardSelectHooked = false
 end
 
 function Track.GetMode()
@@ -552,9 +669,11 @@ function Track.IsCurrentAreaMode()
 end
 
 --- Current Area → local zone influence (stock). Live event → manual selection only.
+--- Unlisted saved event ids keep mode/eventId and display zone influence (manual_unlisted)
+--- without calling GetLiveEventTasks (avoids engine "Event N not found" spam).
 function Track.ResolveEffectiveTrack()
     local settings = ensureSettings()
-    clearStaleManualLiveEvent(settings)
+    normalizeManualLiveEventSelection(settings)
     local mode = settings.mode
 
     if mode == Track.MODE_LIVE_EVENT then
@@ -565,6 +684,9 @@ function Track.ResolveEffectiveTrack()
         local listEntry = findLiveEventListEntry(eventId)
         if listEntry ~= nil then
             local eventData = fetchLiveEventData(eventId, listEntry)
+            if eventData.title ~= nil and eventData.title ~= L"" then
+                settings.eventTitle = eventData.title
+            end
             return {
                 kind = "live",
                 eventId = eventId,
@@ -572,13 +694,13 @@ function Track.ResolveEffectiveTrack()
                 reason = "manual",
             }
         end
-        -- Saved pick not in the tome list yet (or list empty): show zone influence
-        -- without calling GetLiveEventTasks. Stale ids are cleared once the list has
-        -- other events and ours is absent.
+        -- Saved pick not in the tome list (ended / transient gap): keep selection,
+        -- show zone influence without GetLiveEventTasks.
         return {
             kind = "zone",
             influenceId = getLocalZoneInfluenceId(),
             eventId = eventId,
+            title = settings.eventTitle,
             reason = "manual_unlisted",
         }
     end
@@ -590,10 +712,15 @@ function Track.ResolveEffectiveTrack()
     }
 end
 
+function Track.ValidateSelection()
+    return normalizeManualLiveEventSelection(ensureSettings())
+end
+
 function Track.SetModeCurrentArea()
     local settings = ensureSettings()
     settings.mode = Track.MODE_CURRENT_AREA
     settings.eventId = nil
+    settings.eventTitle = nil
 end
 
 --- @deprecated Use SetModeCurrentArea
@@ -605,6 +732,11 @@ function Track.SetModeLiveEvent(eventId, eventKey, eventTitle)
     local settings = ensureSettings()
     settings.mode = Track.MODE_LIVE_EVENT
     settings.eventId = tonumber(eventId)
+    if eventTitle ~= nil and eventTitle ~= L"" then
+        settings.eventTitle = eventTitle
+    elseif type(eventTitle) == "string" and eventTitle ~= "" then
+        settings.eventTitle = towstring(eventTitle)
+    end
 end
 
 function Track.GetShowEndedEvents()
@@ -1289,8 +1421,7 @@ function Track.HasEventRewardCache(eventId)
     if id == nil then
         return false
     end
-    local settings = ensureSettings()
-    local entry = settings.eventRewardCache[tostring(id)]
+    local entry = getCharEventRewardCache()[tostring(id)]
     return type(entry) == "table" and type(entry.tiers) == "table"
 end
 
@@ -1627,6 +1758,7 @@ local function cacheEventRewardsFromInteraction(rewardData)
         return
     end
     local settings = ensureSettings()
+    local bucket = getCharEventRewardCache(settings)
     local gameTime = type(GetGameTime) == "function" and GetGameTime() or 0
     for eventId, eventEntry in pairs(rewardData) do
         local id = tonumber(eventId)
@@ -1635,36 +1767,19 @@ local function cacheEventRewardsFromInteraction(rewardData)
         end
         if id ~= nil and type(eventEntry) == "table" and type(eventEntry.rewards) == "table" then
             local key = tostring(id)
-            local prevEntry = settings.eventRewardCache[key]
-            local prevTier = type(prevEntry) == "table" and prevEntry.tiers or nil
             local tiers = {}
-            local seenLevels = {}
+            -- NPC snapshot is authoritative for included tiers (can clear false claims).
+            -- Do not carry forward omitted-tier purchased=true — partial payloads used to
+            -- leave stale "collected" after the engine stopped listing a tier.
             for level, tier in ipairs(eventEntry.rewards) do
                 if type(tier) == "table" then
-                    seenLevels[level] = true
-                    -- NPC snapshot is authoritative for tiers it includes (can clear false claims).
-                    -- Select-hook claims only stick across opens when the NPC omits that tier.
                     tiers[level] = {
                         eligible = isTruthyFlag(tier.eligible),
                         purchased = isTruthyFlag(tier.purchased),
                     }
                 end
             end
-            -- Keep Select/prior claims only for tiers omitted from this payload.
-            if type(prevTier) == "table" then
-                for level, prev in pairs(prevTier) do
-                    if type(prev) == "table"
-                        and prev.purchased == true
-                        and seenLevels[level] ~= true
-                    then
-                        tiers[level] = {
-                            eligible = false,
-                            purchased = true,
-                        }
-                    end
-                end
-            end
-            settings.eventRewardCache[key] = { tiers = tiers, updatedAt = gameTime }
+            bucket[key] = { tiers = tiers, updatedAt = gameTime }
         end
     end
 end
@@ -1672,18 +1787,25 @@ end
 function Track.OnInteractShowEventRewards(interactTarget, rewardData)
     hookInteractionRewardSelection()
     cacheEventRewardsFromInteraction(rewardData)
+    pruneEventRewardCache()
+    Track.InvokeRefreshHandler()
+end
+
+function Track.OnInteractShowInfluenceRewards()
+    hookInteractionRewardSelection()
+    markInfluenceDataDirty()
     Track.InvokeRefreshHandler()
 end
 
 function Track.OnPlayerInfluenceRewardsUpdated()
-    if type(GameData) == "table" and type(GameData.Player) == "table" then
-        GameData.Player.influenceDataDirty = true
-    end
+    markInfluenceDataDirty()
     Track.InvokeRefreshHandler()
 end
 
 function Track.OnRefreshEvents()
     hookInteractionRewardSelection()
+    -- PLAYER_INFLUENCE_UPDATED and area changes: force rewardsRecieved refetch.
+    markInfluenceDataDirty()
     Track.InvokeRefreshHandler()
 end
 
@@ -1773,6 +1895,19 @@ function Track.RegisterEvents()
         end
     end
 
+    if events.INTERACT_SHOW_INFLUENCE_REWARDS ~= nil then
+        local handlerName = "CustomUI.PortraitInfluenceTrack.OnInteractShowInfluenceRewards"
+        local ok = tryCallLoud(
+            "RegisterEvents.INTERACT_SHOW_INFLUENCE_REWARDS",
+            RegisterEventHandler,
+            events.INTERACT_SHOW_INFLUENCE_REWARDS,
+            handlerName
+        )
+        if ok then
+            rememberRegisteredEvent(events.INTERACT_SHOW_INFLUENCE_REWARDS, handlerName)
+        end
+    end
+
     Track._eventsRegistered = true
 end
 
@@ -1783,6 +1918,7 @@ end
 
 function Track.Initialize()
     ensureSettings()
+    Track.ValidateSelection()
     Track.RegisterEvents()
     hookInteractionRewardSelection()
 end

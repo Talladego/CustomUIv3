@@ -346,6 +346,7 @@ function CustomUI.SCT.EventEntry:UpdateAbilityIconPosition()
 end
 
 function CustomUI.SCT.EventEntry:SetupText(hitTargetObjectNumber, hitAmount, textType, abilityId)
+    CustomUI.Perf.Begin("SCT.SetupText")
     StockEventEntry.SetupText(self, hitTargetObjectNumber, hitAmount, textType)
 
     local windowName = self:GetName()
@@ -495,6 +496,7 @@ function CustomUI.SCT.EventEntry:SetupText(hitTargetObjectNumber, hitAmount, tex
     end
 
     self.m_CritT = 0
+    CustomUI.Perf.End("SCT.SetupText")
 end
 
 function CustomUI.SCT.EventEntry:Update(elapsedTime, simulationSpeed)

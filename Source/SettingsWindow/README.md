@@ -1,12 +1,10 @@
-# CustomUISettingsWindow — Developer Notes
+# CustomUI Settings Window — Developer Notes
 
-Second UiMod (`CustomUISettingsWindow`) that depends on **`CustomUI`**. The game
-must load the parent addon first; the `.mod` file declares that dependency. The
-shell is created on initialize (`CreateWindow` for `CustomUISettingsWindowTabbed` with `show="false"`);
-players open it with **`/cui`** or **`/customui`** (registered by CustomUI).
+Settings UI lives in-addon under `Source/SettingsWindow/` (window `CustomUISettingsWindowTabbed`).
+Created on initialize from `CustomUI.mod`; open with `/cui` or `/customui`.
 
-**Backlog:** [TODO.md](TODO.md) — open issues, validation, new-tab checklist.  
-**Parent addon:** [../README.md](../README.md) (architecture), [../TODO.md](../TODO.md) (runtime validation and component work).
+**Backlog:** [TODO.md](TODO.md) — open issues, validation, new-tab checklist.
+**Parent addon:** [../../README.md](../../README.md) (architecture), [../../TODO.md](../../TODO.md).
 
 This README is **layout and diagnostics** plus footer-button semantics. Do not
 duplicate parent backlog here except settings-specific items.
@@ -23,7 +21,7 @@ Same contract as `SettingsWindowTabbed` in `ea_settingswindow`:
 Most feature tabs only flip checkboxes until Apply/Okay. SCT may write live for
 preview; Cancel/Reset still undo those via the baseline.
 
-**Tabs (load order in `CustomUISettingsWindow.mod`):** Player → Target →
+**Tabs (load order in `CustomUI.mod` Files list):** Player → Target →
 TargetHUD → Group → UnitFrames → GroupIcons → SCT → Kills, plus the shared
 `CustomUISettingsWindowTabbed` chrome.
 

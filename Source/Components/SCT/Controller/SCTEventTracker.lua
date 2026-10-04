@@ -136,6 +136,7 @@ function CustomUI.SCT.EventTracker:InitializeAnimationData(displayType)
 end
 
 function CustomUI.SCT.EventTracker:Update(elapsedTime)
+    CustomUI.Perf.Begin("SCT.Anim")
     local clearForPendingDispatch = true
 
     for index = self.m_DisplayedEvents:Begin(), self.m_DisplayedEvents:End() do
@@ -221,6 +222,7 @@ function CustomUI.SCT.EventTracker:Update(elapsedTime)
             self.m_MaximumScrollSpeed,
             self.m_CurrentScrollSpeed + self.m_ScrollAcceleration)
     end
+    CustomUI.Perf.End("SCT.Anim")
 end
 
 function CustomUI.SCT.EventTracker:Destroy()

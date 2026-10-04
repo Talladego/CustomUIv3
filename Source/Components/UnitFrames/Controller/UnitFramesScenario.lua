@@ -19,6 +19,24 @@ local c_MAX_GROUP_WINDOWS = 6
 local c_GROUP_MEMBERS = 6
 local c_MAX_MAP_POINTS = 511
 local c_DISTANCE_FIX_COEFFICIENT = 1 / 1.06
+local c_SCAN_BUDGET = 128
+local c_DEFAULT_MAP_WINDOW = "EA_Window_OverheadMapMapDisplay"
+
+-- Pip types whose names appear on the scenario/party roster (Enemy MapPointTypeFilter).
+local c_MAP_POINT_TYPE_FILTER = {
+    [SystemData.MapPips.GROUP_MEMBER] = true,
+    [SystemData.MapPips.WARBAND_MEMBER] = true,
+    [SystemData.MapPips.DESTRUCTION_ARMY] = true,
+    [SystemData.MapPips.ORDER_ARMY] = true,
+}
+
+-- Distance scan state (Enemy-style index cache + budgeted cursor).
+local m_mpCache = {}          -- [nameKey] = { index = number, rawName = wstring }
+local m_scanCursor = 1
+local m_sweepId = 0
+local m_lastComplete = {}     -- [nameKey] = { distance = number, isDistant = boolean }
+local m_pendingSearch = 0     -- roster keys needing Pass B this/last tick
+local m_selfKey = nil
 
 -- Scenario roster uses compact careerId values (Enemy.ScenarioCareerIdToLine),
 -- not the same numbering as Icons.careers / PartyUtils warband members.
@@ -49,6 +67,150 @@ local c_SCENARIO_CAREER_ID_TO_LINE = {
     [25] = GameData.CareerLine.CHOPPA,
     [21] = GameData.CareerLine.SLAYER or GameData.CareerLine.HAMMERER,
 }
+
+function UnitFramesScenario.ResetDistanceScan()
+    m_mpCache = {}
+    m_scanCursor = 1
+    m_sweepId = 0
+    m_lastComplete = {}
+    m_pendingSearch = 0
+    m_selfKey = nil
+end
+
+function UnitFramesScenario.IsDistanceSweepActive()
+    return m_pendingSearch > 0
+end
+
+local function FixKey(opts, name)
+    if type(opts.fixMapNameKeyFn) == "function" then
+        return opts.fixMapNameKeyFn(name)
+    end
+    return nil
+end
+
+local function WriteDistance(working, key, dist, distantDistance)
+    dist = math.floor((tonumber(dist) or 0) * c_DISTANCE_FIX_COEFFICIENT)
+    working[key] = {
+        distance = dist,
+        isDistant = dist >= distantDistance,
+    }
+end
+
+--- One tick: Pass A re-reads cached pip indexes; Pass B walks up to c_SCAN_BUDGET points
+--- when indexes are missing. Readers keep m_lastComplete across ticks (no mid-sweep wipe).
+--- Returns lastComplete map, count of keys written this tick.
+function UnitFramesScenario.TickDistanceScan(groups, opts)
+    opts = opts or {}
+
+    if type(GetMapPointData) ~= "function" then
+        return m_lastComplete, 0
+    end
+
+    local mapWindowName = opts.mapWindowName or c_DEFAULT_MAP_WINDOW
+    if type(DoesWindowExist) == "function" and not DoesWindowExist(mapWindowName) then
+        return m_lastComplete, 0
+    end
+
+    local distantDistance = tonumber(opts.distantDistance) or 250
+    local selfKey = FixKey(opts, GameData and GameData.Player and GameData.Player.name)
+    m_selfKey = selfKey
+
+    local rosterKeySet = {}
+    for groupIndex = 1, c_MAX_GROUP_WINDOWS do
+        local groupSlots = groups and groups[groupIndex] or nil
+        for memberIndex = 1, c_GROUP_MEMBERS do
+            local player = groupSlots and groupSlots[memberIndex]
+            local key = FixKey(opts, player and player.name)
+            if key ~= nil and key ~= selfKey then
+                rosterKeySet[key] = true
+            end
+        end
+    end
+
+    if next(rosterKeySet) == nil then
+        m_pendingSearch = 0
+        m_lastComplete = {}
+        return m_lastComplete, 0
+    end
+
+    -- Drop cache / lastComplete entries that left the roster.
+    for key in pairs(m_mpCache) do
+        if rosterKeySet[key] ~= true then
+            m_mpCache[key] = nil
+        end
+    end
+    for key in pairs(m_lastComplete) do
+        if rosterKeySet[key] ~= true then
+            m_lastComplete[key] = nil
+        end
+    end
+
+    -- Start from prior complete map so mid-sweep does not clear known members.
+    local working = {}
+    for key, info in pairs(m_lastComplete) do
+        if rosterKeySet[key] == true then
+            working[key] = info
+        end
+    end
+
+    local updated = 0
+    local needSearch = {}
+    local needSearchCount = 0
+
+    -- Pass A: one GetMapPointData per cached index.
+    for key in pairs(rosterKeySet) do
+        local cache = m_mpCache[key]
+        if cache ~= nil and cache.index ~= nil then
+            local mpd = GetMapPointData(mapWindowName, cache.index)
+            if mpd
+                and mpd.name
+                and mpd.name == cache.rawName
+                and mpd.pointType
+                and c_MAP_POINT_TYPE_FILTER[mpd.pointType]
+            then
+                WriteDistance(working, key, mpd.distance, distantDistance)
+                updated = updated + 1
+            else
+                m_mpCache[key] = nil
+                needSearch[key] = true
+                needSearchCount = needSearchCount + 1
+            end
+        else
+            needSearch[key] = true
+            needSearchCount = needSearchCount + 1
+        end
+    end
+
+    -- Pass B: budgeted cursor walk to refill missing indexes.
+    if needSearchCount > 0 then
+        local scanned = 0
+        while scanned < c_SCAN_BUDGET and needSearchCount > 0 do
+            local mpd = GetMapPointData(mapWindowName, m_scanCursor)
+            if mpd and mpd.name and mpd.pointType and c_MAP_POINT_TYPE_FILTER[mpd.pointType] then
+                local key = FixKey(opts, mpd.name)
+                if key ~= nil and needSearch[key] == true then
+                    m_mpCache[key] = { index = m_scanCursor, rawName = mpd.name }
+                    WriteDistance(working, key, mpd.distance, distantDistance)
+                    updated = updated + 1
+                    needSearch[key] = nil
+                    needSearchCount = needSearchCount - 1
+                end
+            end
+
+            m_scanCursor = m_scanCursor + 1
+            if m_scanCursor > c_MAX_MAP_POINTS then
+                m_scanCursor = 1
+                m_sweepId = m_sweepId + 1
+                break
+            end
+            scanned = scanned + 1
+        end
+    end
+
+    m_pendingSearch = needSearchCount
+    m_lastComplete = working
+    return m_lastComplete, updated
+end
 
 local function NamesMatchSafe(a, b, namesMatchFn)
     if type(namesMatchFn) == "function" then
@@ -273,67 +435,6 @@ function UnitFramesScenario.BuildGroupMap()
     end
 
     return groups
-end
-
-function UnitFramesScenario.ScanDistancesFromMapPoints(groups, opts)
-    opts = opts or {}
-
-    if type(GetMapPointData) ~= "function" then
-        return {}, 0
-    end
-
-    local rosterKeySet = {}
-    for groupIndex = 1, c_MAX_GROUP_WINDOWS do
-        local groupSlots = groups and groups[groupIndex] or nil
-        for memberIndex = 1, c_GROUP_MEMBERS do
-            local player = groupSlots and groupSlots[memberIndex]
-            local key = type(opts.fixMapNameKeyFn) == "function" and opts.fixMapNameKeyFn(player and player.name) or nil
-            if key ~= nil then
-                rosterKeySet[key] = true
-            end
-        end
-    end
-
-    if next(rosterKeySet) == nil then
-        return {}, 0
-    end
-
-    local mapPointTypeFilter = {
-        [SystemData.MapPips.GROUP_MEMBER] = true,
-        [SystemData.MapPips.WARBAND_MEMBER] = true,
-        [SystemData.MapPips.DESTRUCTION_ARMY] = true,
-        [SystemData.MapPips.ORDER_ARMY] = true,
-    }
-
-    local distanceByKey = {}
-    local updated = 0
-    local mapWindowName = opts.mapWindowName or "EA_Window_OverheadMapMapDisplay"
-    local distantDistance = tonumber(opts.distantDistance) or 250
-
-    local rosterCount = 0
-    for _ in pairs(rosterKeySet) do
-        rosterCount = rosterCount + 1
-    end
-
-    for pointIndex = 1, c_MAX_MAP_POINTS do
-        local mpd = GetMapPointData(mapWindowName, pointIndex)
-        if mpd and mpd.pointType and mapPointTypeFilter[mpd.pointType] and mpd.name then
-            local key = type(opts.fixMapNameKeyFn) == "function" and opts.fixMapNameKeyFn(mpd.name) or nil
-            if key ~= nil and rosterKeySet[key] and distanceByKey[key] == nil then
-                local dist = math.floor((tonumber(mpd.distance) or 0) * c_DISTANCE_FIX_COEFFICIENT)
-                distanceByKey[key] = {
-                    distance = dist,
-                    isDistant = dist >= distantDistance,
-                }
-                updated = updated + 1
-                if updated >= rosterCount then
-                    break
-                end
-            end
-        end
-    end
-
-    return distanceByKey, updated
 end
 
 -- Resolve roster player + server slot for a scenario UI row

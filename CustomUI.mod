@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ModuleFile xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-    <UiMod name="CustomUI" version="1.2.9" date="2026-09-18">
+    <UiMod name="CustomUI" version="1.3.0" date="2026-09-27">
         <Author name="Talladego" email="" />
-        <Description text="Modular Return of Reckoning UI replacement addon with component toggles and shared systems." />
+        <Description text="Modular Return of Reckoning UI replacement with built-in settings window (/cui), component toggles, and shared systems." />
         <VersionSettings gameVersion="1.4.8" windowsVersion="1.0" savedVariablesVersion="1.0" />
         <Dependencies>
             <!-- Common core: shared utility helpers used throughout the default UI code. -->
@@ -11,6 +11,11 @@
             <Dependency name="EASystem_WindowUtils" />
             <!-- Common core: default frame/title/button templates used by CustomUI windows. -->
             <Dependency name="EATemplate_DefaultWindowSkin" />
+            <!-- Settings window: stock User Settings templates / patterns. -->
+            <Dependency name="EA_SettingsWindow" />
+            <Dependency name="EASystem_ActionBarClusterManager" optional="true" />
+            <Dependency name="EASystem_AdvancedWindowManager" optional="true" />
+            <Dependency name="EA_Window_Help" optional="true" />
             <!-- PlayerStatusWindow component: status bar/unit frame templates used by the copied player frame. -->
             <Dependency name="EATemplate_UnitFrames" />
             <!-- PlayerStatusWindow component: legacy template assets still referenced by the stock copy. -->
@@ -37,6 +42,8 @@
             <Dependency name="EASystem_TargetInfo" />
             <!-- Common optional: slash command registration for /customui and /cui control commands. -->
             <Dependency name="LibSlash" optional="true" />
+            <!-- Optional: frametime hitch breadcrumbs (/libperf CustomUI …). -->
+            <Dependency name="LibPerf" optional="true" />
             <Dependency name="EA_CareerResourcesWindow" />
             <!-- SCT component: ensures stock easystem_eventtext loads first so our overrides apply last. -->
             <Dependency name="EASystem_EventText" />
@@ -135,10 +142,24 @@
             <File name="Source/Components/QoL/Controller/QoLController.lua" />
             <File name="Source/Components/QoL/View/QoLRedAlert.xml" />
             <File name="Source/Components/QoL/View/QoLDriver.xml" />
+            <!-- Settings window (merged; was CustomUISettingsWindow addon) -->
+            <File name="Source/SettingsWindow/CustomUISettingsWindowTemplates.xml" />
+            <File name="Source/SettingsWindow/CustomUISettingsWindowTabPlayer.xml" />
+            <File name="Source/SettingsWindow/CustomUISettingsWindowTabTarget.xml" />
+            <File name="Source/SettingsWindow/CustomUISettingsWindowTabTargetHUD.xml" />
+            <File name="Source/SettingsWindow/CustomUISettingsWindowTabGroup.xml" />
+            <File name="Source/SettingsWindow/CustomUISettingsWindowTabUnitFrames.xml" />
+            <File name="Source/SettingsWindow/CustomUISettingsWindowTabGroupIcons.xml" />
+            <File name="Source/SettingsWindow/CustomUISettingsWindowTabSCT.xml" />
+            <File name="Source/SettingsWindow/CustomUISettingsWindowTabKillTracker.xml" />
+            <File name="Source/SettingsWindow/CustomUISettingsWindowTabAutoFPS.xml" />
+            <File name="Source/SettingsWindow/CustomUISettingsWindowTabQoL.xml" />
+            <File name="Source/SettingsWindow/CustomUISettingsWindowTabbed.xml" />
         </Files>
         <OnInitialize>
             <!-- Component root windows: instantiated in Source/CustomUI.lua (EnsureRootWindowInstances) -->
             <CallFunction name="CustomUI.Initialize" />
+            <CreateWindow name="CustomUISettingsWindowTabbed" show="false" />
         </OnInitialize>
         <OnShutdown>
             <CallFunction name="CustomUI.Shutdown" />

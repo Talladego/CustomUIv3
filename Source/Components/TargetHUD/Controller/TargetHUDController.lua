@@ -819,6 +819,7 @@ function CustomUI.TargetHUD.OnPlayerTargetUpdated(targetClassification, targetId
         return
     end
 
+    CustomUI.Perf.Begin("TH.Target")
     local refreshHostile = targetClassification == nil
         or targetClassification == TargetInfo.HOSTILE_TARGET
     local refreshFriendly = targetClassification == nil
@@ -855,6 +856,7 @@ function CustomUI.TargetHUD.OnPlayerTargetUpdated(targetClassification, targetId
     if selfHud then
         RefreshSelfHUDFromCache(selfHud, true)
     end
+    CustomUI.Perf.End("TH.Target")
 end
 
 function CustomUI.TargetHUD.OnHostileStateUpdated()

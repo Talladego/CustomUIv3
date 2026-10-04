@@ -98,6 +98,8 @@ local c_MOUSEOVER_TARGET  = "mouseovertarget"
 local c_MAX_TRACKED_OUTSIDERS = 48
 -- World-attach probe tick: outsiders (untrack) + roster (Enemy-style hide if spatial “gone”).
 local c_OUTSIDER_PROBE_INTERVAL = 0.2
+-- Cap IsGone engine probes per tick (round-robin); keep 0.2s cadence, fewer MoveWindowToWorldObject calls.
+local c_SPATIAL_PROBE_BUDGET = 12
 -- Poll open-party warband leaders while friendly outsiders are enabled (new LFG / leader transfers).
 local c_FRIENDLY_LEADER_POLL_INTERVAL = 30
 -- Roster: if fallback entity id was recycled to another player, GetNameForObject shows wrong non-empty name — recheck slowly.
@@ -109,6 +111,8 @@ local c_WARM_REFRESH_ATTEMPTS = 30
 local c_GROUPICONS_DRIVER = "CustomUIGroupIconsDriver"
 -- Roster spatial hide only after this many consecutive probe intervals (~0.2s each) reporting “gone” — avoids flicker when projection flickers at boundaries.
 local c_ROSTER_SPATIAL_GONE_STREAK = 4
+-- Outsiders: require two consecutive “gone” probes before untrack (pairs with round-robin budget).
+local c_OUTSIDER_SPATIAL_GONE_STREAK = 2
 -- Overhead map scan used to tell a walking rez from a corpse (camera-independent range).
 -- Spatial attach probe stays at 0.2s; map range only needs ~1Hz (skull clear is not latency-critical).
 local c_MAX_MAP_POINTS = 511
@@ -603,8 +607,13 @@ local m_trackMeta = {}          -- [worldObjNum] = { name = WString, isFriendly 
 local m_trackFIFOOrder = {}     -- array of worldObjNum; index 1 = oldest (evicted first when full)
 local m_pendingOutsiderClassifications = {} -- TargetInfo classifications to apply next OnUpdate (avoid UpdateFromClient + handler order)
 local m_outsiderProbeElapsed = 0
+local m_outsiderProbeCursor = 1
+local m_outsiderSpatialGoneStreak = {} -- [wid] = consecutive gone count
+local m_rosterSpatialProbeCursor = 1
 local m_rosterValidateElapsed = 0
 local m_friendlyLeaderPollElapsed = 0
+-- Full-grid overlay sweep only when threat/death globals need it (roster/outsider paths apply per-slot).
+local m_overlayFullSweepDirty = false
 local m_groupWorldObjs = {}    -- [worldObjNum] = true for roster (party/warband)
 local m_groupNames = {}        -- [playerName] = true (fast path when exact match works)
 local m_groupNameList = {}     -- { WString, ... } robust compare via WStringsCompareIgnoreGrammer
@@ -659,7 +668,13 @@ local function GetOutsiderTrackerState()
         trackFIFOOrder = m_trackFIFOOrder,
         outsiderDeadWids = m_outsiderDeadWids,
         deadMotionByWid = m_deadMotionByWid,
+        probeCursor = m_outsiderProbeCursor,
+        spatialGoneStreak = m_outsiderSpatialGoneStreak,
     }
+end
+
+local function MarkOverlayFullSweepDirty()
+    m_overlayFullSweepDirty = true
 end
 
 local function GetRosterState()
@@ -836,7 +851,12 @@ ApplyIconOverlays = function(icon)
     icon:SetStatKind(StatKindForIcon(icon))
 end
 
-ApplyAllLiveIconOverlays = function()
+ApplyAllLiveIconOverlays = function(force)
+    if force ~= true and m_overlayFullSweepDirty ~= true then
+        return
+    end
+    m_overlayFullSweepDirty = false
+    CustomUI.Perf.Begin("GI.Overlays")
     for p = 1, c_MAX_PARTIES do
         local row = m_icons[p]
         if row then
@@ -848,34 +868,61 @@ ApplyAllLiveIconOverlays = function()
     for i = 1, c_MAX_TRACKED_OUTSIDERS do
         ApplyIconOverlays(m_outsiderPool[i])
     end
+    CustomUI.Perf.End("GI.Overlays")
+end
+
+local function StatKindMapsDiffer(a, b)
+    a = a or {}
+    b = b or {}
+    for key, kind in pairs(a) do
+        if b[key] ~= kind then
+            return true
+        end
+    end
+    for key in pairs(b) do
+        if a[key] == nil then
+            return true
+        end
+    end
+    return false
 end
 
 local function ClearThreatWinners()
+    if next(m_statKindByKey) ~= nil then
+        MarkOverlayFullSweepDirty()
+    end
     m_statKindByKey = {}
 end
 
+--- Rebuild threat winners. Returns true when the map changed (callers should dirty/sweep overlays).
 local function RefreshThreatWinnersFromScenarioPlayers()
     if type(ScenarioStats.PickTopWinners) ~= "function" then
+        local had = next(m_statKindByKey) ~= nil
         ClearThreatWinners()
-        return
+        return had
     end
     local winners = ScenarioStats.PickTopWinners(NormalizeNameKey)
-    m_statKindByKey = {}
-    if type(winners) ~= "table" then
-        return
-    end
-
-    for i = 1, #c_STAT_KINDS do
-        local kind = c_STAT_KINDS[i]
-        local byRealm = winners[kind]
-        if type(byRealm) == "table" then
-            for _, entry in pairs(byRealm) do
-                if type(entry) == "table" and entry.key ~= nil then
-                    m_statKindByKey[entry.key] = kind
+    local nextMap = {}
+    if type(winners) == "table" then
+        for i = 1, #c_STAT_KINDS do
+            local kind = c_STAT_KINDS[i]
+            local byRealm = winners[kind]
+            if type(byRealm) == "table" then
+                for _, entry in pairs(byRealm) do
+                    if type(entry) == "table" and entry.key ~= nil then
+                        nextMap[entry.key] = kind
+                    end
                 end
             end
         end
     end
+
+    local changed = StatKindMapsDiffer(m_statKindByKey, nextMap)
+    m_statKindByKey = nextMap
+    if changed then
+        MarkOverlayFullSweepDirty()
+    end
+    return changed
 end
 
 local function RegisterGroupMemberName(nameW)
@@ -1199,6 +1246,8 @@ local function UntrackAllOutsiders()
     m_deadMotionByWid = {}
     m_deadMotionLandmarks = {}
     m_deadMotionMapElapsed = 0
+    m_outsiderProbeCursor = 1
+    m_outsiderSpatialGoneStreak = {}
     if type(OutsiderTracker.UntrackAll) == "function" then
         OutsiderTracker.UntrackAll(GetOutsiderTrackerState())
         m_outsiderProbeElapsed = 0
@@ -1770,16 +1819,20 @@ end
 --- Only collect distances for sticky-dead outsider names (+ a few landmarks for "did we move").
 --- Early-outs once pending player keys are filled and enough landmarks exist (avoids full 511 walks).
 local function CollectDeadMotionMapScan(pendingPlayerKeys, pendingPlayerCount)
+    CustomUI.Perf.Begin("GI.MapScan")
     local distByKey = {}
     local landmarkByIndex = {}
     if type(GetMapPointData) ~= "function" then
+        CustomUI.Perf.End("GI.MapScan")
         return distByKey, landmarkByIndex
     end
     if type(DoesWindowExist) == "function" and not DoesWindowExist(c_OVERHEAD_MAP_DISPLAY) then
+        CustomUI.Perf.End("GI.MapScan")
         return distByKey, landmarkByIndex
     end
     local pips = SystemData and SystemData.MapPips
     if type(pips) ~= "table" then
+        CustomUI.Perf.End("GI.MapScan")
         return distByKey, landmarkByIndex
     end
     local playerTypes = {
@@ -1822,6 +1875,7 @@ local function CollectDeadMotionMapScan(pendingPlayerKeys, pendingPlayerCount)
             break
         end
     end
+    CustomUI.Perf.End("GI.MapScan")
     return distByKey, landmarkByIndex
 end
 
@@ -2013,38 +2067,81 @@ end
 
 local function ValidateTrackedOutsiders(cal)
     if type(OutsiderTracker.ValidateTracked) == "function" then
-        OutsiderTracker.ValidateTracked(GetOutsiderTrackerState(), cal, {
+        local state = GetOutsiderTrackerState()
+        OutsiderTracker.ValidateTracked(state, cal, {
             nameMismatch = OutsiderWorldObjectNameMismatchTracked,
             isGone = WorldObjectSpatialProbeIsGone,
+            maxBatch = c_SPATIAL_PROBE_BUDGET,
+            goneStreakRequired = c_OUTSIDER_SPATIAL_GONE_STREAK,
         })
+        m_outsiderProbeCursor = tonumber(state.probeCursor) or 1
         return
     end
     if not next(m_trackWidToSlot) then
+        m_outsiderProbeCursor = 1
         return
     end
     if cal == nil then
         cal = GetWorldProbeCalibration()
     end
+
+    local wids = {}
+    for wid in pairs(m_trackWidToSlot) do
+        wids[#wids + 1] = wid
+    end
+    table.sort(wids)
+    local count = #wids
+    local startIndex = tonumber(m_outsiderProbeCursor) or 1
+    if startIndex < 1 or startIndex > count then
+        startIndex = 1
+    end
+
     local toUntrack = {}
-    for wid, idx in pairs(m_trackWidToSlot) do
+    local probed = 0
+    local i = startIndex
+    local budget = c_SPATIAL_PROBE_BUDGET
+    while probed < budget and count > 0 do
+        local wid = wids[i]
+        local idx = m_trackWidToSlot[wid]
         local icon = m_outsiderPool[idx]
         local win = icon and icon.windowName
         if not win or not DoesWindowExist(win) then
             toUntrack[#toUntrack + 1] = wid
+            m_outsiderSpatialGoneStreak[wid] = nil
         else
             local meta = m_trackMeta[wid]
             local nm = meta and meta.name
             if nm == nil or nm == L"" then
                 toUntrack[#toUntrack + 1] = wid
+                m_outsiderSpatialGoneStreak[wid] = nil
             elseif OutsiderWorldObjectNameMismatchTracked(nm, wid) then
                 toUntrack[#toUntrack + 1] = wid
+                m_outsiderSpatialGoneStreak[wid] = nil
             elseif cal and WorldObjectSpatialProbeIsGone(wid, cal) then
-                toUntrack[#toUntrack + 1] = wid
+                local streak = (tonumber(m_outsiderSpatialGoneStreak[wid]) or 0) + 1
+                m_outsiderSpatialGoneStreak[wid] = streak
+                if streak >= c_OUTSIDER_SPATIAL_GONE_STREAK then
+                    toUntrack[#toUntrack + 1] = wid
+                end
+            else
+                m_outsiderSpatialGoneStreak[wid] = nil
             end
         end
+
+        probed = probed + 1
+        i = i + 1
+        if i > count then
+            i = 1
+        end
+        if i == startIndex then
+            break
+        end
     end
-    for i = 1, #toUntrack do
-        UntrackOutsiderWid(toUntrack[i])
+    m_outsiderProbeCursor = i
+
+    for ui = 1, #toUntrack do
+        UntrackOutsiderWid(toUntrack[ui])
+        m_outsiderSpatialGoneStreak[toUntrack[ui]] = nil
     end
 end
 
@@ -2340,26 +2437,50 @@ end
 
 --- Same spatial probe as outsiders: hide stuck roster icons (Enemy squash) until wid projects again.
 --- Debounce hide: a single flaky “gone” tick was toggling hide/show every 0.2s (top-left flicker).
+--- Round-robin up to c_SPATIAL_PROBE_BUDGET IsGone calls per tick (caller owns GI.Spatial perf wrap).
 local function ValidateRosterIconsSpatial(cal)
     if cal == nil then
         return
     end
-    for p = 1, c_MAX_PARTIES do
-        for m = 1, c_MAX_MEMBERS do
-            local icon = m_icons[p][m]
-            if icon.isEnabled and icon.worldObjNum ~= 0 and icon.windowName and DoesWindowExist(icon.windowName) then
-                if WorldObjectSpatialProbeIsGone(icon.worldObjNum, cal) then
-                    icon.rosterSpatialGoneStreak = (tonumber(icon.rosterSpatialGoneStreak) or 0) + 1
-                    if icon.rosterSpatialGoneStreak >= c_ROSTER_SPATIAL_GONE_STREAK then
-                        icon:RosterSpatialHide()
-                    end
-                else
-                    icon.rosterSpatialGoneStreak = 0
-                    icon:RosterSpatialShow()
+
+    local totalSlots = c_MAX_PARTIES * c_MAX_MEMBERS
+    local startFlat = tonumber(m_rosterSpatialProbeCursor) or 1
+    if startFlat < 1 or startFlat > totalSlots then
+        startFlat = 1
+    end
+
+    local probed = 0
+    local visited = 0
+    local flat = startFlat
+    while probed < c_SPATIAL_PROBE_BUDGET and visited < totalSlots do
+        local p = math.floor((flat - 1) / c_MAX_MEMBERS) + 1
+        local m = ((flat - 1) % c_MAX_MEMBERS) + 1
+        local icon = m_icons[p] and m_icons[p][m]
+        if icon
+            and icon.isEnabled
+            and icon.worldObjNum ~= 0
+            and icon.windowName
+            and DoesWindowExist(icon.windowName)
+        then
+            if WorldObjectSpatialProbeIsGone(icon.worldObjNum, cal) then
+                icon.rosterSpatialGoneStreak = (tonumber(icon.rosterSpatialGoneStreak) or 0) + 1
+                if icon.rosterSpatialGoneStreak >= c_ROSTER_SPATIAL_GONE_STREAK then
+                    icon:RosterSpatialHide()
                 end
+            else
+                icon.rosterSpatialGoneStreak = 0
+                icon:RosterSpatialShow()
             end
+            probed = probed + 1
+        end
+
+        visited = visited + 1
+        flat = flat + 1
+        if flat > totalSlots then
+            flat = 1
         end
     end
+    m_rosterSpatialProbeCursor = flat
 end
 
 local function DisableAll()
@@ -2421,13 +2542,13 @@ SyncScenarioStatsStream = function()
             ScenarioStats.Start()
         end
         RefreshThreatWinnersFromScenarioPlayers()
-        ApplyAllLiveIconOverlays()
+        ApplyAllLiveIconOverlays(true)
     else
         if type(ScenarioStats.Stop) == "function" then
             ScenarioStats.Stop()
         end
         ClearThreatWinners()
-        ApplyAllLiveIconOverlays()
+        ApplyAllLiveIconOverlays(true)
     end
 end
 
@@ -2547,6 +2668,7 @@ local function RefreshWarband(showAll, showParty1, partiesOverride)
 end
 
 RefreshAll = function()
+    CustomUI.Perf.Begin("GI.RefreshAll")
     local s = EnsureSettings()
     local inScenario = IsScenarioContext()
     DebugLog("RefreshAll: inScenario=" .. tostring(inScenario)
@@ -2580,7 +2702,9 @@ RefreshAll = function()
         OnWarbandLeaderListMaybeChanged()
     end
     RefreshRosterDeathOverlays()
+    -- Per-slot overlays already applied during roster refresh / death pass; full sweep only when dirty.
     ApplyAllLiveIconOverlays()
+    CustomUI.Perf.End("GI.RefreshAll")
 end
 
 ----------------------------------------------------------------
@@ -2645,12 +2769,17 @@ function CustomUI.GroupIcons.OnUpdate(timePassed)
         if m_outsiderProbeElapsed >= c_OUTSIDER_PROBE_INTERVAL then
             m_outsiderProbeElapsed = 0
             local cal = GetWorldProbeCalibration()
-            if next(m_trackWidToSlot) then
-                ValidateTrackedOutsiders(cal)
-            end
+            local hasOutsiders = next(m_trackWidToSlot) ~= nil
             local hasRosterAttached = AnyRosterWorldAttachedIcons()
-            if cal ~= nil and hasRosterAttached then
-                ValidateRosterIconsSpatial(cal)
+            if hasOutsiders or (cal ~= nil and hasRosterAttached) then
+                CustomUI.Perf.Begin("GI.Spatial")
+                if hasOutsiders then
+                    ValidateTrackedOutsiders(cal)
+                end
+                if cal ~= nil and hasRosterAttached then
+                    ValidateRosterIconsSpatial(cal)
+                end
+                CustomUI.Perf.End("GI.Spatial")
             end
         end
     else
@@ -2739,8 +2868,9 @@ function CustomUI.GroupIcons.OnScenarioPlayersStatsUpdated()
     if EnsureSettings().showScenarioThreat ~= true or not IsScenarioContext() then
         return
     end
-    RefreshThreatWinnersFromScenarioPlayers()
-    ApplyAllLiveIconOverlays()
+    if RefreshThreatWinnersFromScenarioPlayers() then
+        ApplyAllLiveIconOverlays()
+    end
 end
 
 function CustomUI.GroupIcons.OnInterfaceReady()

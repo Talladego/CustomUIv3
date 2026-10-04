@@ -80,6 +80,9 @@ function OutsiderTracker.UntrackWid(state, wid)
     if state.deadMotionByWid then
         state.deadMotionByWid[wid] = nil
     end
+    if state.spatialGoneStreak then
+        state.spatialGoneStreak[wid] = nil
+    end
 
     local icon = state.outsiderPool[idx]
     if icon then
@@ -240,36 +243,44 @@ end
 
 function OutsiderTracker.ValidateTracked(state, cal, opts)
     if not next(state.trackWidToSlot) then
+        state.probeCursor = 1
         return
     end
 
     opts = opts or {}
     local maxBatch = tonumber(opts.maxBatch) or 0
+    local goneStreakRequired = tonumber(opts.goneStreakRequired) or 1
+    if goneStreakRequired < 1 then
+        goneStreakRequired = 1
+    end
+    local streaks = state.spatialGoneStreak
+    if type(streaks) ~= "table" then
+        streaks = nil
+        goneStreakRequired = 1
+    end
+
     local wids = {}
     for wid in pairs(state.trackWidToSlot) do
         wids[#wids + 1] = wid
     end
     table.sort(wids)
 
+    local count = #wids
     local startIndex = 1
-    local endIndex = #wids
-    if maxBatch > 0 and #wids > maxBatch then
+    if maxBatch > 0 and count > maxBatch then
         startIndex = tonumber(state.probeCursor) or 1
-        if startIndex < 1 or startIndex > #wids then
+        if startIndex < 1 or startIndex > count then
             startIndex = 1
         end
-        endIndex = math.min(#wids, startIndex + maxBatch - 1)
-        local nextCursor = endIndex + 1
-        if nextCursor > #wids then
-            nextCursor = 1
-        end
-        state.probeCursor = nextCursor
     else
+        maxBatch = count
         state.probeCursor = 1
     end
 
     local toUntrack = {}
-    for i = startIndex, endIndex do
+    local probed = 0
+    local i = startIndex
+    while probed < maxBatch and count > 0 do
         local wid = wids[i]
         local idx = state.trackWidToSlot[wid]
         local icon = state.outsiderPool[idx]
@@ -284,12 +295,37 @@ function OutsiderTracker.ValidateTracked(state, cal, opts)
             elseif opts.nameMismatch(name, wid) then
                 toUntrack[#toUntrack + 1] = wid
             elseif cal and opts.isGone(wid, cal) then
-                toUntrack[#toUntrack + 1] = wid
+                if goneStreakRequired <= 1 or streaks == nil then
+                    toUntrack[#toUntrack + 1] = wid
+                else
+                    local streak = (tonumber(streaks[wid]) or 0) + 1
+                    streaks[wid] = streak
+                    if streak >= goneStreakRequired then
+                        toUntrack[#toUntrack + 1] = wid
+                    end
+                end
+            elseif streaks ~= nil then
+                streaks[wid] = nil
             end
+        end
+
+        probed = probed + 1
+        i = i + 1
+        if i > count then
+            i = 1
+        end
+        if i == startIndex then
+            break
         end
     end
 
-    for i = 1, #toUntrack do
-        OutsiderTracker.UntrackWid(state, toUntrack[i])
+    if maxBatch > 0 and count > maxBatch then
+        state.probeCursor = i
+    else
+        state.probeCursor = 1
+    end
+
+    for ui = 1, #toUntrack do
+        OutsiderTracker.UntrackWid(state, toUntrack[ui])
     end
 end

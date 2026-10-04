@@ -13,7 +13,7 @@ if CustomUI.PerfDebug == nil then
     CustomUI.PerfDebug = false
 end
 
-CustomUI.Perf = CustomUI.Perf or
+CustomUI.PerfCounters = CustomUI.PerfCounters or
 {
     total = {},
     frame = {},
@@ -21,10 +21,37 @@ CustomUI.Perf = CustomUI.Perf or
     elapsed = 0,
 }
 
+-- Optional LibPerf hitch breadcrumbs; control via /libperf CustomUI …
+-- (CustomUI.Perf was previously the call-counter table; that lives in PerfCounters now.)
+local c_LIBPERF_CAPTURE_FLOOR_MS = 250
+if LibPerf and type(LibPerf.Scope) == "function" then
+    local Perf = LibPerf.Scope("CustomUI")
+    local thr = 0
+    if type(Perf.GetThreshold) == "function" then
+        thr = tonumber(Perf.GetThreshold()) or 0
+    elseif type(Perf.GetFrameThreshold) == "function" then
+        thr = tonumber(Perf.GetFrameThreshold()) or 0
+    end
+    if thr > 0 and thr < c_LIBPERF_CAPTURE_FLOOR_MS then
+        if type(Perf.SetThreshold) == "function" then
+            Perf.SetThreshold(c_LIBPERF_CAPTURE_FLOOR_MS)
+        elseif type(Perf.SetFrameThreshold) == "function" then
+            Perf.SetFrameThreshold(c_LIBPERF_CAPTURE_FLOOR_MS)
+        end
+    end
+    CustomUI.Perf = Perf
+else
+    CustomUI.Perf = {
+        Begin = function() end,
+        End = function() end,
+        Mark = function() end,
+    }
+end
+
 CustomUI.Name = "CustomUI"
 -- Semver (MAJOR.MINOR.PATCH), matching RedAlert / ScenarioBalance / DungeonCoach.
 -- One addon version for the whole modular package; components are toggles, not separately versioned releases.
-CustomUI.Version = "1.2.9"
+CustomUI.Version = "1.3.0"
 CustomUI.SlashCommands = CustomUI.SlashCommands or { "customui", "cui" }
 CustomUI.Components = CustomUI.Components or {}
 CustomUI.ComponentOrder = CustomUI.ComponentOrder or {}
@@ -80,10 +107,17 @@ local g_followActionButtonOnLButtonUpWrapper = nil
 --   Root window instances: first step of CustomUI.Initialize (EnsureRootWindowInstances); .mod
 --   lists files only—no <CreateWindow> in the manifest.
 --
--- Settings UI: ship in the separate CustomUISettingsWindow addon (window CustomUISettingsWindowTabbed).
--- Removed legacy paths: CustomUI.SettingsWindow / MiniSettingsWindow, Source/Settings,
---   in-addon View/*Tab.xml, and CustomUI.<Name>.Tab. Do not reintroduce them; add
---   settings UI in CustomUISettingsWindow only.
+-- Settings UI: Source/SettingsWindow/ (window CustomUISettingsWindowTabbed), opened via /cui.
+-- Removed legacy paths: CustomUI.SettingsWindow / MiniSettingsWindow, old Source/Settings broker,
+--   in-addon View/*Tab.xml, and CustomUI.<Name>.Tab. Add tabs under Source/SettingsWindow/ only.
+
+function CustomUI.ShowSettings()
+    if DoesWindowExist("CustomUISettingsWindowTabbed") then
+        WindowUtils.ToggleShowing("CustomUISettingsWindowTabbed")
+    elseif CustomUI.PrintMessage then
+        CustomUI.PrintMessage(L"Settings window is not available.")
+    end
+end
 
 local function CallComponentHandler(component, handlerName)
     local handler = component and component[handlerName]
@@ -320,9 +354,7 @@ end
 
 local function OnCustomUIHyperLinkLButtonUp(linkData, flags, x, y)
     if IsCustomUIChatLink(linkData) then
-        if type(CustomUI.ShowSettings) == "function" then
-            CustomUI.ShowSettings()
-        end
+        CustomUI.ShowSettings()
         return
     end
     if m_prevOnHyperLinkLButtonUp then
@@ -523,7 +555,7 @@ function CustomUI.PerfCount(key, amount)
     end
 
     amount = tonumber(amount) or 1
-    local perf = CustomUI.Perf
+    local perf = CustomUI.PerfCounters
     perf.total[key] = (perf.total[key] or 0) + amount
     perf.frame[key] = (perf.frame[key] or 0) + amount
 end
@@ -535,25 +567,25 @@ function CustomUI.PerfEndFrame(elapsedTime)
 
     local elapsed = tonumber(elapsedTime) or 0
     if elapsed > 0 then
-        CustomUI.Perf.elapsed = (CustomUI.Perf.elapsed or 0) + elapsed
+        CustomUI.PerfCounters.elapsed = (CustomUI.PerfCounters.elapsed or 0) + elapsed
     end
 
-    local frameCounts = CustomUI.Perf.frame
-    local maxFrame = CustomUI.Perf.maxFrame
+    local frameCounts = CustomUI.PerfCounters.frame
+    local maxFrame = CustomUI.PerfCounters.maxFrame
     for key, count in pairs(frameCounts) do
         if count > (maxFrame[key] or 0) then
             maxFrame[key] = count
         end
     end
 
-    CustomUI.Perf.frame = {}
+    CustomUI.PerfCounters.frame = {}
 end
 
 function CustomUI.PerfReset()
-    CustomUI.Perf.total = {}
-    CustomUI.Perf.frame = {}
-    CustomUI.Perf.maxFrame = {}
-    CustomUI.Perf.elapsed = 0
+    CustomUI.PerfCounters.total = {}
+    CustomUI.PerfCounters.frame = {}
+    CustomUI.PerfCounters.maxFrame = {}
+    CustomUI.PerfCounters.elapsed = 0
 end
 
 function CustomUI.PrintPerfReport()
@@ -569,12 +601,12 @@ function CustomUI.PrintPerfReport()
         "groupWindowTrackerUpdates",
     }
 
-    local elapsed = tonumber(CustomUI.Perf.elapsed) or 0
+    local elapsed = tonumber(CustomUI.PerfCounters.elapsed) or 0
     CustomUI.PrintMessage(L"Perf counters (elapsed " .. towstring(string.format("%.1f", elapsed)) .. L"s):")
     for i = 1, #keys do
         local key = keys[i]
-        local total = CustomUI.Perf.total[key] or 0
-        local maxFrame = CustomUI.Perf.maxFrame[key] or 0
+        local total = CustomUI.PerfCounters.total[key] or 0
+        local maxFrame = CustomUI.PerfCounters.maxFrame[key] or 0
         CustomUI.PrintMessage(
             towstring(key) .. L": total=" .. towstring(total) .. L" max/frame=" .. towstring(maxFrame)
         )
@@ -583,6 +615,7 @@ end
 
 function CustomUI.PrintHelp()
     CustomUI.PrintMessage(L"Commands: /customui, /customui status, /customui components, /customui enable <name>, /customui disable <name>, /customui toggle <name>, /customui autofps, /customui clear icon cache, /customui followmacro, /customui perf [on|off|reset], /customui help")
+    CustomUI.PrintMessage(L"Hitch log: /libperf CustomUI on 250 (needs LibPerf; logs/libperf_CustomUI.log)")
 end
 
 local function NormalizePlayerName(nameValue)
@@ -887,11 +920,7 @@ function CustomUI.HandleSlashCommand(input)
     end
 
     if trimmedInput == "" then
-        if type(CustomUI.ShowSettings) == "function" then
-            CustomUI.ShowSettings()
-        elseif CustomUI.PrintMessage then
-            CustomUI.PrintMessage(L"Settings module not installed.")
-        end
+        CustomUI.ShowSettings()
         CustomUI.PrintHelp()
         return
     end
@@ -1244,12 +1273,15 @@ local g_updateFromClientWrapper = nil
 function CustomUI.OnGlobalUpdate(timePassed)
     CustomUI.PerfEndFrame(timePassed)
     CustomUI.TargetUpdateFlag = false
+    local didWork = false
     if type(CustomUI.TargetPresence) == "table"
         and type(CustomUI.TargetPresence.OnGlobalUpdate) == "function" then
+        didWork = true
         CustomUI.TargetPresence.OnGlobalUpdate(timePassed)
     end
     if type(CustomUI.TargetHUD) == "table"
         and type(CustomUI.TargetHUD.OnGlobalUpdate) == "function" then
+        didWork = true
         CustomUI.TargetHUD.OnGlobalUpdate(timePassed)
     end
     if type(CustomUI.TargetWindow) == "table"
@@ -1259,6 +1291,9 @@ function CustomUI.OnGlobalUpdate(timePassed)
     if type(CustomUI.PlayerStatusWindow) == "table"
         and type(CustomUI.PlayerStatusWindow.TryPendingStockRehook) == "function" then
         CustomUI.PlayerStatusWindow.TryPendingStockRehook()
+    end
+    if didWork then
+        CustomUI.Perf.Mark("CUI.Global")
     end
 end
 
@@ -1275,6 +1310,7 @@ local function HookTargetInfo()
 
         local targets = GetUpdatedTargets()
         if targets ~= nil then
+            CustomUI.Perf.Begin("CUI.TargetInfo")
             for unitId, targetData in pairs(targets) do
                 TargetInfo:SetUnitInfo(unitId, targetData)
             end
@@ -1282,6 +1318,7 @@ local function HookTargetInfo()
                 and type(CustomUI.TargetPresence.OnCacheBatch) == "function" then
                 CustomUI.TargetPresence.OnCacheBatch(targets)
             end
+            CustomUI.Perf.End("CUI.TargetInfo")
         end
         -- Do not ClearUnits() when GetUpdatedTargets() is nil (batch already consumed).
         -- A spurious second UpdateFromClient() was wiping the cache and flickering target UI.

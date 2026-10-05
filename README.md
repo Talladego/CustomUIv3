@@ -2,7 +2,7 @@
 
 CustomUI is a modular Return of Reckoning addon that replaces and enhances stock UI components behind a single settings surface and slash-command workflow.
 
-**Version:** CustomUI `1.3.0` (see `CustomUI.Version` / `CustomUI.mod`). One addon-level semver (not per-component); the active profile also stores `CustomUI.Settings.version` on init. Settings UI is included in the same AddOn (`Source/SettingsWindow/`).
+**Version:** CustomUI `1.3.1` (see `CustomUI.Version` / `CustomUI.mod`). One addon-level semver (not per-component); the active profile also stores `CustomUI.Settings.version` on init. Settings UI is included in the same AddOn (`Source/SettingsWindow/`).
 
 ## Documentation
 
@@ -26,7 +26,7 @@ From this repo, deploy runtime files only (mirrors StockPiler3):
 
 That copies `CustomUI.mod` + `Source\` to `Interface\AddOns\CustomUI\`, prunes docs / `.git` / editor clutter from the destination, and **removes** any legacy sibling `Interface\AddOns\CustomUISettingsWindow\` folder (settings are now inside CustomUI). Use `-WhatIf` to preview; override with `-AddOnsRoot "D:\Games\...\Interface\AddOns"`.
 
-Manual install: place **CustomUI** only under the game’s `Interface\AddOns\` (`CustomUI.mod` + `Source\`). Delete any old `CustomUISettingsWindow` AddOn folder. Reload UI (`/reloadui`).
+Manual install: place **CustomUI** only under the game’s `Interface\AddOns\` (`CustomUI.mod` + `Source\`). You must **delete** any leftover `Interface\AddOns\CustomUISettingsWindow` folder — that old addon still defines and `CreateWindow`s `CustomUISettingsWindowTabbed`, so both copies load and fight. Reload UI (`/reloadui`).
 
 Optional: enable **LibPerf** for frametime hitch breadcrumbs (`/libperf CustomUI on 250` → `logs/libperf_CustomUI.log`).
 

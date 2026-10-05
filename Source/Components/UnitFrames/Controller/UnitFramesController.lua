@@ -312,6 +312,7 @@ local m_debugLastMode = nil
 local m_debugLastInitSig = nil
 local m_debugLastScenarioSig = nil
 local m_scenarioDistancePollElapsed = 0
+local m_wasScenarioDistanceMode = false
 --- When mode is warband_party1, UI uses CustomUIUnitFramesGroup1* but data comes from this battlegroup party index (PartyUtils.IsPlayerInWarband).
 local m_warbandPartyOnlyDataPartyIndex = nil
 
@@ -1266,6 +1267,12 @@ local function ResolveScenarioPlayer(player)
     return UnitFramesScenario.ResolvePlayer(player, NamesMatch)
 end
 
+local function KickScenarioDistanceScan()
+    if type(UnitFramesScenario.KickDistanceScan) == "function" then
+        UnitFramesScenario.KickDistanceScan()
+    end
+end
+
 local function ScanScenarioDistancesFromMapPoints()
     CustomUI.Perf.Begin("UF.ScenDist")
     local groups = BuildScenarioGroupMap()
@@ -1282,9 +1289,8 @@ local function ScanScenarioDistancesFromMapPoints()
     local previous = m_scenarioDistanceByKey
     m_scenarioDistanceByKey = distanceByKey or {}
 
-    -- Only rebuild the 6x6 scenario UI when distant flags actually change.
-    -- Previously any successful map match (updated > 0) forced a full rebuild every poll.
-    if updated > 0 and ScenarioDistantFlagsChanged(previous, m_scenarioDistanceByKey) then
+    -- Rebuild when distant flags change, including drop-only wraps (updated may be 0).
+    if ScenarioDistantFlagsChanged(previous, m_scenarioDistanceByKey) then
         DebugLog("Scenario distance scan: distant flags changed; updated=" .. tostring(updated))
         if m_enabled and m_windowsInitialized and GetActiveUnitFramesDisplayMode() == "scenario" then
             ShowScenarioDualModeWindows()
@@ -2184,6 +2190,7 @@ end
 function UnitFrames.OnScenarioLifecycleRefresh()
     ClearScenarioHitHpOverrides()
     InvalidateScenarioGroupMapCache()
+    KickScenarioDistanceScan()
     ApplyModeVisibility()
 end
 
@@ -2225,6 +2232,7 @@ end
 function UnitFrames.OnScenarioRosterOrSlotsUpdated()
     ClearScenarioHitHpOverrides()
     InvalidateScenarioGroupMapCache()
+    KickScenarioDistanceScan()
     ApplyModeVisibility()
 end
 
@@ -2542,10 +2550,14 @@ function UnitFrames.Update(elapsedTime)
     end
 
     if GetActiveUnitFramesDisplayMode() == "scenario" then
+        if not m_wasScenarioDistanceMode then
+            KickScenarioDistanceScan()
+            m_wasScenarioDistanceMode = true
+        end
         local sweepActive = type(UnitFramesScenario.IsDistanceSweepActive) == "function"
             and UnitFramesScenario.IsDistanceSweepActive() == true
         if sweepActive then
-            -- Drain Pass B budget every frame until pip indexes are warm.
+            -- Drain Pass B budget every frame until this wrap finishes (or all pips found).
             m_scenarioDistancePollElapsed = 0
             ScanScenarioDistancesFromMapPoints()
         else
@@ -2558,8 +2570,11 @@ function UnitFrames.Update(elapsedTime)
     else
         m_scenarioDistancePollElapsed = 0
         m_scenarioDistanceByKey = {}
-        if type(UnitFramesScenario.ResetDistanceScan) == "function" then
-            UnitFramesScenario.ResetDistanceScan()
+        if m_wasScenarioDistanceMode then
+            m_wasScenarioDistanceMode = false
+            if type(UnitFramesScenario.ResetDistanceScan) == "function" then
+                UnitFramesScenario.ResetDistanceScan()
+            end
         end
     end
 
@@ -2675,6 +2690,11 @@ end
 function UnitFrames.Disable()
     ClearScenarioHitHpOverrides()
     m_enabled = false
+    m_wasScenarioDistanceMode = false
+    m_scenarioDistanceByKey = {}
+    if type(UnitFramesScenario.ResetDistanceScan) == "function" then
+        UnitFramesScenario.ResetDistanceScan()
+    end
     m_mouseOverMemberWindow = nil
     m_lastHoverWindowName   = nil
     RefreshMouseOverBorders()

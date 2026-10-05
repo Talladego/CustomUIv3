@@ -35,7 +35,8 @@ local m_mpCache = {}          -- [nameKey] = { index = number, rawName = wstring
 local m_scanCursor = 1
 local m_sweepId = 0
 local m_lastComplete = {}     -- [nameKey] = { distance = number, isDistant = boolean }
-local m_pendingSearch = 0     -- roster keys needing Pass B this/last tick
+local m_pendingSearch = 0     -- roster keys still unmatched after this tick
+local m_drainActive = false   -- every-frame Pass B until one wrap (or all found)
 local m_selfKey = nil
 
 -- Scenario roster uses compact careerId values (Enemy.ScenarioCareerIdToLine),
@@ -74,11 +75,19 @@ function UnitFramesScenario.ResetDistanceScan()
     m_sweepId = 0
     m_lastComplete = {}
     m_pendingSearch = 0
+    m_drainActive = false
     m_selfKey = nil
 end
 
+--- Fast-drain until this 511-slice wraps (or all pips are found). Call on scenario
+--- enter and roster composition changes, not on persistent missing pips.
+function UnitFramesScenario.KickDistanceScan()
+    m_drainActive = true
+    m_scanCursor = 1
+end
+
 function UnitFramesScenario.IsDistanceSweepActive()
-    return m_pendingSearch > 0
+    return m_drainActive == true
 end
 
 local function FixKey(opts, name)
@@ -129,6 +138,7 @@ function UnitFramesScenario.TickDistanceScan(groups, opts)
 
     if next(rosterKeySet) == nil then
         m_pendingSearch = 0
+        m_drainActive = false
         m_lastComplete = {}
         return m_lastComplete, 0
     end
@@ -182,6 +192,7 @@ function UnitFramesScenario.TickDistanceScan(groups, opts)
     end
 
     -- Pass B: budgeted cursor walk to refill missing indexes.
+    local wrapped = false
     if needSearchCount > 0 then
         local scanned = 0
         while scanned < c_SCAN_BUDGET and needSearchCount > 0 do
@@ -201,10 +212,21 @@ function UnitFramesScenario.TickDistanceScan(groups, opts)
             if m_scanCursor > c_MAX_MAP_POINTS then
                 m_scanCursor = 1
                 m_sweepId = m_sweepId + 1
+                wrapped = true
                 break
             end
             scanned = scanned + 1
         end
+    end
+
+    -- After a full 511 wrap, missing pips have no distance (pre-1.3.0: not dimmed).
+    if wrapped then
+        for key in pairs(needSearch) do
+            working[key] = nil
+        end
+        m_drainActive = false
+    elseif needSearchCount == 0 then
+        m_drainActive = false
     end
 
     m_pendingSearch = needSearchCount

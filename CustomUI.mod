@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ModuleFile xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-    <UiMod name="CustomUI" version="1.3.0" date="2026-09-27">
+    <UiMod name="CustomUI" version="1.3.1" date="2026-10-05">
         <Author name="Talladego" email="" />
         <Description text="Modular Return of Reckoning UI replacement with built-in settings window (/cui), component toggles, and shared systems." />
         <VersionSettings gameVersion="1.4.8" windowsVersion="1.0" savedVariablesVersion="1.0" />

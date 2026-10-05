@@ -177,29 +177,58 @@ local function stripCharName(name)
 end
 
 --- Shared-profile claim cache is per character (account::name@server).
-local function getCharacterCacheKey()
-    local Data = CustomUI.QoL and CustomUI.QoL.AltTracker and CustomUI.QoL.AltTracker.Data
-    if type(Data) == "table" and type(Data.MakeCharKey) == "function" then
-        local key = Data.MakeCharKey()
-        if type(key) == "string" and key ~= "" then
-            return key
-        end
-    end
+local m_charCacheKey = nil
+local m_charCacheName = nil
+local m_charCacheServer = nil
+local m_charCacheAccount = nil
 
+local function getCharacterCacheKey()
     local server = "unknown"
     if GameData and GameData.Account and GameData.Account.ServerName then
         server = narrowName(GameData.Account.ServerName)
     end
     local name = stripCharName(GameData and GameData.Player and GameData.Player.name or "")
+    if name == "" then
+        m_charCacheKey = nil
+        m_charCacheName = nil
+        m_charCacheServer = nil
+        m_charCacheAccount = nil
+        return nil
+    end
     local account = ""
     if GameData and GameData.Account and GameData.Account.AccountName then
         account = narrowName(GameData.Account.AccountName)
     end
-    if account ~= "" then
-        return account .. "::" .. name .. "@" .. server
+    if m_charCacheKey ~= nil
+        and m_charCacheName == name
+        and m_charCacheServer == server
+        and m_charCacheAccount == account
+    then
+        return m_charCacheKey
     end
-    local slot = (GameData and GameData.Account and GameData.Account.SelectedCharacterSlot) or 0
-    return name .. "@" .. server .. "#" .. tostring(slot)
+
+    local key = nil
+    local Data = CustomUI.QoL and CustomUI.QoL.AltTracker and CustomUI.QoL.AltTracker.Data
+    if type(Data) == "table" and type(Data.MakeCharKey) == "function" then
+        local made = Data.MakeCharKey()
+        if type(made) == "string" and made ~= "" then
+            key = made
+        end
+    end
+    if key == nil then
+        if account ~= "" then
+            key = account .. "::" .. name .. "@" .. server
+        else
+            local slot = (GameData and GameData.Account and GameData.Account.SelectedCharacterSlot) or 0
+            key = name .. "@" .. server .. "#" .. tostring(slot)
+        end
+    end
+
+    m_charCacheKey = key
+    m_charCacheName = name
+    m_charCacheServer = server
+    m_charCacheAccount = account
+    return key
 end
 
 --- eventRewardCache[characterKey][eventId] = { tiers, updatedAt }
@@ -209,6 +238,9 @@ local function getCharEventRewardCache(settings)
         settings.eventRewardCache = {}
     end
     local charKey = getCharacterCacheKey()
+    if charKey == nil or charKey == "" then
+        return {}
+    end
     local bucket = settings.eventRewardCache[charKey]
     -- Old saves stored eventId at the top level ({ tiers = ... }). Ignore those; do not migrate.
     if type(bucket) ~= "table" or type(bucket.tiers) == "table" then

@@ -37,6 +37,8 @@ local m_sweepId = 0
 local m_lastComplete = {}     -- [nameKey] = { distance = number, isDistant = boolean }
 local m_pendingSearch = 0     -- roster keys still unmatched after this tick
 local m_drainActive = false   -- every-frame Pass B until one wrap (or all found)
+local m_searchStartSweep = {} -- [nameKey] = m_sweepId when search was queued
+local m_searchStartCursor = {} -- [nameKey] = m_scanCursor when search was queued
 local m_selfKey = nil
 
 -- Scenario roster uses compact careerId values (Enemy.ScenarioCareerIdToLine),
@@ -76,6 +78,8 @@ function UnitFramesScenario.ResetDistanceScan()
     m_lastComplete = {}
     m_pendingSearch = 0
     m_drainActive = false
+    m_searchStartSweep = {}
+    m_searchStartCursor = {}
     m_selfKey = nil
 end
 
@@ -105,6 +109,23 @@ local function WriteDistance(working, key, dist, distantDistance)
     }
 end
 
+local function MarkNeedSearch(needSearch, key)
+    if needSearch[key] == true then
+        return
+    end
+    needSearch[key] = true
+    if m_searchStartSweep[key] == nil then
+        m_searchStartSweep[key] = m_sweepId
+        m_searchStartCursor[key] = m_scanCursor
+    end
+end
+
+local function ClearNeedSearch(needSearch, key)
+    needSearch[key] = nil
+    m_searchStartSweep[key] = nil
+    m_searchStartCursor[key] = nil
+end
+
 --- One tick: Pass A re-reads cached pip indexes; Pass B walks up to c_SCAN_BUDGET points
 --- when indexes are missing. Readers keep m_lastComplete across ticks (no mid-sweep wipe).
 --- Returns lastComplete map, count of keys written this tick.
@@ -112,11 +133,13 @@ function UnitFramesScenario.TickDistanceScan(groups, opts)
     opts = opts or {}
 
     if type(GetMapPointData) ~= "function" then
+        m_drainActive = false
         return m_lastComplete, 0
     end
 
     local mapWindowName = opts.mapWindowName or c_DEFAULT_MAP_WINDOW
     if type(DoesWindowExist) == "function" and not DoesWindowExist(mapWindowName) then
+        m_drainActive = false
         return m_lastComplete, 0
     end
 
@@ -139,19 +162,23 @@ function UnitFramesScenario.TickDistanceScan(groups, opts)
     if next(rosterKeySet) == nil then
         m_pendingSearch = 0
         m_drainActive = false
+        m_searchStartSweep = {}
+        m_searchStartCursor = {}
         m_lastComplete = {}
         return m_lastComplete, 0
     end
 
-    -- Drop cache / lastComplete entries that left the roster.
+    -- Drop cache / search-origin entries that left the roster. Do not mutate
+    -- m_lastComplete in place: the controller diffs the previous table object.
     for key in pairs(m_mpCache) do
         if rosterKeySet[key] ~= true then
             m_mpCache[key] = nil
         end
     end
-    for key in pairs(m_lastComplete) do
+    for key in pairs(m_searchStartSweep) do
         if rosterKeySet[key] ~= true then
-            m_lastComplete[key] = nil
+            m_searchStartSweep[key] = nil
+            m_searchStartCursor[key] = nil
         end
     end
 
@@ -180,13 +207,15 @@ function UnitFramesScenario.TickDistanceScan(groups, opts)
             then
                 WriteDistance(working, key, mpd.distance, distantDistance)
                 updated = updated + 1
+                m_searchStartSweep[key] = nil
+                m_searchStartCursor[key] = nil
             else
                 m_mpCache[key] = nil
-                needSearch[key] = true
+                MarkNeedSearch(needSearch, key)
                 needSearchCount = needSearchCount + 1
             end
         else
-            needSearch[key] = true
+            MarkNeedSearch(needSearch, key)
             needSearchCount = needSearchCount + 1
         end
     end
@@ -203,7 +232,7 @@ function UnitFramesScenario.TickDistanceScan(groups, opts)
                     m_mpCache[key] = { index = m_scanCursor, rawName = mpd.name }
                     WriteDistance(working, key, mpd.distance, distantDistance)
                     updated = updated + 1
-                    needSearch[key] = nil
+                    ClearNeedSearch(needSearch, key)
                     needSearchCount = needSearchCount - 1
                 end
             end
@@ -219,10 +248,21 @@ function UnitFramesScenario.TickDistanceScan(groups, opts)
         end
     end
 
-    -- After a full 511 wrap, missing pips have no distance (pre-1.3.0: not dimmed).
+    -- Drop unmatched keys only after Pass B has covered a full 1..511 cycle
+    -- since that key was queued (cursor may be mid-range when a pip goes stale).
     if wrapped then
         for key in pairs(needSearch) do
-            working[key] = nil
+            local startSweep = tonumber(m_searchStartSweep[key]) or m_sweepId
+            local startCursor = tonumber(m_searchStartCursor[key]) or 1
+            local wrapsNeeded = 1
+            if startCursor > 1 then
+                wrapsNeeded = 2
+            end
+            if (m_sweepId - startSweep) >= wrapsNeeded then
+                working[key] = nil
+                m_searchStartSweep[key] = nil
+                m_searchStartCursor[key] = nil
+            end
         end
         m_drainActive = false
     elseif needSearchCount == 0 then

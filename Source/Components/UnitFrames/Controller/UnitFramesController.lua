@@ -2569,9 +2569,9 @@ function UnitFrames.Update(elapsedTime)
         end
     else
         m_scenarioDistancePollElapsed = 0
-        m_scenarioDistanceByKey = {}
         if m_wasScenarioDistanceMode then
             m_wasScenarioDistanceMode = false
+            m_scenarioDistanceByKey = {}
             if type(UnitFramesScenario.ResetDistanceScan) == "function" then
                 UnitFramesScenario.ResetDistanceScan()
             end

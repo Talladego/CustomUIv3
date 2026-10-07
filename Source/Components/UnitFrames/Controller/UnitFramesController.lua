@@ -2491,25 +2491,36 @@ local function EnsureArchtypePacketListener()
         return
     end
 
-    if type(ror_PacketHandling) == "table" and type(ror_PacketHandling.Register) == "function" then
-        m_grpStatsPacketCallback = OnGrpStatsPacket
-        ror_PacketHandling.Register("GRP_STATS", m_grpStatsPacketCallback)
+    -- Stock RoRGroupScoreboard already registers GRP_STATS. Prefer wrapping its
+    -- Packet so exclusive ror_PacketHandling.Register builds do not ERROR with
+    -- "GRP_STATS is already registered by another addon".
+    if type(RoRGroupScoreboard) == "table" and type(RoRGroupScoreboard.Packet) == "function" then
+        m_stockRoRGroupScoreboardPacket = RoRGroupScoreboard.Packet
+        g_rorGroupScoreboardPacketWrapper = function(text)
+            m_stockRoRGroupScoreboardPacket(text)
+            OnGrpStatsPacket(text)
+        end
+        RoRGroupScoreboard.Packet = g_rorGroupScoreboardPacketWrapper
         if type(UnitFramesArchetypes.SyncCacheFromScoreboard) == "function" then
             UnitFramesArchetypes.SyncCacheFromScoreboard()
         end
         return
     end
 
-    if type(RoRGroupScoreboard) == "table" and type(RoRGroupScoreboard.Packet) == "function" then
-        m_stockRoRGroupScoreboardPacket = RoRGroupScoreboard.Packet
-        g_rorGroupScoreboardPacketWrapper = function(text)
-            m_stockRoRGroupScoreboardPacket(text)
-            RefreshUnitFramesArchetypeColors()
-        end
-        RoRGroupScoreboard.Packet = g_rorGroupScoreboardPacketWrapper
-        if type(UnitFramesArchetypes.SyncCacheFromScoreboard) == "function" then
-            UnitFramesArchetypes.SyncCacheFromScoreboard()
-        end
+    if type(ror_PacketHandling) ~= "table" or type(ror_PacketHandling.Register) ~= "function" then
+        return
+    end
+
+    -- Skip Register when the phrase is already owned (exclusive Register).
+    local existing = ror_PacketHandling.RP and ror_PacketHandling.RP["GRP_STATS"]
+    if type(existing) == "table" and next(existing) ~= nil then
+        return
+    end
+
+    m_grpStatsPacketCallback = OnGrpStatsPacket
+    ror_PacketHandling.Register("GRP_STATS", m_grpStatsPacketCallback)
+    if type(UnitFramesArchetypes.SyncCacheFromScoreboard) == "function" then
+        UnitFramesArchetypes.SyncCacheFromScoreboard()
     end
 end
 

@@ -337,9 +337,7 @@ end
 local function ScenarioDistantFlagsChanged(oldMap, newMap)
     oldMap = oldMap or {}
     newMap = newMap or {}
-    local seen = {}
     for key, info in pairs(newMap) do
-        seen[key] = true
         local oldDistant = oldMap[key] ~= nil and oldMap[key].isDistant == true
         local newDistant = info ~= nil and info.isDistant == true
         if oldDistant ~= newDistant then
@@ -347,7 +345,7 @@ local function ScenarioDistantFlagsChanged(oldMap, newMap)
         end
     end
     for key, info in pairs(oldMap) do
-        if not seen[key] and info ~= nil and info.isDistant == true then
+        if newMap[key] == nil and info ~= nil and info.isDistant == true then
             return true
         end
     end

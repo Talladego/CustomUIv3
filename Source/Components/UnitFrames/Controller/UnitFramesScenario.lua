@@ -88,6 +88,9 @@ end
 function UnitFramesScenario.KickDistanceScan()
     m_drainActive = true
     m_scanCursor = 1
+    -- Pending keys re-queue at cursor 1 on the next Pass A miss so wrapsNeeded=1.
+    m_searchStartSweep = {}
+    m_searchStartCursor = {}
 end
 
 function UnitFramesScenario.IsDistanceSweepActive()

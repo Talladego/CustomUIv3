@@ -299,10 +299,8 @@ local m_enabled = false
 local m_windowsInitialized = false
 local SafeLayoutUserShow
 local SafeLayoutUserHide
-local m_stockOnMenuClickSetBackgroundOpacity = nil
 local m_stockOnOpacitySlide = nil
 local m_stockRoRGroupScoreboardPacket = nil
-local g_onMenuClickSetBackgroundOpacityWrapper = nil
 local g_onOpacitySlideWrapper = nil
 local g_rorGroupScoreboardPacketWrapper = nil
 -- When a later addon wraps on top of ours, teardown must not nil stock upvalues
@@ -2568,70 +2566,56 @@ local function RemoveArchtypePacketListener()
 end
 
 local function EnsureBgHudOpacityHooks()
-    if m_stockOnMenuClickSetBackgroundOpacity ~= nil or m_stockOnOpacitySlide ~= nil then
+    -- Already wrapped (including orphaned pass-through after a later addon wrapped).
+    if m_stockOnOpacitySlide ~= nil and g_onOpacitySlideWrapper ~= nil then
         m_bgHudHookActive = true
         return
     end
 
-    if type(BattlegroupHUD) ~= "table" then
+    if type(BattlegroupHUD) ~= "table"
+        or type(BattlegroupHUD.OnOpacitySlide) ~= "function"
+    then
         return
     end
 
-    if type(BattlegroupHUD.OnMenuClickSetBackgroundOpacity) == "function" then
-        m_stockOnMenuClickSetBackgroundOpacity = BattlegroupHUD.OnMenuClickSetBackgroundOpacity
-        g_onMenuClickSetBackgroundOpacityWrapper = function()
-            local nextFn = m_stockOnMenuClickSetBackgroundOpacity
-            if type(nextFn) == "function" then
-                nextFn()
+    -- Only OnOpacitySlide carries CustomUI behavior. Do not wrap
+    -- OnMenuClickSetBackgroundOpacity (it was a pure pass-through and made
+    -- Enable/Disable half-install possible when paired with a combined early-return).
+    m_stockOnOpacitySlide = BattlegroupHUD.OnOpacitySlide
+    g_onOpacitySlideWrapper = function(slidePos)
+        if m_bgHudHookActive then
+            local contextWindow = BattlegroupHUD.contextMenuOpenedFrom
+            if IsUnitFramesMemberWindowName(contextWindow) then
+                local resolvedAlpha = ClampAlpha(slidePos)
+                UnitFrames.WindowSettings.backgroundAlpha = resolvedAlpha
+                SetUnitFramesBackgroundAlpha(resolvedAlpha)
+                return
             end
         end
-        BattlegroupHUD.OnMenuClickSetBackgroundOpacity = g_onMenuClickSetBackgroundOpacityWrapper
-    end
-
-    if type(BattlegroupHUD.OnOpacitySlide) == "function" then
-        m_stockOnOpacitySlide = BattlegroupHUD.OnOpacitySlide
-        g_onOpacitySlideWrapper = function(slidePos)
-            if m_bgHudHookActive then
-                local contextWindow = BattlegroupHUD.contextMenuOpenedFrom
-                if IsUnitFramesMemberWindowName(contextWindow) then
-                    local resolvedAlpha = ClampAlpha(slidePos)
-                    UnitFrames.WindowSettings.backgroundAlpha = resolvedAlpha
-                    SetUnitFramesBackgroundAlpha(resolvedAlpha)
-                    return
-                end
-            end
-            local nextFn = m_stockOnOpacitySlide
-            if type(nextFn) == "function" then
-                nextFn(slidePos)
-            end
+        local nextFn = m_stockOnOpacitySlide
+        if type(nextFn) == "function" then
+            nextFn(slidePos)
         end
-        BattlegroupHUD.OnOpacitySlide = g_onOpacitySlideWrapper
     end
-
+    BattlegroupHUD.OnOpacitySlide = g_onOpacitySlideWrapper
     m_bgHudHookActive = true
 end
 
 local function TearDownBgHudOpacityHooks()
     m_bgHudHookActive = false
 
-    if m_stockOnMenuClickSetBackgroundOpacity ~= nil then
-        if type(BattlegroupHUD) == "table"
-            and BattlegroupHUD.OnMenuClickSetBackgroundOpacity == g_onMenuClickSetBackgroundOpacityWrapper
-        then
-            BattlegroupHUD.OnMenuClickSetBackgroundOpacity = m_stockOnMenuClickSetBackgroundOpacity
-            m_stockOnMenuClickSetBackgroundOpacity = nil
-            g_onMenuClickSetBackgroundOpacityWrapper = nil
-        end
+    if m_stockOnOpacitySlide == nil then
+        return
     end
 
-    if m_stockOnOpacitySlide ~= nil then
-        if type(BattlegroupHUD) == "table"
-            and BattlegroupHUD.OnOpacitySlide == g_onOpacitySlideWrapper
-        then
-            BattlegroupHUD.OnOpacitySlide = m_stockOnOpacitySlide
-            m_stockOnOpacitySlide = nil
-            g_onOpacitySlideWrapper = nil
-        end
+    -- Only restore if our wrapper is still installed. If a later addon wrapped
+    -- on top, leave ours as a pass-through and keep the captured original.
+    if type(BattlegroupHUD) == "table"
+        and BattlegroupHUD.OnOpacitySlide == g_onOpacitySlideWrapper
+    then
+        BattlegroupHUD.OnOpacitySlide = m_stockOnOpacitySlide
+        m_stockOnOpacitySlide = nil
+        g_onOpacitySlideWrapper = nil
     end
 end
 

@@ -51,7 +51,7 @@ end
 CustomUI.Name = "CustomUI"
 -- Semver (MAJOR.MINOR.PATCH), matching RedAlert / ScenarioBalance / DungeonCoach.
 -- One addon version for the whole modular package; components are toggles, not separately versioned releases.
-CustomUI.Version = "1.3.6"
+CustomUI.Version = "1.3.7"
 CustomUI.SlashCommands = CustomUI.SlashCommands or { "customui", "cui" }
 CustomUI.Components = CustomUI.Components or {}
 CustomUI.ComponentOrder = CustomUI.ComponentOrder or {}
@@ -664,37 +664,6 @@ local function GetMacroSlots(macroId)
     return slots
 end
 
-local function IsFollowLeaderMacroSlot(slot)
-    if type(slot) ~= "number" then
-        return false
-    end
-
-    local slots = CustomUI.FollowLeader.trackedSlots or {}
-    for i = 1, #slots do
-        if slots[i] == slot then
-            return true
-        end
-    end
-
-    local macroId = GetMacroId(CustomUI.FollowLeader.macroName)
-    if not macroId then
-        return false
-    end
-
-    slots = GetMacroSlots(macroId)
-    if #slots > 0 then
-        CustomUI.FollowLeader.trackedSlots = slots
-    end
-
-    for i = 1, #slots do
-        if slots[i] == slot then
-            return true
-        end
-    end
-
-    return false
-end
-
 local function InstallFollowLeaderActionHook()
     if m_stockActionButtonOnLButtonUp ~= nil then
         return
@@ -705,8 +674,16 @@ local function InstallFollowLeaderActionHook()
 
     m_stockActionButtonOnLButtonUp = ActionButton.OnLButtonUp
     g_followActionButtonOnLButtonUpWrapper = function(self, flags, x, y)
-        local shouldFollowOnClick = self and type(self.GetSlot) == "function" and not Cursor.IconOnCursor()
-            and IsFollowLeaderMacroSlot(self:GetSlot())
+        -- Field reads only, then a tail call: the client drops /assist from a
+        -- hotbar macro if addon code calls a Lua function while the click is
+        -- handled.
+        if not self
+            or self.m_ActionType ~= GameData.PlayerActions.DO_MACRO
+            or self.m_ActionId ~= CustomUI.FollowLeader.macroId
+            or Cursor.Data ~= nil
+        then
+            return m_stockActionButtonOnLButtonUp(self, flags, x, y)
+        end
 
         local ok, r1, r2, r3, r4, r5 = CustomUI.TryCall(
             "ActionButton.OnLButtonUp",
@@ -717,9 +694,7 @@ local function InstallFollowLeaderActionHook()
             y
         )
 
-        if shouldFollowOnClick then
-            SendChatText(L"/follow ", L"")
-        end
+        SendChatText(L"/follow ", L"")
 
         if not ok then
             return
@@ -746,6 +721,7 @@ end
 
 local function ApplyFollowLeaderActionToMacroSlots(macroName, leaderName)
     local macroId = GetMacroId(macroName)
+    CustomUI.FollowLeader.macroId = macroId
     if not macroId then
         CustomUI.FollowLeader.trackedSlots = {}
         return
@@ -842,6 +818,10 @@ function CustomUI.OnFollowLeaderStateChanged()
     CustomUI.RefreshFollowLeaderMacro()
 end
 
+function CustomUI.OnFollowLeaderMacrosChanged()
+    CustomUI.FollowLeader.macroId = GetMacroId(CustomUI.FollowLeader.macroName)
+end
+
 function CustomUI.RegisterFollowLeaderHandlers()
     if CustomUI.FollowLeader.handlersRegistered then
         return
@@ -855,6 +835,8 @@ function CustomUI.RegisterFollowLeaderHandlers()
     RegisterEventHandler(SystemData.Events.GROUP_SETTINGS_UPDATED,             "CustomUI.OnFollowLeaderStateChanged")
     RegisterEventHandler(SystemData.Events.GROUP_LEAVE,                        "CustomUI.OnFollowLeaderStateChanged")
     RegisterEventHandler(SystemData.Events.BATTLEGROUP_UPDATED,                "CustomUI.OnFollowLeaderStateChanged")
+    RegisterEventHandler(SystemData.Events.MACROS_LOADED,                      "CustomUI.OnFollowLeaderMacrosChanged")
+    RegisterEventHandler(SystemData.Events.MACRO_UPDATED,                      "CustomUI.OnFollowLeaderMacrosChanged")
 
     InstallFollowLeaderActionHook()
 
@@ -874,6 +856,8 @@ function CustomUI.UnregisterFollowLeaderHandlers()
     UnregisterEventHandler(SystemData.Events.GROUP_SETTINGS_UPDATED,             "CustomUI.OnFollowLeaderStateChanged")
     UnregisterEventHandler(SystemData.Events.GROUP_LEAVE,                        "CustomUI.OnFollowLeaderStateChanged")
     UnregisterEventHandler(SystemData.Events.BATTLEGROUP_UPDATED,                "CustomUI.OnFollowLeaderStateChanged")
+    UnregisterEventHandler(SystemData.Events.MACROS_LOADED,                      "CustomUI.OnFollowLeaderMacrosChanged")
+    UnregisterEventHandler(SystemData.Events.MACRO_UPDATED,                      "CustomUI.OnFollowLeaderMacrosChanged")
 
     RestoreFollowLeaderActionHook()
 

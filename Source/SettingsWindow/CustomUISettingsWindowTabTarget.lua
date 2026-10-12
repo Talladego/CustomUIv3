@@ -5,6 +5,7 @@ CustomUISettingsWindowTabTarget.contentsName = "SWTabTargetContentsScrollChild"
 local BADGE_CHECKBOX_KEYS = {
     BadgesCareer = "career",
     BadgesRank   = "rank",
+    BadgesRenown = "renown",
 }
 
 local function InitBuffTrackerSection(prefix)
@@ -58,6 +59,8 @@ function CustomUISettingsWindowTabTarget.Initialize()
     ButtonSetCheckButtonFlag(badges .. "CareerButton", true)
     LabelSetText(badges .. "RankLabel", L"Rank Badge")
     ButtonSetCheckButtonFlag(badges .. "RankButton", true)
+    LabelSetText(badges .. "RenownLabel", L"Renown Badge")
+    ButtonSetCheckButtonFlag(badges .. "RenownButton", true)
 
     local btH = CustomUISettingsWindowTabTarget.contentsName .. "BuffTrackerHostile"
     local btF = CustomUISettingsWindowTabTarget.contentsName .. "BuffTrackerFriendly"
@@ -74,6 +77,7 @@ function CustomUISettingsWindowTabTarget.UpdateSettings()
     local badges = CustomUISettingsWindowTabTarget.contentsName .. "Badges"
     ButtonSetPressedFlag(badges .. "CareerButton", badgeCfg.career ~= false)
     ButtonSetPressedFlag(badges .. "RankButton", badgeCfg.rank ~= false)
+    ButtonSetPressedFlag(badges .. "RenownButton", badgeCfg.renown ~= false)
 
     local btH = CustomUISettingsWindowTabTarget.contentsName .. "BuffTrackerHostile"
     local btF = CustomUISettingsWindowTabTarget.contentsName .. "BuffTrackerFriendly"

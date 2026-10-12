@@ -9,6 +9,18 @@
             <Color r="255" g="255" b="255" a="255" />
         </Label>
 
+        <!-- Renown rank badge templates (created under each TargetFrame at runtime). -->
+        <DynamicImage name="CustomUITargetRenownRankBackground" inherits="LevelBackgroundTemplate" handleinput="false" popable="false" layer="secondary">
+            <Size>
+                <AbsPoint x="31" y="32" />
+            </Size>
+        </DynamicImage>
+        <Label name="CustomUITargetRenownRankText" font="font_heading_rank" maxchars="3" textalign="center" autoresize="false" warnOnTextCropped="false" popable="false" layer="popup">
+            <Size>
+                <AbsPoint x="31" y="32" />
+            </Size>
+        </Label>
+
         <Window name="CustomUITargetWindowTemplate" inherits="TargetUnitFrameAnchor" movable="false" savesettings="true">
             <EventHandlers>
                 <EventHandler event="OnShutdown" function="CustomUI.TargetWindow.OnShutdown" />

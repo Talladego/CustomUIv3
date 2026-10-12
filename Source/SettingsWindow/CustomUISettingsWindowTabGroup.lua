@@ -15,6 +15,7 @@ local BUFF_CHECKBOX_KEYS = {
 local BADGE_CHECKBOX_KEYS = {
     BadgesCareer = "career",
     BadgesRank   = "rank",
+    BadgesRenown = "renown",
 }
 
 function CustomUISettingsWindowTabGroup.Initialize()
@@ -28,6 +29,8 @@ function CustomUISettingsWindowTabGroup.Initialize()
     ButtonSetCheckButtonFlag( badges.."CareerButton", true )
     LabelSetText( badges.."RankLabel", L"Rank Badge" )
     ButtonSetCheckButtonFlag( badges.."RankButton", true )
+    LabelSetText( badges.."RenownLabel", L"Renown Badge" )
+    ButtonSetCheckButtonFlag( badges.."RenownButton", true )
 
     local bt = CustomUISettingsWindowTabGroup.contentsName.."BuffTracker"
     LabelSetText( bt.."Title", L"Buff Tracker" )
@@ -57,6 +60,7 @@ function CustomUISettingsWindowTabGroup.UpdateSettings()
     local badges = CustomUISettingsWindowTabGroup.contentsName.."Badges"
     ButtonSetPressedFlag( badges.."CareerButton", badgeCfg.career ~= false )
     ButtonSetPressedFlag( badges.."RankButton",   badgeCfg.rank ~= false )
+    ButtonSetPressedFlag( badges.."RenownButton", badgeCfg.renown ~= false )
 
     local bt  = CustomUISettingsWindowTabGroup.contentsName.."BuffTracker"
     local cfg = CustomUI.GroupWindow.GetSettings().buffs

@@ -289,7 +289,7 @@
                         <EventHandler event="OnMouseOver" function="CustomUI.PlayerStatusWindow.MouseOverRenownRank" />
                     </EventHandlers>
                 </DynamicImage>
-                <Label name="$parentRenownRankText" font="font_heading_rank" maxchars="10" textalign="center" autoresize="false" warnOnTextCropped="false" popable="false" layer="popup">
+                <Label name="$parentRenownRankText" font="font_heading_rank" maxchars="3" textalign="center" autoresize="false" warnOnTextCropped="false" popable="false" layer="popup">
                     <Size>
                         <AbsPoint x="31" y="32" />
                     </Size>

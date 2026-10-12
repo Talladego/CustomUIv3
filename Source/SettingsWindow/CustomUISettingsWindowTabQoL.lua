@@ -145,6 +145,13 @@ function CustomUISettingsWindowTabQoL.Initialize()
     LabelSetText(c .. "UiSoundTitle", L"UI Sound")
     LabelSetText(c .. "UiSoundMuteButtonClickLabel", L"Mute button click sound")
     LabelSetText(c .. "UiSoundInfo", L"Disables the standard UI button click sound while QoL is enabled.")
+    LabelSetText(c .. "MacroWindowTitle", L"Macro Window")
+    LabelSetText(c .. "MacroWindowEnabledLabel", L"Enabled")
+    LabelSetText(
+        c .. "MacroWindowInfo",
+        L"Larger movable Macros editor with paged icons and Delete. Disable bigger_macrowindow and MacroIcons while enabled. Open from Main Menu > Macros."
+    )
+    ButtonSetCheckButtonFlag(c .. "MacroWindowEnabledButton", true)
     SyncCombos()
     FillDaysEdit(c .. "AltTrackerPruneDaysEdit", EnsureQoLSettings().altTracker.pruneStaleDays)
 end
@@ -165,6 +172,9 @@ function CustomUISettingsWindowTabQoL.UpdateSettings()
     ButtonSetPressedFlag(c .. "AltTrackerIncludeBankButton", s.altTracker.includeBank == true)
     ButtonSetPressedFlag(c .. "AltTrackerCrossFactionButton", s.altTracker.showCrossFaction == true)
     ButtonSetPressedFlag(c .. "UiSoundMuteButtonClickButton", s.muteButtonClickSound == true)
+    if type(CustomUI.IsComponentEnabled) == "function" then
+        ButtonSetPressedFlag(c .. "MacroWindowEnabledButton", CustomUI.IsComponentEnabled("MacroWindow") == true)
+    end
     FillDaysEdit(c .. "AltTrackerPruneDaysEdit", s.altTracker.pruneStaleDays)
     SyncCombos()
 end
@@ -197,6 +207,7 @@ function CustomUISettingsWindowTabQoL.ApplyCurrent()
         if not CustomUI.IsComponentEnabled("QoL") then
             CustomUI.SetComponentEnabled("QoL", true)
         end
+        CustomUI.SetComponentEnabled("MacroWindow", ButtonGetPressedFlag(c .. "MacroWindowEnabledButton") == true)
     end
     ApplyQoLSettings()
 end
@@ -253,6 +264,10 @@ function CustomUISettingsWindowTabQoL.OnToggleAltTrackerCrossFaction()
 end
 
 function CustomUISettingsWindowTabQoL.OnToggleMuteButtonClick()
+    EA_LabelCheckButton.Toggle()
+end
+
+function CustomUISettingsWindowTabQoL.OnToggleMacroWindow()
     EA_LabelCheckButton.Toggle()
 end
 

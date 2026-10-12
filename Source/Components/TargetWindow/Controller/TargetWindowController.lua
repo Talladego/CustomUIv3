@@ -752,6 +752,10 @@ function CustomUI.TargetWindow.GetSettings()
     if v.badges.rank == nil then
         v.badges.rank = true
     end
+    if v.badges.renown == nil then
+        -- Default on when LibQuery is present; still harmless (badge hidden) without it.
+        v.badges.renown = true
+    end
     return v
 end
 

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ModuleFile xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-    <UiMod name="CustomUI" version="1.3.9" date="2026-10-12">
+    <UiMod name="CustomUI" version="1.4.6" date="2026-10-12">
         <Author name="Talladego" email="" />
         <Description text="Modular Return of Reckoning UI replacement with built-in settings window (/cui), component toggles, and shared systems." />
         <VersionSettings gameVersion="1.4.8" windowsVersion="1.0" savedVariablesVersion="1.0" />
@@ -58,6 +58,12 @@
             <!-- QoL AltTracker: backpack money frame + inventory events -->
             <Dependency name="EA_BackpackWindow" />
             <Dependency name="EASystem_ResourceFrames" />
+            <!-- MacroWindow: stock macros UI + SetMacroData / GetMacrosData -->
+            <Dependency name="EA_MacroWindow" />
+            <!-- MacroWindow Delete confirm dialog -->
+            <Dependency name="EASystem_DialogManager" optional="true" />
+            <!-- TargetWindow renown badge: GraphQL character.renownRank via libquery_worker -->
+            <Dependency name="LibQuery" optional="true" />
         </Dependencies>
         <Files>
             <File name="Source/CustomUI.lua" />
@@ -72,6 +78,7 @@
             <File name="Source/Shared/BuffTracker/BuffLists.lua" />
             <File name="Source/Shared/BuffTracker/BuffFilterDefaults.lua" />
             <File name="Source/Shared/TargetPresence.lua" />
+            <File name="Source/Shared/TargetRenownLookup.lua" />
             <File name="Source/Shared/PortraitCareerBadge.lua" />
             <File name="Source/Shared/PortraitInfluenceTrack.lua" />
             <File name="Source/Shared/StockProgressBars.lua" />
@@ -142,6 +149,9 @@
             <File name="Source/Components/QoL/Controller/QoLController.lua" />
             <File name="Source/Components/QoL/View/QoLRedAlert.xml" />
             <File name="Source/Components/QoL/View/QoLDriver.xml" />
+            <!-- MacroWindow component -->
+            <File name="Source/Components/MacroWindow/Controller/MacroWindowController.lua" />
+            <File name="Source/Components/MacroWindow/View/MacroWindow.xml" />
             <!-- Settings window (merged; was CustomUISettingsWindow addon) -->
             <File name="Source/SettingsWindow/CustomUISettingsWindowTemplates.xml" />
             <File name="Source/SettingsWindow/CustomUISettingsWindowTabPlayer.xml" />

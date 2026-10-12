@@ -76,6 +76,8 @@ local m_fadeOutAnimationDelay    = {}
 local m_isFadeIn                 = {}
 local m_isMouseOverMember        = {}
 local m_memberHealthTextLayoutApplied = {}
+-- Per-slot LibQuery renown query name (stale-callback guard); nil when hidden/cleared.
+local m_memberRenownQueryName    = {}
 local m_statusPollElapsed        = 0
 local m_containerShown           = false
 
@@ -264,6 +266,14 @@ end
 
 local function MemberLevelBackgroundName(index)
     return MemberRowName(index) .. "LevelBackground"
+end
+
+local function MemberRenownRankBackgroundName(index)
+    return MemberRowName(index) .. "RenownRankBackground"
+end
+
+local function MemberRenownRankTextName(index)
+    return MemberRowName(index) .. "RenownRankText"
 end
 
 local function MemberPortraitFrameName(index)
@@ -775,6 +785,137 @@ local function LayoutMemberRankBadge(index)
     Badge.LayoutTargetRankBadge(levelBg, portraitFrame, true)
 end
 
+-- Renown opposite career rank (bottom-right on group portraits).
+local function EnsureMemberRenownBadgeWindows(index)
+    local rowWindow = MemberRowName(index)
+    local bgName = MemberRenownRankBackgroundName(index)
+    local textName = MemberRenownRankTextName(index)
+    if not DoesWindowExist(bgName) then
+        CreateWindowFromTemplate(bgName, "CustomUITargetRenownRankBackground", rowWindow)
+    end
+    if not DoesWindowExist(textName) then
+        CreateWindowFromTemplate(textName, "CustomUITargetRenownRankText", rowWindow)
+    end
+    if DoesWindowExist(textName) and DoesWindowExist(bgName) then
+        WindowClearAnchors(textName)
+        WindowAddAnchor(textName, "center", bgName, "center", -1, 0)
+        if type(WindowSetLayer) == "function" and Window.Layers then
+            WindowSetLayer(textName, Window.Layers.POPUP)
+        end
+    end
+end
+
+local function LayoutMemberRenownBadge(index)
+    local Badge = CustomUI.PortraitCareerBadge
+    local portraitFrame = MemberPortraitFrameName(index)
+    local renownBg = MemberRenownRankBackgroundName(index)
+    EnsureMemberRenownBadgeWindows(index)
+    if Badge == nil
+        or type(Badge.LayoutTargetRenownBadge) ~= "function"
+        or not DoesWindowExist(renownBg)
+        or not DoesWindowExist(portraitFrame)
+    then
+        return
+    end
+    Badge.LayoutTargetRenownBadge(renownBg, portraitFrame, true)
+end
+
+local function SetMemberRenownRankShowing(index, showing)
+    local bg = MemberRenownRankBackgroundName(index)
+    local text = MemberRenownRankTextName(index)
+    if DoesWindowExist(bg) then
+        WindowSetShowing(bg, showing)
+    end
+    if DoesWindowExist(text) then
+        WindowSetShowing(text, showing)
+    end
+end
+
+local function UpdateMemberRenownRank(index, rank)
+    if not CustomUI.GroupWindow.IsBadgeEnabled("renown") then
+        SetMemberRenownRankShowing(index, false)
+        return
+    end
+    rank = tonumber(rank)
+    if rank == nil then
+        SetMemberRenownRankShowing(index, false)
+        return
+    end
+
+    EnsureMemberRenownBadgeWindows(index)
+    LayoutMemberRenownBadge(index)
+
+    local textWin = MemberRenownRankTextName(index)
+    local bgWin = MemberRenownRankBackgroundName(index)
+    if not DoesWindowExist(textWin) or not DoesWindowExist(bgWin) then
+        return
+    end
+
+    local color = (DefaultColor and DefaultColor.COLOR_RENOWN_GAIN)
+        or (DefaultColor and DefaultColor.PURPLE)
+        or { r = 194, g = 56, b = 153 }
+    local Badge = CustomUI.PortraitCareerBadge
+    if Badge and type(Badge.ApplyRingNumberText) == "function" then
+        Badge.ApplyRingNumberText(textWin, bgWin, rank, color, MemberRowName(index))
+    else
+        LabelSetText(textWin, L"" .. rank)
+        LabelSetTextColor(textWin, color.r, color.g, color.b)
+        LabelSetTextAlign(textWin, "center")
+    end
+    SetMemberRenownRankShowing(index, true)
+end
+
+local function SyncMemberRenownLookup(index, member)
+    if not CustomUI.GroupWindow.IsBadgeEnabled("renown") or member == nil then
+        m_memberRenownQueryName[index] = nil
+        SetMemberRenownRankShowing(index, false)
+        return
+    end
+
+    local Lookup = CustomUI.TargetRenownLookup
+    local rawName = member.name
+
+    -- Self: local renown, no GraphQL.
+    if GameData
+        and GameData.Player
+        and GameData.Player.name ~= nil
+        and rawName ~= nil
+        and rawName == GameData.Player.name
+    then
+        local renown = GameData.Player.Renown
+        local rank = renown and tonumber(renown.curRank) or nil
+        m_memberRenownQueryName[index] = nil
+        UpdateMemberRenownRank(index, rank)
+        return
+    end
+
+    if type(Lookup) ~= "table" or type(Lookup.Request) ~= "function" then
+        m_memberRenownQueryName[index] = nil
+        SetMemberRenownRankShowing(index, false)
+        return
+    end
+
+    local queryName = Lookup.FormatQueryName and Lookup.FormatQueryName(rawName) or nil
+    m_memberRenownQueryName[index] = queryName
+    if queryName == nil or queryName == "" then
+        UpdateMemberRenownRank(index, nil)
+        return
+    end
+
+    local cached = Lookup.GetCachedRank and Lookup.GetCachedRank(queryName) or nil
+    UpdateMemberRenownRank(index, cached)
+
+    Lookup.Request(nil, index, rawName, function(rank, meta)
+        if meta == nil then
+            return
+        end
+        if m_memberRenownQueryName[index] ~= meta.queryName then
+            return
+        end
+        UpdateMemberRenownRank(index, rank)
+    end)
+end
+
 local function ApplyMemberCareerIconLayoutOverride(index)
     local rowWindow = MemberRowName(index)
     local portraitFrame = MemberPortraitFrameName(index)
@@ -794,6 +935,9 @@ local function ApplyMemberCareerIconLayoutOverride(index)
     Badge.EnsureBackgroundTopLeft(careerBg, rowWindow, portraitFrame)
     Badge.LayoutIcon(careerIcon, careerBg)
     LayoutMemberRankBadge(index)
+    EnsureMemberRenownBadgeWindows(index)
+    LayoutMemberRenownBadge(index)
+    SetMemberRenownRankShowing(index, false)
 
     WindowSetDimensions(nameLabel, c_MEMBER_NAME_WIDTH, c_MEMBER_NAME_HEIGHT)
     WindowClearAnchors(nameLabel)
@@ -831,6 +975,8 @@ local function UpdateMemberRow(index)
         WindowSetShowing(rowWindow, false)
         m_isMouseOverMember[index] = false
         SetMemberRvrIndicatorShowing(index, false)
+        m_memberRenownQueryName[index] = nil
+        SetMemberRenownRankShowing(index, false)
         ResetMemberBuffs(index)
         return
     end
@@ -941,6 +1087,8 @@ local function UpdateMemberRow(index)
         WindowSetShowing(careerIcon, false)
         WindowSetShowing(careerBg, false)
     end
+
+    SyncMemberRenownLookup(index, member)
 
     if moraleLevel >= 1 and moraleLevel <= 4 then
         DynamicImageSetTextureSlice(moraleMini, c_MORALE_SLICE_BY_LEVEL[moraleLevel])
@@ -1455,6 +1603,9 @@ function CustomUI.GroupWindow.GetSettings()
     end
     if v.badges.rank == nil then
         v.badges.rank = true
+    end
+    if v.badges.renown == nil then
+        v.badges.renown = true
     end
     return v
 end

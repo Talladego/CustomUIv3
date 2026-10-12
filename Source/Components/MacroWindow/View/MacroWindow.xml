@@ -1,0 +1,912 @@
+<Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../Interface.xsd">
+<Windows>
+
+        <Button name="CustomUIMacroWindowIconButton" inherits="DefaultIconButton">
+            <EventHandlers>
+                <EventHandler event="OnMouseDrag" function="CustomUI.MacroWindow.IconMouseDrag" />
+                <EventHandler event="OnLButtonUp" function="CustomUI.MacroWindow.IconLButtonUp" />
+                <EventHandler event="OnRButtonDown" function="CustomUI.MacroWindow.IconRButtonDown" />
+                <EventHandler event="OnMouseOver" function="CustomUI.MacroWindow.IconMouseOver" />
+            </EventHandlers>
+        </Button>
+
+        <Button name="CustomUIMacroWindowDetailIconButton" inherits="DefaultIconButton">
+            <EventHandlers>
+                <EventHandler event="OnLButtonDown" function="CustomUI.MacroWindow.DetailIconLButtonDown" />
+                <EventHandler event="OnLButtonUp" function="CustomUI.MacroWindow.DetailIconLButtonUp" />
+                <EventHandler event="OnRButtonDown" function="CustomUI.MacroWindow.DetailIconRButtonDown" />
+                <EventHandler event="OnMouseOver" function="CustomUI.MacroWindow.DetailIconMouseOver" />
+            </EventHandlers>
+        </Button>
+
+        <Button name="CustomUIMacroIconSelectionWindowIconButton" inherits="DefaultIconButton">
+            <EventHandlers>
+                <EventHandler event="OnLButtonDown" function="CustomUI.MacroWindow.SelectionIconLButtonDown" />
+                <EventHandler event="OnLButtonUp" function="CustomUI.MacroWindow.SelectionIconLButtonUp" />
+                <EventHandler event="OnRButtonDown" function="CustomUI.MacroWindow.SelectionIconRButtonDown" />
+                <EventHandler event="OnMouseOver" function="CustomUI.MacroWindow.SelectionIconMouseOver" />
+                <EventHandler event="OnMouseWheel" function="CustomUI.MacroWindow.IconMouseWheel" />
+            </EventHandlers>
+        </Button>
+
+        <Window name="CustomUIMacroIconSelectionWindow" movable="false" layer="popup">
+            <Size>
+                <AbsPoint x="422" y="460" /> <!-- was 230 -->
+            </Size>
+            <Anchors>
+                <Anchor point="topright" relativePoint="topleft" relativeTo="CustomUIMacroWindow">
+                    <AbsPoint x="0" y="0" />
+                </Anchor>
+            </Anchors>
+            <EventHandlers>
+                <EventHandler event="OnMouseWheel" function="CustomUI.MacroWindow.IconMouseWheel" />
+            </EventHandlers>
+            <Windows>
+
+                <Window name="$parentBackground" inherits="EA_Window_DefaultBackgroundFrame" />
+                <Window name="$parentTitleBar" inherits="EA_TitleBar_Default" />
+                <Button name="$parentClose" inherits="EA_Button_DefaultWindowClose" >
+                    <EventHandlers>
+                        <EventHandler event="OnLButtonUp" function="CustomUI.MacroWindow.HideIconSelectionWindow" />
+                    </EventHandlers>
+                </Button>
+
+                <!-- Page scrollbar (MacroIcons-style); stock scroll-area bar stays hidden. -->
+                <VerticalScrollbar name="CustomUIMacroIconsScrollBar" inherits="EA_ScrollBar_ChatVertical" layer="popup">
+                    <Size>
+                        <AbsPoint x="22" y="0" />
+                    </Size>
+                    <EventHandlers>
+                        <EventHandler event="OnScrollPosChanged" function="CustomUI.MacroWindow.IconScrollPos" />
+                        <EventHandler event="OnMouseWheel" function="CustomUI.MacroWindow.IconMouseWheel" />
+                    </EventHandlers>
+                    <Anchors>
+                        <Anchor point="topright" relativePoint="topright" relativeTo="$parent">
+                            <AbsPoint x="-8" y="40" />
+                        </Anchor>
+                        <Anchor point="bottomright" relativePoint="bottomright" relativeTo="$parent">
+                            <AbsPoint x="-8" y="-12" />
+                        </Anchor>
+                    </Anchors>
+                </VerticalScrollbar>
+
+                <ScrollWindow name="CustomUIMacroPickerIcons" childscrollwindow="CustomUIMacroPickerIconsScrollChild" scrollbar="CustomUIMacroPickerIconsScrollbar" lineheight="55">
+                    <Size>
+                        <AbsPoint x="360" y="405" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentTitleBar">
+                            <AbsPoint x="12" y="6" />
+                        </Anchor>
+                    </Anchors>
+                    <EventHandlers>
+                        <EventHandler event="OnMouseWheel" function="CustomUI.MacroWindow.IconMouseWheel" />
+                    </EventHandlers>
+                    <Windows>
+
+                        <VerticalScrollbar name="$parentScrollbar" inherits="EA_ScrollBar_DefaultVerticalChain" layer="popup">
+                            <Size>
+                                <AbsPoint x="22" y="405"/>
+                            </Size>
+                           <Anchors>
+                                <Anchor point="topright" relativePoint="topright">
+                                    <AbsPoint x="0" y="0"/>
+                                </Anchor>
+                            </Anchors>
+                        </VerticalScrollbar>
+
+                        <Window name="$parentScrollChild">
+                            <Size>
+                                <AbsPoint x="350" y="0"/>
+                            </Size>
+                            <Windows>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot1" inherits="CustomUIMacroIconSelectionWindowIconButton" id="1">
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft" >
+                                            <AbsPoint x="0" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot2" inherits="CustomUIMacroIconSelectionWindowIconButton" id="2">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot1" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot3" inherits="CustomUIMacroIconSelectionWindowIconButton" id="3">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot2" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot4" inherits="CustomUIMacroIconSelectionWindowIconButton" id="4">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot3" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot5" inherits="CustomUIMacroIconSelectionWindowIconButton" id="5">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot4" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot6" inherits="CustomUIMacroIconSelectionWindowIconButton" id="6">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot5" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot7" inherits="CustomUIMacroIconSelectionWindowIconButton" id="7">
+                                    <Anchors>
+                                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="CustomUIMacroIconSelectionWindowIconSlot1" >
+                                            <AbsPoint x="0" y="4" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot8" inherits="CustomUIMacroIconSelectionWindowIconButton" id="8">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot7" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot9" inherits="CustomUIMacroIconSelectionWindowIconButton" id="9">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot8" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot10" inherits="CustomUIMacroIconSelectionWindowIconButton" id="10">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot9" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot11" inherits="CustomUIMacroIconSelectionWindowIconButton" id="11">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot10" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot12" inherits="CustomUIMacroIconSelectionWindowIconButton" id="12">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot11" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot13" inherits="CustomUIMacroIconSelectionWindowIconButton" id="13">
+                                    <Anchors>
+                                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="CustomUIMacroIconSelectionWindowIconSlot7" >
+                                            <AbsPoint x="0" y="4" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot14" inherits="CustomUIMacroIconSelectionWindowIconButton" id="14">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot13" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot15" inherits="CustomUIMacroIconSelectionWindowIconButton" id="15">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot14" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot16" inherits="CustomUIMacroIconSelectionWindowIconButton" id="16">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot15" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot17" inherits="CustomUIMacroIconSelectionWindowIconButton" id="17">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot16" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot18" inherits="CustomUIMacroIconSelectionWindowIconButton" id="18">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot17" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot19" inherits="CustomUIMacroIconSelectionWindowIconButton" id="19">
+                                    <Anchors>
+                                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="CustomUIMacroIconSelectionWindowIconSlot13" >
+                                            <AbsPoint x="0" y="4" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot20" inherits="CustomUIMacroIconSelectionWindowIconButton" id="20">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot19" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot21" inherits="CustomUIMacroIconSelectionWindowIconButton" id="21">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot20" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot22" inherits="CustomUIMacroIconSelectionWindowIconButton" id="22">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot21" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot23" inherits="CustomUIMacroIconSelectionWindowIconButton" id="23">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot22" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot24" inherits="CustomUIMacroIconSelectionWindowIconButton" id="24">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot23" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot25" inherits="CustomUIMacroIconSelectionWindowIconButton" id="25">
+                                    <Anchors>
+                                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="CustomUIMacroIconSelectionWindowIconSlot19" >
+                                            <AbsPoint x="0" y="4" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot26" inherits="CustomUIMacroIconSelectionWindowIconButton" id="26">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot25" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot27" inherits="CustomUIMacroIconSelectionWindowIconButton" id="27">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot26" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot28" inherits="CustomUIMacroIconSelectionWindowIconButton" id="28">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot27" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot29" inherits="CustomUIMacroIconSelectionWindowIconButton" id="29">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot28" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot30" inherits="CustomUIMacroIconSelectionWindowIconButton" id="30">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot29" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot31" inherits="CustomUIMacroIconSelectionWindowIconButton" id="31">
+                                    <Anchors>
+                                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="CustomUIMacroIconSelectionWindowIconSlot25" >
+                                            <AbsPoint x="0" y="4" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot32" inherits="CustomUIMacroIconSelectionWindowIconButton" id="32">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot31" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot33" inherits="CustomUIMacroIconSelectionWindowIconButton" id="33">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot32" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot34" inherits="CustomUIMacroIconSelectionWindowIconButton" id="34">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot33" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot35" inherits="CustomUIMacroIconSelectionWindowIconButton" id="35">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot34" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroIconSelectionWindowIconSlot36" inherits="CustomUIMacroIconSelectionWindowIconButton" id="36">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroIconSelectionWindowIconSlot35" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                            </Windows>
+                        </Window>
+
+                    </Windows>
+                </ScrollWindow>
+            </Windows>
+        </Window>
+
+
+        <!-- Macro Window -->
+        <Window name="CustomUIMacroWindow" movable="true" layer="secondary" inherits="EA_Window_Default">
+            <Size>
+                <AbsPoint x="600" y="720" /> <!-- 450+400 = 850 -->
+            </Size>
+            <Anchors>
+                <Anchor point="center" relativePoint="center" relativeTo="">
+                    <AbsPoint x="0" y="0" />
+                </Anchor>
+            </Anchors>
+            <EventHandlers>
+                <EventHandler event="OnInitialize"  function="CustomUI.MacroWindow.OnWindowInitialize" />
+                <EventHandler event="OnShutdown"    function="CustomUI.MacroWindow.Shutdown" />
+                <EventHandler event="OnShown"       function="CustomUI.MacroWindow.OnShown" />
+                <EventHandler event="OnHidden"      function="CustomUI.MacroWindow.OnHidden" />
+            </EventHandlers>
+            <Windows>
+                <Window name="$parentBackground" inherits="EA_Window_DefaultBackgroundFrame" />
+                <Window name="$parentTitleBar" inherits="EA_TitleBar_Default" />
+                <Button name="$parentClose" inherits="EA_Button_DefaultWindowClose" >
+                    <EventHandlers>
+                        <EventHandler event="OnLButtonUp" function="CustomUI.MacroWindow.Hide" />
+                    </EventHandlers>
+                </Button>
+
+                <FullResizeImage name="$parentMacrosBackground" inherits="EA_FullResizeImage_DefaultFrame">
+                    <!-- 
+                    <Size>
+                        <AbsPoint x="390" y="526" /> 126+4-0 = 526
+                    </Size>
+                     -->
+                    <Anchors>
+                        <Anchor point="topleft" relativePoint="topleft">
+                            <AbsPoint x="42" y="50" />
+                        </Anchor>
+                        <Anchor point="bottomright" relativePoint="bottomright">
+                            <AbsPoint x="-42" y="-300" />
+                        </Anchor>
+                    </Anchors>
+                </FullResizeImage>
+
+                <ScrollWindow name="$parentMacros" childscrollwindow="$parentScrollChild" scrollbar="$parentScrollbar" lineheight="90">
+                    <!-- 
+                    <Size>
+                        <AbsPoint x="375" y="515" /> 115+400 = 515
+                    </Size>
+                    -->
+                    <Anchors>
+                        <Anchor point="topleft" relativePoint="topleft" relativeTo="$parentMacrosBackground">
+                            <AbsPoint x="7" y="5" />
+                        </Anchor>
+                        <Anchor point="bottomright" relativePoint="bottomright" relativeTo="$parentMacrosBackground">
+                            <AbsPoint x="-7" y="-5" />
+                        </Anchor>
+                    </Anchors>
+                    <Windows>
+
+                        <VerticalScrollbar name="$parentScrollbar" inherits="EA_ScrollBar_DefaultVerticalChain" layer="popup">
+                            <!-- <Size>
+                                <AbsPoint x="20" y="600"/> 200+400 = 600
+                            </Size> -->
+                            <Anchors>
+                                <Anchor point="topright" relativePoint="topright">
+                                    <AbsPoint x="0" y="0"/>
+                                </Anchor>
+                                <Anchor point="bottomleft" relativePoint="bottomright">
+                                    <AbsPoint x="-20" y="0" />
+                                </Anchor>
+                            </Anchors>
+                        </VerticalScrollbar>
+                        <Window name="$parentScrollChild">
+                            <Size>
+                                <AbsPoint x="480" y="0"/>
+                            </Size>
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft">
+                                    <AbsPoint x="5" y="5"/>
+                                </Anchor>
+                                <!-- <Anchor point="bottomright" relativePoint="bottomright">
+                                    <AbsPoint x="0" y="0"/>
+                                </Anchor> -->
+                            </Anchors>
+                            <Windows>
+                            <!-- row 1 -->
+                                <Button name="CustomUIMacroWindowIconSlot1" inherits="CustomUIMacroWindowIconButton" id="1">
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft" >
+                                            <AbsPoint x="0" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot2" inherits="CustomUIMacroWindowIconButton" id="2">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot1" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot3" inherits="CustomUIMacroWindowIconButton" id="3">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot2" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot4" inherits="CustomUIMacroWindowIconButton" id="4">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot3" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot5" inherits="CustomUIMacroWindowIconButton" id="5">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot4" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot6" inherits="CustomUIMacroWindowIconButton" id="6">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot5" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                            
+                                <Button name="CustomUIMacroWindowIconSlot7" inherits="CustomUIMacroWindowIconButton" id="7">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot6" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot8" inherits="CustomUIMacroWindowIconButton" id="8">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot7" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+
+                                <!-- row 2 -->
+                                <Button name="CustomUIMacroWindowIconSlot9" inherits="CustomUIMacroWindowIconButton" id="9">
+                                    <Anchors>
+                                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="CustomUIMacroWindowIconSlot1" >
+                                            <AbsPoint x="0" y="4" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot10" inherits="CustomUIMacroWindowIconButton" id="10">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot9" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot11" inherits="CustomUIMacroWindowIconButton" id="11">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot10" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot12" inherits="CustomUIMacroWindowIconButton" id="12">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot11" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot13" inherits="CustomUIMacroWindowIconButton" id="13">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot12">
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot14" inherits="CustomUIMacroWindowIconButton" id="14">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot13" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot15" inherits="CustomUIMacroWindowIconButton" id="15">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot14" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot16" inherits="CustomUIMacroWindowIconButton" id="16">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot15" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+
+                                <!-- row 3 -->
+                                <Button name="CustomUIMacroWindowIconSlot17" inherits="CustomUIMacroWindowIconButton" id="17">
+                                    <Anchors>
+                                        <Anchor point="bottomleft" relativePoint="topleft"  relativeTo="CustomUIMacroWindowIconSlot9" >
+                                            <AbsPoint x="0" y="4" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot18" inherits="CustomUIMacroWindowIconButton" id="18">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot17" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot19" inherits="CustomUIMacroWindowIconButton" id="19">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot18" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot20" inherits="CustomUIMacroWindowIconButton" id="20">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot19" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot21" inherits="CustomUIMacroWindowIconButton" id="21">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot20" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot22" inherits="CustomUIMacroWindowIconButton" id="22">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot21" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot23" inherits="CustomUIMacroWindowIconButton" id="23">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot22" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot24" inherits="CustomUIMacroWindowIconButton" id="24">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot23" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                            <!-- row 4 -->
+                                <Button name="CustomUIMacroWindowIconSlot25" inherits="CustomUIMacroWindowIconButton" id="25">
+                                    <Anchors>
+                                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="CustomUIMacroWindowIconSlot17" >
+                                            <AbsPoint x="0" y="4" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot26" inherits="CustomUIMacroWindowIconButton" id="26">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot25" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot27" inherits="CustomUIMacroWindowIconButton" id="27">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot26" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot28" inherits="CustomUIMacroWindowIconButton" id="28">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot27" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot29" inherits="CustomUIMacroWindowIconButton" id="29">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot28" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot30" inherits="CustomUIMacroWindowIconButton" id="30">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot29" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot31" inherits="CustomUIMacroWindowIconButton" id="31">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot30" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot32" inherits="CustomUIMacroWindowIconButton" id="32">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot31" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <!-- row 5 -->
+                                <Button name="CustomUIMacroWindowIconSlot33" inherits="CustomUIMacroWindowIconButton" id="33">
+                                    <Anchors>
+                                        <Anchor point="bottomleft" relativePoint="topleft"  relativeTo="CustomUIMacroWindowIconSlot25" >
+                                            <AbsPoint x="0" y="4" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot34" inherits="CustomUIMacroWindowIconButton" id="34">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot33" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot35" inherits="CustomUIMacroWindowIconButton" id="35">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot34" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot36" inherits="CustomUIMacroWindowIconButton" id="36">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot35" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot37" inherits="CustomUIMacroWindowIconButton" id="37">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot36" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot38" inherits="CustomUIMacroWindowIconButton" id="38">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot37" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot39" inherits="CustomUIMacroWindowIconButton" id="39">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot38" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot40" inherits="CustomUIMacroWindowIconButton" id="40">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot39" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <!-- row 6 -->
+                                <Button name="CustomUIMacroWindowIconSlot41" inherits="CustomUIMacroWindowIconButton" id="41">
+                                    <Anchors>
+                                        <Anchor point="bottomleft" relativePoint="topleft"  relativeTo="CustomUIMacroWindowIconSlot33" >
+                                            <AbsPoint x="0" y="4" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot42" inherits="CustomUIMacroWindowIconButton" id="42">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot41" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot43" inherits="CustomUIMacroWindowIconButton" id="43">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot42" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot44" inherits="CustomUIMacroWindowIconButton" id="44">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot43" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot45" inherits="CustomUIMacroWindowIconButton" id="45">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot44" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot46" inherits="CustomUIMacroWindowIconButton" id="46">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot45" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot47" inherits="CustomUIMacroWindowIconButton" id="47">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot46" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                                <Button name="CustomUIMacroWindowIconSlot48" inherits="CustomUIMacroWindowIconButton" id="48">
+                                    <Anchors>
+                                        <Anchor point="right" relativePoint="left" relativeTo="CustomUIMacroWindowIconSlot47" >
+                                            <AbsPoint x="4" y="0" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Button>
+                            </Windows>
+                        </Window>
+                        <!-- / ScrollChild -->
+
+                    </Windows>
+                </ScrollWindow>
+
+                <Window name="$parentDetails">
+                    <Size>
+                        <AbsPoint x="580" y="260" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="bottomleft" relativePoint="bottomleft">
+                            <AbsPoint x="10" y="-20" />
+                        </Anchor>
+                    </Anchors>
+
+                    <Windows>
+
+                        <Button name="$parentIcon" inherits="CustomUIMacroWindowDetailIconButton" id="1">
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft" relativeTo="" >
+                                    <AbsPoint x="0" y="0" />
+                                </Anchor>
+                            </Anchors>
+                        </Button>
+
+                        <Label name="$parentNameTitle" inherits="DefaultWindowSubTitle" textalign="left">
+                            <Size>
+                                <AbsPoint x="260" y="25" />
+                            </Size>
+                            <Anchors>
+                                <Anchor>
+                                    <AbsPoint x="60" y="10" />
+                                </Anchor>
+                            </Anchors>
+                        </Label>
+
+                        <EditBox name="$parentName" inherits="EA_EditBox_DefaultFrame"  taborder="1" maxchars="63">
+                            <Size>
+                                <AbsPoint x="280" y="30" />
+                            </Size>
+                            <Anchors>
+                                <Anchor point="right" relativePoint="left" relativeTo="$parentIcon" >
+                                    <AbsPoint x="8" y="16" />
+                                </Anchor>
+                            </Anchors>
+                            <EventHandlers>
+                                <EventHandler event="OnKeyEnter" function="" />
+                                <EventHandler event="OnKeyEscape" function="" />
+                            </EventHandlers>
+                        </EditBox>
+
+                        <Label name="$parentTextTitle" inherits="DefaultWindowSubTitle" textalign="left">
+                            <Size>
+                                <AbsPoint x="260" y="25" />
+                            </Size>
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft" relativeTo="" >
+                                    <AbsPoint x="0" y="65" />
+                                </Anchor>
+                            </Anchors>
+                        </Label>
+
+                        <EditBox name="$parentText" inherits="EA_EditBox_DefaultFrame_Multiline" taborder="2" maxchars="255" linecount="9">
+                            <Size>
+                                <AbsPoint x="580" y="180" />
+                            </Size>
+                            <Anchors>
+                                <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentIcon" >
+                                    <AbsPoint x="0" y="30" />
+                                </Anchor>
+                            </Anchors>
+                            <EventHandlers>
+                                <EventHandler event="OnKeyEnter" function="" />
+                                <EventHandler event="OnKeyEscape" function="" />
+                            </EventHandlers>
+                        </EditBox>
+
+                        <Button name="$parentSave" inherits="EA_Button_DefaultResizeable" textalign="center" text="Save">
+                            <Size>
+                                <AbsPoint x="80" y="28" />
+                            </Size>
+                            <Anchors>
+                                <Anchor point="right" relativePoint="left" relativeTo="$parentName">
+                                    <AbsPoint x="10" y="0" />
+                                </Anchor>
+                            </Anchors>
+                            <EventHandlers>
+                                <EventHandler event="OnLButtonUp" function="CustomUI.MacroWindow.OnSave"/>
+                            </EventHandlers>
+                        </Button>
+
+                        <Button name="$parentDelete" inherits="EA_Button_DefaultResizeable" textalign="center" text="Delete">
+                            <Size>
+                                <AbsPoint x="80" y="28" />
+                            </Size>
+                            <Anchors>
+                                <Anchor point="right" relativePoint="left" relativeTo="$parentSave">
+                                    <AbsPoint x="6" y="0" />
+                                </Anchor>
+                            </Anchors>
+                            <EventHandlers>
+                                <EventHandler event="OnLButtonUp" function="CustomUI.MacroWindow.OnDelete"/>
+                            </EventHandlers>
+                        </Button>
+
+
+                    </Windows>
+                </Window>
+
+            </Windows>
+        </Window>
+
+    </Windows>
+</Interface>

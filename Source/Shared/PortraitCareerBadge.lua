@@ -13,6 +13,8 @@ local Badge = CustomUI.PortraitCareerBadge
 
 Badge.RING_W = 31
 Badge.RING_H = 32
+-- Shrink ring digits when value is 100+ (pet HP "100", renown 100–999).
+Badge.RING_TEXT_SCALE_3DIGIT = 0.68
 Badge.ICON_ATLAS = 32
 Badge.ICON_DRAW = 20
 Badge.RING_TEMPLATE = "LevelBackgroundTemplate"
@@ -338,6 +340,63 @@ function Badge.LayoutTargetRankBadge(levelBackgroundWin, portraitFrameWin, isFri
         return Badge.LayoutBottomLeft(levelBackgroundWin, portraitFrameWin, bottomY, Badge.RING_W, Badge.RING_H, 0)
     end
     return Badge.LayoutBottomRight(levelBackgroundWin, portraitFrameWin, bottomY, Badge.RING_W, Badge.RING_H, 0)
+end
+
+--- Opposite corner from LayoutTargetRankBadge (friendly: BR; hostile: BL).
+function Badge.LayoutTargetRenownBadge(renownBackgroundWin, portraitFrameWin, isFriendly)
+    if renownBackgroundWin == nil or portraitFrameWin == nil then
+        return false
+    end
+    if not DoesWindowExist(renownBackgroundWin) or not DoesWindowExist(portraitFrameWin) then
+        return false
+    end
+    local bottomY = Badge.CornerYOffsetForPortraitFrame(portraitFrameWin, Badge.PORTRAIT_BOTTOMLEFT_Y)
+    if isFriendly == true then
+        return Badge.LayoutBottomRight(renownBackgroundWin, portraitFrameWin, bottomY, Badge.RING_W, Badge.RING_H, 0)
+    end
+    return Badge.LayoutBottomLeft(renownBackgroundWin, portraitFrameWin, bottomY, Badge.RING_W, Badge.RING_H, 0)
+end
+
+--- Fit a number inside a Rank-Circle label (pet HP%, renown rank).
+--- Matches pet badge: ring-sized label, 0.68 scale for values >= 100, optical -1 X.
+--- scaleRootWin: window whose scale the text should track (frame / PlayerStatus root).
+function Badge.ApplyRingNumberText(textWin, backgroundWin, value, color, scaleRootWin)
+    if textWin == nil or backgroundWin == nil then
+        return false
+    end
+    if not DoesWindowExist(textWin) or not DoesWindowExist(backgroundWin) then
+        return false
+    end
+
+    value = tonumber(value)
+    LabelSetText(textWin, value ~= nil and (L"" .. value) or L"")
+    if type(color) == "table" then
+        LabelSetTextColor(
+            textWin,
+            color.r or 255,
+            color.g or 255,
+            color.b or 255
+        )
+    end
+    LabelSetTextAlign(textWin, "center")
+    if type(WindowSetLayer) == "function" and Window.Layers then
+        WindowSetLayer(textWin, Window.Layers.POPUP)
+    end
+
+    WindowSetDimensions(textWin, Badge.RING_W, Badge.RING_H)
+
+    local rootScale = 1.0
+    if scaleRootWin ~= nil and DoesWindowExist(scaleRootWin) and type(WindowGetScale) == "function" then
+        rootScale = WindowGetScale(scaleRootWin) or 1.0
+    end
+    local textScale = (value ~= nil and value >= 100) and Badge.RING_TEXT_SCALE_3DIGIT or 1.0
+    if type(WindowSetScale) == "function" then
+        WindowSetScale(textWin, rootScale * textScale)
+    end
+
+    WindowClearAnchors(textWin)
+    WindowAddAnchor(textWin, "center", backgroundWin, "center", -1, 0)
+    return true
 end
 
 function Badge.LayoutIcon(iconWin, backgroundWin)

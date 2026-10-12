@@ -5,7 +5,8 @@
 -- (UpdateStatusFrame, UpdateCombatState, StopInterpolatingStatus,
 -- SetCareerIcon, etc.) are inherited from TargetUnitFrame unchanged.
 -- Create(), UpdateLevel(), UpdateUnit(), and UpdateHealth() are overridden
--- (HP% on the bar; Champion/Hero/Lord via portrait skulls instead of TierLabel).
+-- (HP% on the bar; Champion/Hero/Lord via portrait skulls instead of TierLabel;
+-- optional LibQuery renown badge opposite the rank corner).
 --
 -- Create() mirrors TargetUnitFrame:Create() but substitutes
 -- CustomUI.BuffTracker for BuffTracker, and does NOT register with
@@ -93,6 +94,17 @@ local function LayoutTargetPortraitDecor(windowName, portraitWindow, isFriendly)
     if DoesWindowExist(levelBackground) then
         Badge.LayoutTargetRankBadge(levelBackground, portraitWindow, isFriendly)
     end
+
+    -- Keep ring on secondary and text on popup (PlayerStatus renown); do not
+    -- PrepareBadgeLayers the ring to POPUP or it covers the rank digits.
+    local renownBg = windowName .. "RenownRankBackground"
+    local renownText = windowName .. "RenownRankText"
+    if DoesWindowExist(renownBg) and type(Badge.LayoutTargetRenownBadge) == "function" then
+        Badge.LayoutTargetRenownBadge(renownBg, portraitWindow, isFriendly)
+    end
+    if DoesWindowExist(renownText) and type(WindowSetLayer) == "function" and Window.Layers then
+        WindowSetLayer(renownText, Window.Layers.POPUP)
+    end
 end
 
 -- Stock TargetUnitFrame skull layouts (eatemplate_unitframes targetunitframe.lua).
@@ -175,6 +187,24 @@ function CustomUI.TargetFrame:Create( windowName, unitId,
         windowName .. "Status", windowName, statusAnchor, newFrame.m_IsFriendly )
 
     -- Career badge top corner; rank badge bottom corner (PlayerStatus layout).
+    -- Renown badge opposite rank (LibQuery); created before decor layout.
+    local renownBgName = windowName .. "RenownRankBackground"
+    local renownTextName = windowName .. "RenownRankText"
+    if not DoesWindowExist(renownBgName) then
+        CreateWindowFromTemplate(renownBgName, "CustomUITargetRenownRankBackground", windowName)
+    end
+    if not DoesWindowExist(renownTextName) then
+        CreateWindowFromTemplate(renownTextName, "CustomUITargetRenownRankText", windowName)
+    end
+    if DoesWindowExist(renownTextName) and DoesWindowExist(renownBgName) then
+        WindowClearAnchors(renownTextName)
+        WindowAddAnchor(renownTextName, "center", renownBgName, "center", -1, 0)
+        WindowSetShowing(renownBgName, false)
+        WindowSetShowing(renownTextName, false)
+    end
+    newFrame.m_RenownEntityId = 0
+    newFrame.m_RenownQueryName = nil
+
     local statusName = windowName .. "StatusName"
     local healthBarBG = windowName .. "StatusHealthBarBG"
     local nameWidth = newFrame.m_IsFriendly and c_NAME_LABEL_WIDTH_FRIENDLY or c_NAME_LABEL_WIDTH_HOSTILE
@@ -405,12 +435,134 @@ local function HideTierLabel(windowName)
     end
 end
 
+local function SetRenownRankShowing(windowName, showing)
+    local bg = windowName .. "RenownRankBackground"
+    local text = windowName .. "RenownRankText"
+    if DoesWindowExist(bg) then
+        WindowSetShowing(bg, showing)
+    end
+    if DoesWindowExist(text) then
+        WindowSetShowing(text, showing)
+    end
+end
+
+function CustomUI.TargetFrame:UpdateRenownRank(rank)
+    local windowName = self:GetName()
+    local showRenown = true
+    if type(CustomUI.TargetWindow) == "table" and type(CustomUI.TargetWindow.IsBadgeEnabled) == "function" then
+        showRenown = CustomUI.TargetWindow.IsBadgeEnabled("renown")
+    end
+    rank = tonumber(rank)
+    if not showRenown or rank == nil then
+        SetRenownRankShowing(windowName, false)
+        return
+    end
+
+    local textWin = windowName .. "RenownRankText"
+    local bgWin = windowName .. "RenownRankBackground"
+    if not DoesWindowExist(textWin) or not DoesWindowExist(bgWin) then
+        return
+    end
+
+    local color = (DefaultColor and DefaultColor.COLOR_RENOWN_GAIN)
+        or (DefaultColor and DefaultColor.PURPLE)
+        or { r = 194, g = 56, b = 153 }
+    local Badge = CustomUI.PortraitCareerBadge
+    if Badge and type(Badge.ApplyRingNumberText) == "function" then
+        Badge.ApplyRingNumberText(textWin, bgWin, rank, color, windowName)
+    else
+        LabelSetText(textWin, L"" .. rank)
+        LabelSetTextColor(textWin, color.r, color.g, color.b)
+        LabelSetTextAlign(textWin, "center")
+        WindowClearAnchors(textWin)
+        WindowAddAnchor(textWin, "center", bgWin, "center", -1, 0)
+    end
+
+    SetRenownRankShowing(windowName, true)
+end
+
+function CustomUI.TargetFrame:SyncRenownLookup()
+    local windowName = self:GetName()
+    local showRenown = true
+    if type(CustomUI.TargetWindow) == "table" and type(CustomUI.TargetWindow.IsBadgeEnabled) == "function" then
+        showRenown = CustomUI.TargetWindow.IsBadgeEnabled("renown")
+    end
+
+    local Lookup = CustomUI.TargetRenownLookup
+    if not showRenown
+        or self.m_IsAStaticObject
+        or type(Lookup) ~= "table"
+        or type(Lookup.IsPlayerUnit) ~= "function"
+        or not Lookup.IsPlayerUnit(self.m_UnitId)
+    then
+        self.m_RenownEntityId = 0
+        self.m_RenownQueryName = nil
+        self:UpdateRenownRank(nil)
+        return
+    end
+
+    local entityId = 0
+    if type(TargetInfo.UnitEntityId) == "function" then
+        entityId = tonumber(TargetInfo:UnitEntityId(self.m_UnitId)) or 0
+    end
+
+    -- Self: use local renown (no GraphQL round-trip).
+    local unitType = type(TargetInfo.UnitType) == "function" and TargetInfo:UnitType(self.m_UnitId) or nil
+    local isSelf = SystemData
+        and SystemData.TargetObjectType
+        and unitType == SystemData.TargetObjectType.SELF
+    if isSelf then
+        local renown = GameData and GameData.Player and GameData.Player.Renown
+        local rank = renown and tonumber(renown.curRank) or nil
+        self.m_RenownEntityId = entityId
+        self.m_RenownQueryName = nil
+        self:UpdateRenownRank(rank)
+        return
+    end
+
+    local rawName = nil
+    if type(TargetInfo.UnitName) == "function" then
+        rawName = TargetInfo:UnitName(self.m_UnitId)
+    end
+    local queryName = Lookup.FormatQueryName and Lookup.FormatQueryName(rawName) or nil
+
+    self.m_RenownEntityId = entityId
+    self.m_RenownQueryName = queryName
+
+    if queryName == nil or entityId == 0 then
+        self:UpdateRenownRank(nil)
+        return
+    end
+
+    local cached = Lookup.GetCachedRank and Lookup.GetCachedRank(queryName) or nil
+    if cached ~= nil then
+        self:UpdateRenownRank(cached)
+    else
+        self:UpdateRenownRank(nil)
+    end
+
+    local frame = self
+    Lookup.Request(self.m_UnitId, entityId, rawName, function(rank, meta)
+        if frame == nil or meta == nil then
+            return
+        end
+        if frame.m_RenownEntityId ~= meta.entityId then
+            return
+        end
+        if frame.m_RenownQueryName ~= meta.queryName then
+            return
+        end
+        frame:UpdateRenownRank(rank)
+    end)
+end
+
 function CustomUI.TargetFrame:UpdateUnit()
     TargetUnitFrame.UpdateUnit(self)
     -- Stock UpdateUnit sets TierLabel text and DifficultyMask skulls; replace with
     -- UnitTier-driven skulls and keep the bar free for HP%.
     HideTierLabel(self:GetName())
     self:UpdateTierSkulls()
+    self:SyncRenownLookup()
 end
 
 -- Stock UpdateHealth only fills the bar; overlay current HP as an integer percent

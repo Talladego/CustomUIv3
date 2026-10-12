@@ -687,20 +687,21 @@ function CustomUI.PlayerStatusWindow.UpdatePetHealthBadge()
         or (DefaultColor and DefaultColor.GREEN)
         or { r = 20, g = 220, b = 20 }
 
-    LabelSetText(c_PET_HEALTH_TEXT_WINDOW, L"" .. pct)
-    LabelSetTextColor(c_PET_HEALTH_TEXT_WINDOW, color.r, color.g, color.b)
-    LabelSetTextAlign(c_PET_HEALTH_TEXT_WINDOW, "center")
-
-    local rootScale = 1.0
-    if DoesWindowExist(c_PS_ROOT) and type(WindowGetScale) == "function" then
-        rootScale = WindowGetScale(c_PS_ROOT) or 1.0
-    end
-    local textScale = (pct >= 100) and 0.68 or 1.0
-    if type(WindowSetScale) == "function" and DoesWindowExist(c_PET_HEALTH_TEXT_WINDOW) then
-        WindowSetScale(c_PET_HEALTH_TEXT_WINDOW, rootScale * textScale)
-    end
-
     LayoutPetHealthBadge()
+    local Badge = CustomUI.PortraitCareerBadge
+    if Badge and type(Badge.ApplyRingNumberText) == "function" then
+        Badge.ApplyRingNumberText(
+            c_PET_HEALTH_TEXT_WINDOW,
+            c_PET_HEALTH_BACKGROUND_WINDOW,
+            pct,
+            color,
+            c_PS_ROOT
+        )
+    else
+        LabelSetText(c_PET_HEALTH_TEXT_WINDOW, L"" .. pct)
+        LabelSetTextColor(c_PET_HEALTH_TEXT_WINDOW, color.r, color.g, color.b)
+        LabelSetTextAlign(c_PET_HEALTH_TEXT_WINDOW, "center")
+    end
     SetPetHealthBadgeShowing(true)
 end
 
@@ -726,29 +727,19 @@ function CustomUI.PlayerStatusWindow.UpdateRenownRank()
     end
 
     local color = (DefaultColor and DefaultColor.COLOR_RENOWN_GAIN) or (DefaultColor and DefaultColor.PURPLE) or { r = 194, g = 56, b = 153 }
-    LabelSetText( c_RENOWN_RANK_TEXT_WINDOW, L"" .. rank )
-    LabelSetTextColor( c_RENOWN_RANK_TEXT_WINDOW, color.r, color.g, color.b )
-    LabelSetTextAlign( c_RENOWN_RANK_TEXT_WINDOW, "center" )
-
-    -- Center on the Rank-Circle. Scale 3-digit ranks; keep center anchor (with optical -1 X).
-    local rootScale = 1.0
-    if DoesWindowExist(c_PS_ROOT) and type(WindowGetScale) == "function" then
-        rootScale = WindowGetScale(c_PS_ROOT) or 1.0
-    end
-    local textScale = (rank >= 100) and 0.68 or 1.0
-    if type(WindowSetScale) == "function" and DoesWindowExist(c_RENOWN_RANK_TEXT_WINDOW) then
-        WindowSetScale(c_RENOWN_RANK_TEXT_WINDOW, rootScale * textScale)
-    end
-    if DoesWindowExist(c_RENOWN_RANK_TEXT_WINDOW) and DoesWindowExist(c_RENOWN_RANK_BACKGROUND_WINDOW) then
-        WindowClearAnchors(c_RENOWN_RANK_TEXT_WINDOW)
-        WindowAddAnchor(
+    local Badge = CustomUI.PortraitCareerBadge
+    if Badge and type(Badge.ApplyRingNumberText) == "function" then
+        Badge.ApplyRingNumberText(
             c_RENOWN_RANK_TEXT_WINDOW,
-            "center",
             c_RENOWN_RANK_BACKGROUND_WINDOW,
-            "center",
-            -1,
-            0
+            rank,
+            color,
+            c_PS_ROOT
         )
+    else
+        LabelSetText(c_RENOWN_RANK_TEXT_WINDOW, L"" .. rank)
+        LabelSetTextColor(c_RENOWN_RANK_TEXT_WINDOW, color.r, color.g, color.b)
+        LabelSetTextAlign(c_RENOWN_RANK_TEXT_WINDOW, "center")
     end
 
     SetRenownRankShowing( true )

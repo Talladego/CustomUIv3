@@ -51,7 +51,7 @@ end
 CustomUI.Name = "CustomUI"
 -- Semver (MAJOR.MINOR.PATCH), matching RedAlert / ScenarioBalance / DungeonCoach.
 -- One addon version for the whole modular package; components are toggles, not separately versioned releases.
-CustomUI.Version = "1.3.8"
+CustomUI.Version = "1.3.9"
 CustomUI.SlashCommands = CustomUI.SlashCommands or { "customui", "cui" }
 CustomUI.Components = CustomUI.Components or {}
 CustomUI.ComponentOrder = CustomUI.ComponentOrder or {}
@@ -679,7 +679,9 @@ local function InstallFollowLeaderActionHook()
     g_followActionButtonOnLButtonUpWrapper = function(self, flags, x, y)
         local nextFn = m_stockActionButtonOnLButtonUp
         if not m_followLeaderHookActive then
-            if type(nextFn) == "function" then
+            -- Truthiness only (no type()): keep "field reads then tail call" literal
+            -- for foreign hotbar clicks — /assist macros are sensitive here.
+            if nextFn then
                 return nextFn(self, flags, x, y)
             end
             return
@@ -693,7 +695,7 @@ local function InstallFollowLeaderActionHook()
             or self.m_ActionId ~= CustomUI.FollowLeader.macroId
             or Cursor.Data ~= nil
         then
-            if type(nextFn) == "function" then
+            if nextFn then
                 return nextFn(self, flags, x, y)
             end
             return

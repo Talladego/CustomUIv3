@@ -1,0 +1,129 @@
+# Build an installable CustomUI zip (not the full repo source) and publish it.
+# Modeled on Talladego/StockPiler3 .github/workflows/release-addon.yml.
+# - Push to main → update the rolling "Latest" release only when the addon
+#   version is not already attached (version bump, or the first publish).
+# - workflow_dispatch → always refresh Latest for the current version.
+# - Tag v* → versioned GitHub Release.
+name: Release addon zip
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-addon-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Pack addon zip
+        id: pack
+        shell: pwsh
+        run: ./scripts/pack.ps1 -OutDir dist
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CustomUI-addon
+          path: dist/CustomUI-*.zip
+          if-no-files-found: error
+
+      - name: Decide whether this version needs a release
+        id: gate
+        if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.pack.outputs.version }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = $env:VERSION
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw "Pack step did not output a version"
+          }
+          $asset = "CustomUI-$version.zip"
+          $publish = "false"
+          $reason = ""
+
+          if ($env:EVENT_NAME -eq "workflow_dispatch") {
+            $publish = "true"
+            $reason = "manual workflow_dispatch; refreshing Latest with $asset"
+          } else {
+            # Tag name "latest", not "whatever release GitHub currently marks Latest".
+            $json = $null
+            $code = 0
+            try {
+              $json = & gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/latest" 2>$null
+              $code = $LASTEXITCODE
+            } catch {
+              $code = 1
+            }
+            if ($code -ne 0 -or [string]::IsNullOrWhiteSpace($json)) {
+              $publish = "true"
+              $reason = "no Latest release yet; publishing $asset"
+            } else {
+              $names = @((($json | Out-String | ConvertFrom-Json).assets) | ForEach-Object { $_.name })
+              if ($names -contains $asset) {
+                $publish = "false"
+                $reason = "Latest already has $asset; version unchanged, skipping publish"
+              } else {
+                $publish = "true"
+                $reason = "version changed; Latest does not yet include $asset"
+              }
+            }
+          }
+
+          Write-Host $reason
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "publish=$publish"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "reason=$reason"
+
+      - name: Publish Latest release
+        if: steps.gate.outputs.publish == 'true' && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest build
+          body: |
+            Installable addon zip (not the full git tree).
+
+            Unzip into `Interface/AddOns/` so you get `Interface/AddOns/CustomUI/` (`CustomUI.mod` + `Source\`).
+
+            - Version (from `CustomUI.mod`): ${{ steps.pack.outputs.version }}
+            - Commit: ${{ github.sha }}
+            - Ref: `${{ github.ref_name }}`
+          prerelease: true
+          make_latest: true
+          files: dist/CustomUI-${{ steps.pack.outputs.version }}.zip
+          fail_on_unmatched_files: true
+          overwrite_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish versioned release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: CustomUI ${{ github.ref_name }}
+          body: |
+            Installable addon zip for `${{ github.ref_name }}`.
+
+            Unzip into `Interface/AddOns/` so you get `Interface/AddOns/CustomUI/` (`CustomUI.mod` + `Source\`).
+
+            - Version (from `CustomUI.mod`): ${{ steps.pack.outputs.version }}
+          prerelease: false
+          make_latest: true
+          files: dist/CustomUI-${{ steps.pack.outputs.version }}.zip
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

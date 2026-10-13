@@ -122,7 +122,11 @@ function Lookup.Request(unitId, entityId, rawName, callback)
 
     local cached = Lookup.GetCachedRank(queryName)
     if cached ~= nil then
+        -- Callers also paint GetCachedRank before Request. Deliver the cached
+        -- rank once and do not start another worker fetch (that second callback
+        -- was a redundant badge update on every resync).
         callback(cached, meta)
+        return true
     end
 
     local key = string.lower(queryName)

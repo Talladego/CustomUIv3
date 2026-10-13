@@ -204,6 +204,7 @@ function CustomUI.TargetFrame:Create( windowName, unitId,
     end
     newFrame.m_RenownEntityId = 0
     newFrame.m_RenownQueryName = nil
+    newFrame.m_RenownShownRank = nil
 
     local statusName = windowName .. "StatusName"
     local healthBarBG = windowName .. "StatusHealthBarBG"
@@ -454,6 +455,7 @@ function CustomUI.TargetFrame:UpdateRenownRank(rank)
     end
     rank = tonumber(rank)
     if not showRenown or rank == nil then
+        self.m_RenownShownRank = nil
         SetRenownRankShowing(windowName, false)
         return
     end
@@ -478,6 +480,7 @@ function CustomUI.TargetFrame:UpdateRenownRank(rank)
         WindowAddAnchor(textWin, "center", bgWin, "center", -1, 0)
     end
 
+    self.m_RenownShownRank = rank
     SetRenownRankShowing(windowName, true)
 end
 
@@ -526,6 +529,9 @@ function CustomUI.TargetFrame:SyncRenownLookup()
     end
     local queryName = Lookup.FormatQueryName and Lookup.FormatQueryName(rawName) or nil
 
+    -- Compare before overwriting so a resync of the same player can keep the
+    -- rank already on screen while LibQuery is still in flight.
+    local sameLookup = self.m_RenownEntityId == entityId and self.m_RenownQueryName == queryName
     self.m_RenownEntityId = entityId
     self.m_RenownQueryName = queryName
 
@@ -537,6 +543,13 @@ function CustomUI.TargetFrame:SyncRenownLookup()
     local cached = Lookup.GetCachedRank and Lookup.GetCachedRank(queryName) or nil
     if cached ~= nil then
         self:UpdateRenownRank(cached)
+    elseif sameLookup and self.m_RenownShownRank ~= nil then
+        -- Cache miss while this same target's lookup is outstanding. Do not
+        -- hide the ring. If something else hid it, put the last rank back.
+        local bg = windowName .. "RenownRankBackground"
+        if not DoesWindowExist(bg) or not WindowGetShowing(bg) then
+            self:UpdateRenownRank(self.m_RenownShownRank)
+        end
     else
         self:UpdateRenownRank(nil)
     end

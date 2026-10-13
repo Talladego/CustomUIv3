@@ -78,6 +78,8 @@ local m_isMouseOverMember        = {}
 local m_memberHealthTextLayoutApplied = {}
 -- Per-slot LibQuery renown query name (stale-callback guard); nil when hidden/cleared.
 local m_memberRenownQueryName    = {}
+-- Last rank actually drawn for that slot. Kept across resyncs while a lookup is in flight.
+local m_memberRenownShownRank    = {}
 local m_statusPollElapsed        = 0
 local m_containerShown           = false
 
@@ -833,11 +835,13 @@ end
 
 local function UpdateMemberRenownRank(index, rank)
     if not CustomUI.GroupWindow.IsBadgeEnabled("renown") then
+        m_memberRenownShownRank[index] = nil
         SetMemberRenownRankShowing(index, false)
         return
     end
     rank = tonumber(rank)
     if rank == nil then
+        m_memberRenownShownRank[index] = nil
         SetMemberRenownRankShowing(index, false)
         return
     end
@@ -862,12 +866,14 @@ local function UpdateMemberRenownRank(index, rank)
         LabelSetTextColor(textWin, color.r, color.g, color.b)
         LabelSetTextAlign(textWin, "center")
     end
+    m_memberRenownShownRank[index] = rank
     SetMemberRenownRankShowing(index, true)
 end
 
 local function SyncMemberRenownLookup(index, member)
     if not CustomUI.GroupWindow.IsBadgeEnabled("renown") or member == nil then
         m_memberRenownQueryName[index] = nil
+        m_memberRenownShownRank[index] = nil
         SetMemberRenownRankShowing(index, false)
         return
     end
@@ -891,11 +897,13 @@ local function SyncMemberRenownLookup(index, member)
 
     if type(Lookup) ~= "table" or type(Lookup.Request) ~= "function" then
         m_memberRenownQueryName[index] = nil
+        m_memberRenownShownRank[index] = nil
         SetMemberRenownRankShowing(index, false)
         return
     end
 
     local queryName = Lookup.FormatQueryName and Lookup.FormatQueryName(rawName) or nil
+    local sameLookup = m_memberRenownQueryName[index] == queryName and queryName ~= nil and queryName ~= ""
     m_memberRenownQueryName[index] = queryName
     if queryName == nil or queryName == "" then
         UpdateMemberRenownRank(index, nil)
@@ -903,7 +911,19 @@ local function SyncMemberRenownLookup(index, member)
     end
 
     local cached = Lookup.GetCachedRank and Lookup.GetCachedRank(queryName) or nil
-    UpdateMemberRenownRank(index, cached)
+    if cached ~= nil then
+        UpdateMemberRenownRank(index, cached)
+    elseif sameLookup and m_memberRenownShownRank[index] ~= nil then
+        -- Same member, lookup still in flight (or cache not readable yet).
+        -- Do not clear the ring. Layout setup hides it once; put the rank back
+        -- only when it is actually hidden so health ticks do not re-anchor it.
+        local bg = MemberRenownRankBackgroundName(index)
+        if not DoesWindowExist(bg) or not WindowGetShowing(bg) then
+            UpdateMemberRenownRank(index, m_memberRenownShownRank[index])
+        end
+    else
+        UpdateMemberRenownRank(index, nil)
+    end
 
     Lookup.Request(nil, index, rawName, function(rank, meta)
         if meta == nil then
@@ -976,6 +996,7 @@ local function UpdateMemberRow(index)
         m_isMouseOverMember[index] = false
         SetMemberRvrIndicatorShowing(index, false)
         m_memberRenownQueryName[index] = nil
+        m_memberRenownShownRank[index] = nil
         SetMemberRenownRankShowing(index, false)
         ResetMemberBuffs(index)
         return
@@ -1267,6 +1288,8 @@ function CustomUI.GroupWindow.Shutdown()
     m_memberRvrIndicators = {}
     m_lastRosterNames = {}
     m_lastRosterSignature = nil
+    m_memberRenownQueryName = {}
+    m_memberRenownShownRank = {}
     m_statusPollElapsed = 0
     m_containerShown = false
 

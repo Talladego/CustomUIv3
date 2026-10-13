@@ -381,6 +381,7 @@
                 <EventHandler event="OnShutdown"    function="CustomUI.MacroWindow.Shutdown" />
                 <EventHandler event="OnShown"       function="CustomUI.MacroWindow.OnShown" />
                 <EventHandler event="OnHidden"      function="CustomUI.MacroWindow.OnHidden" />
+                <EventHandler event="OnUpdate"      function="CustomUI.MacroWindow.OnUpdate" />
             </EventHandlers>
             <Windows>
                 <Window name="$parentBackground" inherits="EA_Window_DefaultBackgroundFrame" />

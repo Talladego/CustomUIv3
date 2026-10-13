@@ -69,6 +69,8 @@ jobs:
             } catch {
               $code = 1
             }
+            # gh's non-zero exit (404 when Latest does not exist yet) must not fail the step.
+            $global:LASTEXITCODE = 0
             if ($code -ne 0 -or [string]::IsNullOrWhiteSpace($json)) {
               $publish = "true"
               $reason = "no Latest release yet; publishing $asset"
@@ -87,6 +89,7 @@ jobs:
           Write-Host $reason
           Add-Content -Path $env:GITHUB_OUTPUT -Value "publish=$publish"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "reason=$reason"
+          exit 0
 
       - name: Publish Latest release
         if: steps.gate.outputs.publish == 'true' && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')

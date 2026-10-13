@@ -3,6 +3,7 @@
 -- Async renown rank for other players via optional LibQuery
 -- (GraphQL character.identity.renownRank through libquery_worker).
 -- No-ops when LibQuery / worker is unavailable.
+-- Session-only cache; does not persist across reloads.
 ----------------------------------------------------------------
 
 if not CustomUI then
@@ -15,6 +16,20 @@ local Lookup = CustomUI.TargetRenownLookup
 
 -- In-flight: queryName lower -> { { callback, meta }, ... }
 local inflight = {}
+-- Negative cache: queryName lower -> expireAt (seconds). Avoids refetch spam when
+-- LibQuery returns nil for an unknown/error name (#40 M2).
+local missUntil = {}
+local MISS_TTL_SECONDS = 60
+
+local function NowSeconds()
+    if type(LibQuery) == "table" and type(LibQuery.NowSeconds) == "function" then
+        return tonumber(LibQuery.NowSeconds()) or 0
+    end
+    if type(GetGameTime) == "function" then
+        return tonumber(GetGameTime()) or 0
+    end
+    return 0
+end
 
 local function StripWarGrammar(name)
     if name == nil then
@@ -104,9 +119,42 @@ function Lookup.GetCachedRank(queryName)
     return nil
 end
 
+function Lookup.IsRecentMiss(queryName)
+    if queryName == nil or queryName == "" then
+        return false
+    end
+    local key = string.lower(queryName)
+    local untilSec = missUntil[key]
+    if untilSec == nil then
+        return false
+    end
+    local now = NowSeconds()
+    if now <= untilSec then
+        return true
+    end
+    missUntil[key] = nil
+    return false
+end
+
+local function RememberMiss(queryName)
+    if queryName == nil or queryName == "" then
+        return
+    end
+    missUntil[string.lower(queryName)] = NowSeconds() + MISS_TTL_SECONDS
+end
+
+local function ClearMiss(queryName)
+    if queryName == nil or queryName == "" then
+        return
+    end
+    missUntil[string.lower(queryName)] = nil
+end
+
 --- Request renown for a player target.
 --- callback(rankOrNil, meta) where meta = { entityId, queryName, unitId }
 --- Callers must ignore stale replies (entityId / queryName mismatch).
+--- On a positive cache hit, returns true without invoking callback — callers
+--- should paint GetCachedRank first and skip Request when cached ~= nil.
 function Lookup.Request(unitId, entityId, rawName, callback)
     if type(callback) ~= "function" then
         return false
@@ -122,18 +170,21 @@ function Lookup.Request(unitId, entityId, rawName, callback)
 
     local cached = Lookup.GetCachedRank(queryName)
     if cached ~= nil then
-        -- Callers also paint GetCachedRank before Request. Deliver the cached
-        -- rank once and do not start another worker fetch (that second callback
-        -- was a redundant badge update on every resync).
-        callback(cached, meta)
+        ClearMiss(queryName)
+        -- No callback: callers already painted GetCachedRank (#40 Low).
         return true
+    end
+
+    if Lookup.IsRecentMiss(queryName) then
+        callback(nil, meta)
+        return false
     end
 
     local key = string.lower(queryName)
     local waiters = inflight[key]
     if waiters then
         waiters[#waiters + 1] = { callback = callback, meta = meta }
-        return cached ~= nil
+        return true
     end
 
     inflight[key] = { { callback = callback, meta = meta } }
@@ -141,6 +192,11 @@ function Lookup.Request(unitId, entityId, rawName, callback)
         local list = inflight[key]
         inflight[key] = nil
         local n = tonumber(rank)
+        if n ~= nil then
+            ClearMiss(queryName)
+        else
+            RememberMiss(queryName)
+        end
         if type(list) ~= "table" then
             return
         end

@@ -913,7 +913,17 @@ local function SyncMemberRenownLookup(index, member)
     local cached = Lookup.GetCachedRank and Lookup.GetCachedRank(queryName) or nil
     if cached ~= nil then
         UpdateMemberRenownRank(index, cached)
-    elseif sameLookup and m_memberRenownShownRank[index] ~= nil then
+        return
+    end
+
+    if type(Lookup.IsRecentMiss) == "function" and Lookup.IsRecentMiss(queryName) then
+        if not (sameLookup and m_memberRenownShownRank[index] ~= nil) then
+            UpdateMemberRenownRank(index, nil)
+        end
+        return
+    end
+
+    if sameLookup and m_memberRenownShownRank[index] ~= nil then
         -- Same member, lookup still in flight (or cache not readable yet).
         -- Do not clear the ring. Layout setup hides it once; put the rank back
         -- only when it is actually hidden so health ticks do not re-anchor it.

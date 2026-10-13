@@ -543,7 +543,17 @@ function CustomUI.TargetFrame:SyncRenownLookup()
     local cached = Lookup.GetCachedRank and Lookup.GetCachedRank(queryName) or nil
     if cached ~= nil then
         self:UpdateRenownRank(cached)
-    elseif sameLookup and self.m_RenownShownRank ~= nil then
+        return
+    end
+
+    if type(Lookup.IsRecentMiss) == "function" and Lookup.IsRecentMiss(queryName) then
+        if not (sameLookup and self.m_RenownShownRank ~= nil) then
+            self:UpdateRenownRank(nil)
+        end
+        return
+    end
+
+    if sameLookup and self.m_RenownShownRank ~= nil then
         -- Cache miss while this same target's lookup is outstanding. Do not
         -- hide the ring. If something else hid it, put the last rank back.
         local bg = windowName .. "RenownRankBackground"

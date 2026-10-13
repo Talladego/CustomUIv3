@@ -226,7 +226,12 @@ local function PumpIconScan(budget, stopAtCount)
     local lastPage = GetLastPageIndex()
     if DoesWindowExist(c_ICONS_SCROLLBAR) and lastPage ~= m_scanLastPage then
         m_scanLastPage = lastPage
+        -- Guard like RefreshPickerIcons: SetMax can fire OnScrollPosChanged, and
+        -- IconScrollPos itself calls PumpIconScan — without this, one frame can
+        -- nest many 400-id slices (#40 M1).
+        m_scrollReset = true
         VerticalScrollbarSetMaxScrollPosition(c_ICONS_SCROLLBAR, lastPage)
+        m_scrollReset = false
     end
 
     if pageNeedsIcons
@@ -265,15 +270,18 @@ function MacroWindow.IconMouseWheel(x, y, delta, flags)
         delta = x
     end
     delta = tonumber(delta) or 0
-    if delta > 0 then
-        m_pageIndex = ClampPageIndex(m_pageIndex - 1)
-    elseif delta < 0 then
-        m_pageIndex = ClampPageIndex(m_pageIndex + 1)
-    else
+    if delta == 0 then
         return
     end
+    -- Pump before clamp so a wheel-down on the last scanned page can open a
+    -- newly unlocked page while the dense-id scan is still running (#40 Low).
     if not m_scanComplete then
         PumpIconScan(c_ICON_SCAN_BUDGET)
+    end
+    if delta > 0 then
+        m_pageIndex = ClampPageIndex(m_pageIndex - 1)
+    else
+        m_pageIndex = ClampPageIndex(m_pageIndex + 1)
     end
     RefreshPickerIcons()
 end

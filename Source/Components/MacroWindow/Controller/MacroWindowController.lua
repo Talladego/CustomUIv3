@@ -27,6 +27,10 @@ MacroWindow.iconNum = 0
 
 local MAX_ICON = 25000
 local STEP = MacroWindow.NUM_MACRO_ICONS
+-- GetIconData calls per slice. Walking 201..MAX_ICON in one frame hitches;
+-- the first picker open fills one page, then OnUpdate finishes the rest.
+local c_ICON_SCAN_BUDGET = 400
+local c_ICON_SCAN_FIRST_BUDGET = 400
 
 local m_enabled = false
 local m_windowReady = false
@@ -34,9 +38,14 @@ local m_stockReplaceTracked = {}
 local m_menuHooked = false
 local m_stockOnOpenMacros = nil
 local m_stockToggleMacroWindow = nil
+local m_onOpenMacrosWrapper = nil
+local m_toggleMacroWindowWrapper = nil
 local m_pageIndex = 0 -- 0-based page into dense valid-icon list
 local m_pageSlotIds = {} -- [slot] = iconId for current page (nil = empty)
-local m_validIconIds = nil -- dense list of defined icon IDs (built once)
+local m_validIconIds = nil -- dense defined icon IDs; nil until the picker scan starts
+local m_scanNextId = nil
+local m_scanComplete = false
+local m_scanLastPage = nil
 local m_scrollReset = false
 local m_wheelHandlersRegistered = false
 
@@ -114,26 +123,51 @@ local function IsDefinedIconId(iconId)
     return IsDefinedIconTexture(tex)
 end
 
---- One-time scan of the icon ID range. Undefined IDs return texture icon-00001.
-local function EnsureValidIconCache()
-    if type(m_validIconIds) == "table" then
-        return m_validIconIds
+local function IconListCount()
+    if type(m_validIconIds) ~= "table" then
+        return 0
+    end
+    return #m_validIconIds
+end
+
+--- Scan at most `budget` icon IDs. stopAtCount, when set, stops once the dense
+--- list has that many entries (used to fill the first page without a full walk).
+local function ScanIconSlice(budget, stopAtCount)
+    if m_scanComplete then
+        return
+    end
+    if type(m_validIconIds) ~= "table" then
+        m_validIconIds = {}
+        m_scanNextId = MacroWindow.MACRO_ICONS_ID_BASE + 1
     end
 
-    local list = {}
-    local first = MacroWindow.MACRO_ICONS_ID_BASE + 1
-    for id = first, MAX_ICON do
+    budget = tonumber(budget) or c_ICON_SCAN_BUDGET
+    if budget < 1 then
+        budget = 1
+    end
+
+    local list = m_validIconIds
+    local id = m_scanNextId or (MacroWindow.MACRO_ICONS_ID_BASE + 1)
+    local remaining = budget
+    while id <= MAX_ICON and remaining > 0 do
+        if stopAtCount and #list >= stopAtCount then
+            break
+        end
         if IsDefinedIconId(id) then
             list[#list + 1] = id
         end
+        id = id + 1
+        remaining = remaining - 1
     end
-    m_validIconIds = list
-    return list
+
+    m_scanNextId = id
+    if id > MAX_ICON then
+        m_scanComplete = true
+    end
 end
 
 local function GetLastPageIndex()
-    local list = EnsureValidIconCache()
-    local n = #list
+    local n = IconListCount()
     if n <= 0 then
         return 0
     end
@@ -146,7 +180,7 @@ local function ClampPageIndex(page)
 end
 
 local function RefreshPickerIcons()
-    local list = EnsureValidIconCache()
+    local list = m_validIconIds or {}
     m_pageIndex = ClampPageIndex(m_pageIndex)
 
     local start = (m_pageIndex * STEP) + 1
@@ -175,12 +209,46 @@ local function RefreshPickerIcons()
     end
 end
 
+local function CurrentPageNeedsIcons(count)
+    local start = (m_pageIndex * STEP) + 1
+    return count < (start + STEP - 1)
+end
+
+--- Advance the defined-icon scan and, while the open page is still short, repaint it.
+local function PumpIconScan(budget, stopAtCount)
+    if m_scanComplete then
+        return
+    end
+    local before = IconListCount()
+    local pageNeedsIcons = CurrentPageNeedsIcons(before)
+    ScanIconSlice(budget, stopAtCount)
+
+    local lastPage = GetLastPageIndex()
+    if DoesWindowExist(c_ICONS_SCROLLBAR) and lastPage ~= m_scanLastPage then
+        m_scanLastPage = lastPage
+        VerticalScrollbarSetMaxScrollPosition(c_ICONS_SCROLLBAR, lastPage)
+    end
+
+    if pageNeedsIcons
+        and IconListCount() > before
+        and DoesWindowExist(c_PICKER_NAME)
+        and WindowGetShowing(c_PICKER_NAME)
+    then
+        RefreshPickerIcons()
+    end
+end
+
 function MacroWindow.IconScrollPos()
     if m_scrollReset then
         return
     end
     if not DoesWindowExist(c_ICONS_SCROLLBAR) then
         return
+    end
+
+    -- Wheel/scrollbar input keeps the scan moving if OnUpdate is not ticking.
+    if not m_scanComplete then
+        PumpIconScan(c_ICON_SCAN_BUDGET)
     end
 
     local page = ClampPageIndex(VerticalScrollbarGetScrollPosition(c_ICONS_SCROLLBAR))
@@ -204,12 +272,15 @@ function MacroWindow.IconMouseWheel(x, y, delta, flags)
     else
         return
     end
+    if not m_scanComplete then
+        PumpIconScan(c_ICON_SCAN_BUDGET)
+    end
     RefreshPickerIcons()
 end
 
 local function SetupIconPagingChrome()
-    EnsureValidIconCache()
     local lastPage = GetLastPageIndex()
+    m_scanLastPage = lastPage
     if DoesWindowExist(c_ICONS_SCROLLBAR) then
         VerticalScrollbarSetMaxScrollPosition(c_ICONS_SCROLLBAR, lastPage)
         VerticalScrollbarSetScrollPosition(c_ICONS_SCROLLBAR, ClampPageIndex(m_pageIndex))
@@ -242,8 +313,41 @@ local function RegisterWheelHandlers()
                 "CustomUI.MacroWindow.IconMouseWheel"
             )
         end
+        m_wheelHandlersRegistered = true
     end
-    m_wheelHandlersRegistered = true
+end
+
+local function UnregisterWheelHandlers()
+    if not m_wheelHandlersRegistered then
+        return
+    end
+    if type(WindowUnregisterCoreEventHandler) == "function" then
+        local function unreg(windowName)
+            if type(windowName) ~= "string" or windowName == "" then
+                return
+            end
+            if type(DoesWindowExist) == "function" and not DoesWindowExist(windowName) then
+                return
+            end
+            if type(CustomUI.TryCallQuiet) == "function" then
+                CustomUI.TryCallQuiet(
+                    "MacroWindow.UnregisterWheel",
+                    WindowUnregisterCoreEventHandler,
+                    windowName,
+                    "OnMouseWheel"
+                )
+            else
+                pcall(WindowUnregisterCoreEventHandler, windowName, "OnMouseWheel")
+            end
+        end
+        unreg(c_PICKER_NAME)
+        unreg(c_PICKER_SCROLL_CHILD)
+        unreg(c_ICONS_SCROLLBAR)
+        for k = 1, MacroWindow.NUM_MACRO_ICONS do
+            unreg(c_PICKER_NAME .. "IconSlot" .. k)
+        end
+    end
+    m_wheelHandlersRegistered = false
 end
 
 ----------------------------------------------------------------
@@ -333,6 +437,16 @@ function MacroWindow.OnShown()
     WindowUtils.OnShown(MacroWindow.Hide, WindowUtils.Cascade.MODE_AUTOMATIC)
 end
 
+function MacroWindow.OnUpdate(timePassed)
+    if not m_enabled or m_scanComplete or m_validIconIds == nil then
+        return
+    end
+    if not DoesWindowExist(c_PICKER_NAME) or not WindowGetShowing(c_PICKER_NAME) then
+        return
+    end
+    PumpIconScan(c_ICON_SCAN_BUDGET)
+end
+
 function MacroWindow.OnHidden()
     WindowUtils.OnHidden()
     MacroWindow.HideIconSelectionWindow()
@@ -380,6 +494,11 @@ end
 function MacroWindow.DetailIconLButtonDown()
     local showing = WindowGetShowing(c_PICKER_NAME)
     if not showing then
+        -- Fill the first page now (stops once NUM_MACRO_ICONS defined ids are
+        -- known, capped by c_ICON_SCAN_FIRST_BUDGET). OnUpdate walks the rest.
+        if not m_scanComplete and IconListCount() < MacroWindow.NUM_MACRO_ICONS then
+            PumpIconScan(c_ICON_SCAN_FIRST_BUDGET, MacroWindow.NUM_MACRO_ICONS)
+        end
         SetupIconPagingChrome()
         RefreshPickerIcons()
     end
@@ -469,6 +588,8 @@ function MacroWindow.OnWindowInitialize()
         LabelSetText(c_PICKER_NAME .. "TitleBarText", GetString(StringTables.Default.LABEL_SELECT_ICON))
     end
 
+    -- Stock 36 macro icons only. The dense 201..25000 list is scanned later, in
+    -- slices, the first time the picker opens (OnWindowInitialize runs at load).
     for slot = 1, MacroWindow.NUM_MACRO_ICONS do
         local tex, x, y = GetIconData(MacroWindow.MACRO_ICONS_ID_BASE + slot)
         DynamicImageSetTexture(PickerSlotIconWindow(slot), tex, x, y)
@@ -480,10 +601,6 @@ function MacroWindow.OnWindowInitialize()
 
     WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.MACRO_UPDATED, "CustomUI.MacroWindow.OnMacroUpdated")
     WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.MACROS_LOADED, "CustomUI.MacroWindow.UpdateMacros")
-
-    SetupIconPagingChrome()
-    RegisterWheelHandlers()
-    RefreshPickerIcons()
 
     MacroWindow.UpdateMacros()
     MacroWindow.UpdateDetails(1)
@@ -498,6 +615,7 @@ end
 
 function MacroWindow.Shutdown()
     MacroWindow.HideIconSelectionWindow()
+    UnregisterWheelHandlers()
 end
 
 local function HideStockMacro()
@@ -515,45 +633,57 @@ local function RestoreStockMacro()
 end
 
 local function HookMainMenuMacros()
-    if m_menuHooked or type(MainMenuWindow) ~= "table" then
+    if type(MainMenuWindow) ~= "table" then
         return
     end
-    if type(MainMenuWindow.OnOpenMacros) == "function" then
+    -- Already wrapped (including an orphaned pass-through after a later addon
+    -- wrapped on top). Do not capture that later function as "stock".
+    if m_onOpenMacrosWrapper == nil and type(MainMenuWindow.OnOpenMacros) == "function" then
         m_stockOnOpenMacros = MainMenuWindow.OnOpenMacros
-        MainMenuWindow.OnOpenMacros = function()
+        m_onOpenMacrosWrapper = function()
             if m_enabled then
                 MacroWindow.Toggle()
             elseif type(m_stockOnOpenMacros) == "function" then
                 m_stockOnOpenMacros()
             end
         end
+        MainMenuWindow.OnOpenMacros = m_onOpenMacrosWrapper
     end
-    if type(MainMenuWindow.ToggleMacroWindow) == "function" then
+    if m_toggleMacroWindowWrapper == nil and type(MainMenuWindow.ToggleMacroWindow) == "function" then
         m_stockToggleMacroWindow = MainMenuWindow.ToggleMacroWindow
-        MainMenuWindow.ToggleMacroWindow = function()
+        m_toggleMacroWindowWrapper = function()
             if m_enabled then
                 MacroWindow.Toggle()
             elseif type(m_stockToggleMacroWindow) == "function" then
                 m_stockToggleMacroWindow()
             end
         end
+        MainMenuWindow.ToggleMacroWindow = m_toggleMacroWindowWrapper
     end
-    m_menuHooked = true
+    m_menuHooked = m_onOpenMacrosWrapper ~= nil or m_toggleMacroWindowWrapper ~= nil
 end
 
 local function UnhookMainMenuMacros()
-    if not m_menuHooked or type(MainMenuWindow) ~= "table" then
+    -- Caller sets m_enabled = false first, so a wrapper we leave in place
+    -- (another addon wrapped after us) pass-throughs to the captured stock fn.
+    if type(MainMenuWindow) ~= "table" then
         return
     end
-    if m_stockOnOpenMacros ~= nil then
-        MainMenuWindow.OnOpenMacros = m_stockOnOpenMacros
+    if m_onOpenMacrosWrapper ~= nil and MainMenuWindow.OnOpenMacros == m_onOpenMacrosWrapper then
+        if m_stockOnOpenMacros ~= nil then
+            MainMenuWindow.OnOpenMacros = m_stockOnOpenMacros
+        end
         m_stockOnOpenMacros = nil
+        m_onOpenMacrosWrapper = nil
     end
-    if m_stockToggleMacroWindow ~= nil then
-        MainMenuWindow.ToggleMacroWindow = m_stockToggleMacroWindow
+    if m_toggleMacroWindowWrapper ~= nil and MainMenuWindow.ToggleMacroWindow == m_toggleMacroWindowWrapper then
+        if m_stockToggleMacroWindow ~= nil then
+            MainMenuWindow.ToggleMacroWindow = m_stockToggleMacroWindow
+        end
         m_stockToggleMacroWindow = nil
+        m_toggleMacroWindowWrapper = nil
     end
-    m_menuHooked = false
+    m_menuHooked = m_onOpenMacrosWrapper ~= nil or m_toggleMacroWindowWrapper ~= nil
 end
 
 ----------------------------------------------------------------
@@ -592,6 +722,7 @@ function MacroWindowComponent:Enable()
     end
     HideStockMacro()
     HookMainMenuMacros()
+    RegisterWheelHandlers()
     -- UserShow in LayoutEditor so the player can open it; keep closed until menu toggle.
     if DoesWindowExist(c_WINDOW_NAME) then
         if type(LayoutEditor) == "table" and type(LayoutEditor.UserShow) == "function" then
@@ -606,6 +737,7 @@ function MacroWindowComponent:Disable()
     m_enabled = false
     MacroWindow.Hide()
     UnhookMainMenuMacros()
+    UnregisterWheelHandlers()
     RestoreStockMacro()
     if DoesWindowExist(c_WINDOW_NAME) then
         WindowSetShowing(c_WINDOW_NAME, false)

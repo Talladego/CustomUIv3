@@ -2,7 +2,7 @@
 
 CustomUI is a modular Return of Reckoning addon that replaces and enhances stock UI components behind a single settings surface and slash-command workflow.
 
-**Version:** CustomUI `1.4.6` (see `CustomUI.Version` / `CustomUI.mod`). One addon-level semver (not per-component); the active profile also stores `CustomUI.Settings.version` on init. Settings UI is included in the same AddOn (`Source/SettingsWindow/`).
+**Version:** CustomUI `1.4.7` (see `CustomUI.Version` / `CustomUI.mod`). One addon-level semver (not per-component); the active profile also stores `CustomUI.Settings.version` on init. Settings UI is included in the same AddOn (`Source/SettingsWindow/`).
 
 ## Documentation
 
@@ -54,7 +54,7 @@ Optional: enable **LibPerf** for frametime hitch breadcrumbs (`/libperf CustomUI
 | `KillTracker` | — (RvR Order/Destruction kill feed) | ✅ Implemented, `DefaultEnabled = false`; `/cui` → **Kills** tab |
 | `QoL` | — (RedAlert, AutoSurrender, RezzAccept, AltTracker, mute button click sound) | ✅ Implemented, `DefaultEnabled = false`; `/cui` → **QoL** tab |
 | `AutoFPS` | — (dynamic FPS / graphics helpers) | ✅ Implemented, `DefaultEnabled = false`; `/cui` → **AutoFPS** tab |
-| `MacroWindow` | `EA_Window_Macro` | ✅ Implemented, `DefaultEnabled = false`; `/cui` → **QoL** tab — larger movable editor, paged icons (~25k), Delete clears via `SetMacroData`; disable `bigger_macrowindow` / `MacroIcons` while enabled |
+| `MacroWindow` | `EA_Window_Macro` | ✅ Implemented, `DefaultEnabled = false`; `/cui` → **QoL** tab — larger movable editor, paged icons (~25k, scanned across frames), Delete clears via `SetMacroData`; disable `bigger_macrowindow` / `MacroIcons` while enabled |
 
 All registered components default to **disabled** except `GroupIcons`, which currently omits `DefaultEnabled = false` and therefore comes up enabled on a fresh profile. `PlayerPetWindow` is shipped and has full lifecycle code, but it is still owned through `PlayerStatusWindow` rather than being registered as a separate top-level component.
 
@@ -64,7 +64,7 @@ Portrait chrome (career icon TL, rank BL, influence BC, renown BR) is shared via
 
 ### TargetWindow / GroupWindow renown badge
 
-Friendly/hostile target frames and Group member portraits can show a renown rank badge opposite the career-rank corner (group / friendly target: BR; hostile target: BL). Rank comes from optional **LibQuery** (`GetCharacterRenownRank` → waremu GraphQL `character.renownRank` via `libquery_worker`); without LibQuery or the worker the badge stays hidden. Session-only in-memory cache (no SavedVariables). Toggle under `/cui` → Target / Group → **Renown Badge**.
+Friendly/hostile target frames and Group member portraits can show a renown rank badge opposite the career-rank corner (group / friendly target: BR; hostile target: BL). Rank comes from optional **LibQuery** (`GetCharacterRenownRank` → waremu GraphQL `character.renownRank` via `libquery_worker`); without LibQuery or the worker the badge stays hidden. A cache hit is not refetched. While a lookup for the same player is still in flight, the last shown rank stays up instead of clearing on each resync. Session-only in-memory cache (no SavedVariables). Toggle under `/cui` → Target / Group → **Renown Badge**.
 
 | Badge | Shows | Yellow nag (left) | Hides stock bar when badge on |
 |-------|--------|-------------------|-------------------------------|

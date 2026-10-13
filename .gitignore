@@ -18,6 +18,7 @@ logs/
 # Build / export artifacts
 NO_DEHASH/
 __pycache__/
+dist/
 
 # Backup files
 *.bak

@@ -142,6 +142,17 @@ function CustomUISettingsWindowTabQoL.Initialize()
     LabelSetText(c .. "AltTrackerPruneDaysLabel", L"Prune stale characters")
     LabelSetText(c .. "AltTrackerPruneDaysSuffix", L"days (0 = off)")
     LabelSetText(c .. "AltTrackerInfo", L"Tracks bag items and gold across characters on this PC. Stale alts are removed on login.")
+    LabelSetText(c .. "ActionBarTitle", L"Action Bar")
+    LabelSetText(c .. "ActionBarActionOnDownLabel", L"Cast abilities on button down")
+    LabelSetText(
+        c .. "ActionBarActionOnDownInfo",
+        L"Normal hotbar abilities cast when the key is pressed. Items, macros, and crafting stay on button up."
+    )
+    LabelSetText(c .. "ActionBarOneClickGtLabel", L"One-click ground targets")
+    LabelSetText(
+        c .. "ActionBarOneClickGtInfo",
+        L"Ground-target abilities show the template while held and place it at the cursor on release."
+    )
     LabelSetText(c .. "UiSoundTitle", L"UI Sound")
     LabelSetText(c .. "UiSoundMuteButtonClickLabel", L"Mute button click sound")
     LabelSetText(c .. "UiSoundInfo", L"Disables the standard UI button click sound while QoL is enabled.")
@@ -172,6 +183,8 @@ function CustomUISettingsWindowTabQoL.UpdateSettings()
     ButtonSetPressedFlag(c .. "AltTrackerIncludeBankButton", s.altTracker.includeBank == true)
     ButtonSetPressedFlag(c .. "AltTrackerCrossFactionButton", s.altTracker.showCrossFaction == true)
     ButtonSetPressedFlag(c .. "UiSoundMuteButtonClickButton", s.muteButtonClickSound == true)
+    ButtonSetPressedFlag(c .. "ActionBarActionOnDownButton", s.actionOnDown.enabled == true)
+    ButtonSetPressedFlag(c .. "ActionBarOneClickGtButton", s.oneClickGtAoe.enabled == true)
     if type(CustomUI.IsComponentEnabled) == "function" then
         ButtonSetPressedFlag(c .. "MacroWindowEnabledButton", CustomUI.IsComponentEnabled("MacroWindow") == true)
     end
@@ -203,6 +216,10 @@ function CustomUISettingsWindowTabQoL.ApplyCurrent()
     s.altTracker.showCrossFaction = ButtonGetPressedFlag(c .. "AltTrackerCrossFactionButton") == true
     s.altTracker.pruneStaleDays = ReadDaysEdit(c .. "AltTrackerPruneDaysEdit", s.altTracker.pruneStaleDays or 30)
     s.muteButtonClickSound = ButtonGetPressedFlag(c .. "UiSoundMuteButtonClickButton") == true
+    s.actionOnDown = s.actionOnDown or {}
+    s.actionOnDown.enabled = ButtonGetPressedFlag(c .. "ActionBarActionOnDownButton") == true
+    s.oneClickGtAoe = s.oneClickGtAoe or {}
+    s.oneClickGtAoe.enabled = ButtonGetPressedFlag(c .. "ActionBarOneClickGtButton") == true
     if CustomUI and type(CustomUI.SetComponentEnabled) == "function" and type(CustomUI.IsComponentEnabled) == "function" then
         if not CustomUI.IsComponentEnabled("QoL") then
             CustomUI.SetComponentEnabled("QoL", true)
@@ -264,6 +281,14 @@ function CustomUISettingsWindowTabQoL.OnToggleAltTrackerCrossFaction()
 end
 
 function CustomUISettingsWindowTabQoL.OnToggleMuteButtonClick()
+    EA_LabelCheckButton.Toggle()
+end
+
+function CustomUISettingsWindowTabQoL.OnToggleActionOnDown()
+    EA_LabelCheckButton.Toggle()
+end
+
+function CustomUISettingsWindowTabQoL.OnToggleOneClickGt()
     EA_LabelCheckButton.Toggle()
 end
 

@@ -35,6 +35,14 @@ local DEFAULT_SETTINGS = {
 		-- Opt-in: clears healer penalties when visiting a healer.
 		enabled = false,
 	},
+	actionOnDown = {
+		-- Opt-in: cast normal hotbar abilities on button down.
+		enabled = false,
+	},
+	oneClickGtAoe = {
+		-- Opt-in: ground-target abilities place on key release.
+		enabled = false,
+	},
 	altTracker = {
 		enabled = true,
 		includeBank = true,
@@ -54,6 +62,8 @@ local FEATURE_LABELS = {
 	autoSellTrash = L"AutoSellTrash",
 	battleFatigueHeal = L"BattleFatigueHeal",
 	altTracker = L"AltTracker",
+	actionOnDown = L"Action on down",
+	oneClickGtAoe = L"One-click ground target",
 }
 
 local m_lastFeatureState = {
@@ -63,6 +73,8 @@ local m_lastFeatureState = {
 	autoSellTrash = nil,
 	battleFatigueHeal = nil,
 	altTracker = nil,
+	actionOnDown = nil,
+	oneClickGtAoe = nil,
 }
 
 function QoL.PrintSubFeatureMessage(featureName, message)
@@ -89,6 +101,8 @@ local function seedFeatureState(settings)
 	m_lastFeatureState.autoSellTrash = settings.autoSellTrash.enabled == true
 	m_lastFeatureState.battleFatigueHeal = settings.battleFatigueHeal.enabled == true
 	m_lastFeatureState.altTracker = settings.altTracker.enabled == true
+	m_lastFeatureState.actionOnDown = settings.actionOnDown.enabled == true
+	m_lastFeatureState.oneClickGtAoe = settings.oneClickGtAoe.enabled == true
 end
 
 local function announceFeatureStateIfChanged(key, enabled)
@@ -159,6 +173,7 @@ function QoL.SyncSubFeatures(announceChanges)
 	local BF = CustomUI.QoL.BattleFatigueHeal
 	local ALT = CustomUI.QoL.AltTracker
 	local BCS = CustomUI.QoL.ButtonClickSound
+	local ACT = CustomUI.QoL.ActionButtons
 
 	if s.redAlert.enabled then
 		RA.Enable()
@@ -225,6 +240,14 @@ function QoL.SyncSubFeatures(announceChanges)
 		BCS.Enable()
 	end
 
+	if ACT then
+		ACT.Sync()
+		if announceChanges == true then
+			announceFeatureStateIfChanged("actionOnDown", s.actionOnDown.enabled == true)
+			announceFeatureStateIfChanged("oneClickGtAoe", s.oneClickGtAoe.enabled == true)
+		end
+	end
+
 	if announceChanges ~= true then
 		seedFeatureState(s)
 	end
@@ -257,6 +280,7 @@ function QoL.InitializeSubModules()
 	if CustomUI.QoL.BattleFatigueHeal then CustomUI.QoL.BattleFatigueHeal.Initialize() end
 	if CustomUI.QoL.AltTracker then CustomUI.QoL.AltTracker.Initialize() end
 	if CustomUI.QoL.ButtonClickSound then CustomUI.QoL.ButtonClickSound.Initialize() end
+	if CustomUI.QoL.ActionButtons then CustomUI.QoL.ActionButtons.Initialize() end
 	seedFeatureState()
 end
 
@@ -272,12 +296,15 @@ function QoL.DisableSubModules()
 	if CustomUI.QoL.BattleFatigueHeal then CustomUI.QoL.BattleFatigueHeal.Disable() end
 	if CustomUI.QoL.AltTracker then CustomUI.QoL.AltTracker.Disable() end
 	if CustomUI.QoL.ButtonClickSound then CustomUI.QoL.ButtonClickSound.Disable() end
+	if CustomUI.QoL.ActionButtons then CustomUI.QoL.ActionButtons.Disable() end
 	m_lastFeatureState.redAlert = false
 	m_lastFeatureState.autoSurrender = false
 	m_lastFeatureState.rezzAccept = false
 	m_lastFeatureState.autoSellTrash = false
 	m_lastFeatureState.battleFatigueHeal = false
 	m_lastFeatureState.altTracker = false
+	m_lastFeatureState.actionOnDown = false
+	m_lastFeatureState.oneClickGtAoe = false
 	SetDriverShowing(false)
 end
 
@@ -289,6 +316,7 @@ function QoL.ShutdownSubModules()
 	if CustomUI.QoL.BattleFatigueHeal then CustomUI.QoL.BattleFatigueHeal.Shutdown() end
 	if CustomUI.QoL.AltTracker then CustomUI.QoL.AltTracker.Shutdown() end
 	if CustomUI.QoL.ButtonClickSound then CustomUI.QoL.ButtonClickSound.Shutdown() end
+	if CustomUI.QoL.ActionButtons then CustomUI.QoL.ActionButtons.Shutdown() end
 	SetDriverShowing(false)
 end
 

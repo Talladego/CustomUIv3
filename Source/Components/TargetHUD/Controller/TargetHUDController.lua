@@ -343,6 +343,74 @@ local function UpdateHealthBarDisplay(windowName, hpRounded)
     end
 end
 
+local RefreshTargetHUDFromCache
+
+local function FormatHudName(unitName, unitLevel, iconNum, renownRank)
+    local levelText = towstring(unitLevel or 0)
+    if renownRank ~= nil then
+        levelText = levelText .. L"/" .. towstring(renownRank)
+    end
+    if iconNum then
+        return L"<icon" .. towstring(iconNum) .. L"> " .. (unitName or L"") .. L" (" .. levelText .. L")"
+    end
+    return (unitName or L"") .. L" (" .. levelText .. L")"
+end
+
+-- Other players: LibQuery (cached / async). Self: local GameData.Player.Renown.
+-- Request only when the bound entity changes so HP ticks do not stack waiters.
+local function ResolveHudRenownRank(hud, entityId, rawName)
+    if hud.isSelf then
+        local renown = GameData and GameData.Player and GameData.Player.Renown
+        return renown and tonumber(renown.curRank) or nil
+    end
+
+    local Lookup = CustomUI.TargetRenownLookup
+    if type(Lookup) ~= "table"
+        or type(Lookup.IsPlayerUnit) ~= "function"
+        or not Lookup.IsPlayerUnit(hud.unitId)
+    then
+        hud.renownEntityId = 0
+        hud.renownQueryName = nil
+        hud.renownRank = nil
+        return nil
+    end
+
+    local queryName = Lookup.FormatQueryName and Lookup.FormatQueryName(rawName) or nil
+    local same = hud.renownEntityId == entityId and hud.renownQueryName == queryName
+    if not same then
+        hud.renownEntityId = entityId
+        hud.renownQueryName = queryName
+        hud.renownRank = nil
+        local cached = queryName and Lookup.GetCachedRank and Lookup.GetCachedRank(queryName) or nil
+        if cached ~= nil then
+            hud.renownRank = cached
+        elseif queryName
+            and entityId ~= 0
+            and type(Lookup.Request) == "function"
+            and not (type(Lookup.IsRecentMiss) == "function" and Lookup.IsRecentMiss(queryName))
+        then
+            Lookup.Request(hud.unitId, entityId, rawName, function(rank, meta)
+                if meta == nil then
+                    return
+                end
+                if hud.renownEntityId ~= meta.entityId or hud.renownQueryName ~= meta.queryName then
+                    return
+                end
+                hud.renownRank = rank
+                if m_enabled then
+                    RefreshTargetHUDFromCache(hud)
+                end
+            end)
+        end
+    elseif hud.renownRank == nil and queryName and type(Lookup.GetCachedRank) == "function" then
+        local cached = Lookup.GetCachedRank(queryName)
+        if cached ~= nil then
+            hud.renownRank = cached
+        end
+    end
+    return hud.renownRank
+end
+
 local function AttachHUDToEntity(hud, windowName, entityId)
     local previousAttach = hud.attachedId or 0
     if entityId == previousAttach and hud.worldBound and not hud.spatialHidden
@@ -408,7 +476,7 @@ local function RefreshTargetSideFromEvent(hud)
 end
 
 -- Drives target HUD visuals from live TargetInfo (no transient TargetPresence hold).
-local function RefreshTargetHUDFromCache(hud)
+function RefreshTargetHUDFromCache(hud)
     local sideKey = hud.sideKey
     local windowName = hud.windowName
     local sideSettings = CustomUI.TargetHUD.GetSideSettings(sideKey)
@@ -446,12 +514,8 @@ local function RefreshTargetHUDFromCache(hud)
         local careerLine = TargetInfo:UnitCareer(hud.unitId)
         local iconNum    = (careerLine and careerLine ~= 0) and Icons.GetCareerIconIDFromCareerLine(careerLine) or nil
 
-        local nameText
-        if iconNum then
-            nameText = L"<icon" .. towstring(iconNum) .. L"> " .. unitName .. L" (" .. towstring(unitLevel) .. L")"
-        else
-            nameText = unitName .. L" (" .. towstring(unitLevel) .. L")"
-        end
+        local renownRank = ResolveHudRenownRank(hud, entityId, unitName)
+        local nameText = FormatHudName(unitName, unitLevel, iconNum, renownRank)
 
         local nameColor = TargetInfo:UnitRelationshipColor(hud.unitId)
         local labelName = windowName .. "TargetName"
@@ -504,12 +568,8 @@ local function RefreshSelfHUDFromCache(hud, forceRebind)
         local careerLine = GameData.Player.career and GameData.Player.career.line or 0
         local iconNum = (careerLine and careerLine ~= 0) and Icons.GetCareerIconIDFromCareerLine(careerLine) or nil
 
-        local nameText
-        if iconNum then
-            nameText = L"<icon" .. towstring(iconNum) .. L"> " .. unitName .. L" (" .. towstring(unitLevel) .. L")"
-        else
-            nameText = unitName .. L" (" .. towstring(unitLevel) .. L")"
-        end
+        local renownRank = ResolveHudRenownRank(hud, entityId, unitName)
+        local nameText = FormatHudName(unitName, unitLevel, iconNum, renownRank)
 
         local labelName = windowName .. "TargetName"
         WindowSetShowing(labelName, true)

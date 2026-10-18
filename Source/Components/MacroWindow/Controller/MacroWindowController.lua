@@ -188,14 +188,19 @@ local function RefreshPickerIcons()
         local iconId = list[start + slot - 1]
         m_pageSlotIds[slot] = iconId
         local slotWin = c_PICKER_NAME .. "IconSlot" .. slot
+        local iconWin = PickerSlotIconWindow(slot)
+        if not DoesWindowExist(iconWin) then
+            -- Picker CreateWindow runs after MacroWindow OnInitialize (ROOT_WINDOW_NAMES order).
+            break
+        end
         if iconId then
             local tex, x, y = GetIconData(iconId)
-            DynamicImageSetTexture(PickerSlotIconWindow(slot), tex, x, y)
+            DynamicImageSetTexture(iconWin, tex, x, y)
             if DoesWindowExist(slotWin) then
                 WindowSetShowing(slotWin, true)
             end
         else
-            DynamicImageSetTexture(PickerSlotIconWindow(slot), c_UNDEFINED_ICON_TEX, 0, 0)
+            DynamicImageSetTexture(iconWin, c_UNDEFINED_ICON_TEX, 0, 0)
             if DoesWindowExist(slotWin) then
                 WindowSetShowing(slotWin, false)
             end
@@ -596,12 +601,9 @@ function MacroWindow.OnWindowInitialize()
         LabelSetText(c_PICKER_NAME .. "TitleBarText", GetString(StringTables.Default.LABEL_SELECT_ICON))
     end
 
-    -- Stock 36 macro icons only. The dense 201..25000 list is scanned later, in
-    -- slices, the first time the picker opens (OnWindowInitialize runs at load).
-    for slot = 1, MacroWindow.NUM_MACRO_ICONS do
-        local tex, x, y = GetIconData(MacroWindow.MACRO_ICONS_ID_BASE + slot)
-        DynamicImageSetTexture(PickerSlotIconWindow(slot), tex, x, y)
-    end
+    -- Do not seed picker IconBase here: CustomUIMacroIconSelectionWindow is created
+    -- after this window in ROOT_WINDOW_NAMES, so IconSlotNIconBase does not exist yet.
+    -- RefreshPickerIcons fills the grid the first time the picker opens.
 
     for slot = 1, MacroWindow.NUM_MACROS do
         ButtonSetCheckButtonFlag(c_WINDOW_NAME .. "IconSlot" .. slot, true)

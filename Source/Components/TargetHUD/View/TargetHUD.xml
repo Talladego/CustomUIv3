@@ -14,7 +14,7 @@
             </EventHandlers>
             <Windows>
 
-                <Label name="$parentTargetName" font="font_heading_unitframe_large_name" maxchars="48"
+                <Label name="$parentTargetName" font="font_heading_unitframe_large_name" maxchars="64"
                        textalign="center" autoresizewidth="false" ellipsisOnCrop="true" layer="overlay">
                     <Size>
                         <AbsPoint x="220" y="22" />

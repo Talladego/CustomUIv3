@@ -2,7 +2,7 @@
 
 CustomUI is a modular Return of Reckoning addon that replaces and enhances stock UI components behind a single settings surface and slash-command workflow.
 
-**Version:** CustomUI `1.4.8` (see `CustomUI.Version` / `CustomUI.mod`). One addon-level semver (not per-component); the active profile also stores `CustomUI.Settings.version` on init. Settings UI is included in the same AddOn (`Source/SettingsWindow/`).
+**Version:** CustomUI `1.4.10` (see `CustomUI.Version` / `CustomUI.mod`). One addon-level semver (not per-component); the active profile also stores `CustomUI.Settings.version` on init. Settings UI is included in the same AddOn (`Source/SettingsWindow/`).
 
 ## Documentation
 
@@ -47,12 +47,12 @@ Optional: enable **LibPerf** for frametime hitch breadcrumbs (`/libperf CustomUI
 | `TargetWindow` | `ea_targetwindow` (hostile + friendly slots) | ✅ Implemented, `DefaultEnabled = false` — HP% overlay; optional LibQuery renown badge on player targets |
 | `PlayerPetWindow` | `PetHealthWindow` in `ea_careerresourceswindow` | ✅ Implemented helper component, not registered separately in `/customui components` |
 | `GroupWindow` | `ea_groupwindow` | ✅ Implemented, `DefaultEnabled = false` — optional LibQuery renown badge on member portraits |
-| `TargetHUD` | — (world-attached HUDs: hostile, friendly, and self) | ✅ Implemented, `DefaultEnabled = false` — HP% on `HealthBarBarText` |
+| `TargetHUD` | — (world-attached HUDs: hostile, friendly, and self) | ✅ Implemented, `DefaultEnabled = false` — HP% on `HealthBarBarText`; player names show `Name (level/renown)` |
 | `UnitFrames` | BattlegroupHUD + FloatingScenarioGroup scenario roster frames | ✅ Implemented, `DefaultEnabled = false` |
 | `GroupIcons` | — (career icons on world objects for party / warband / scenario members) | ✅ Implemented, enabled by default on a fresh profile |
 | `SCT` | `easystem_eventtext` combat/point-gain floating text | ✅ Complete, `DefaultEnabled = false` |
 | `KillTracker` | — (RvR Order/Destruction kill feed) | ✅ Implemented, `DefaultEnabled = false`; `/cui` → **Kills** tab |
-| `QoL` | — (RedAlert, AutoSurrender, RezzAccept, AltTracker, mute button click sound) | ✅ Implemented, `DefaultEnabled = false`; `/cui` → **QoL** tab |
+| `QoL` | — (RedAlert, AutoSurrender, RezzAccept, AltTracker, mute button click sound, cast on button down, one-click ground targets) | ✅ Implemented, `DefaultEnabled = false`; `/cui` → **QoL** tab |
 | `AutoFPS` | — (dynamic FPS / graphics helpers) | ✅ Implemented, `DefaultEnabled = false`; `/cui` → **AutoFPS** tab |
 | `MacroWindow` | `EA_Window_Macro` | ✅ Implemented, `DefaultEnabled = false`; `/cui` → **QoL** tab — larger movable editor, paged icons (~25k, scanned across frames), Delete clears via `SetMacroData`; disable `bigger_macrowindow` / `MacroIcons` while enabled |
 

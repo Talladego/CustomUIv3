@@ -295,8 +295,12 @@ local function SetupIconPagingChrome()
     local lastPage = GetLastPageIndex()
     m_scanLastPage = lastPage
     if DoesWindowExist(c_ICONS_SCROLLBAR) then
+        -- SetMax/SetScroll fire OnScrollPosChanged. Without this, picker open
+        -- pumps one extra icon-scan slice from IconScrollPos.
+        m_scrollReset = true
         VerticalScrollbarSetMaxScrollPosition(c_ICONS_SCROLLBAR, lastPage)
         VerticalScrollbarSetScrollPosition(c_ICONS_SCROLLBAR, ClampPageIndex(m_pageIndex))
+        m_scrollReset = false
         WindowSetShowing(c_ICONS_SCROLLBAR, true)
     end
 

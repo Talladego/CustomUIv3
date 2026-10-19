@@ -285,6 +285,12 @@ function QoL.InitializeSubModules()
 end
 
 function QoL.EnableSubModules()
+	-- Set the component gate before Sync. EnableComponent writes
+	-- Settings.Components.QoL only after Enable returns, so Sync cannot
+	-- discover "QoL is on" from that flag during this call.
+	if CustomUI.QoL.ActionButtons then
+		CustomUI.QoL.ActionButtons.Enable()
+	end
 	QoL.SyncSubFeatures(false)
 end
 

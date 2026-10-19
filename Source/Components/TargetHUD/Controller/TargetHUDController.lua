@@ -356,6 +356,15 @@ local function FormatHudName(unitName, unitLevel, iconNum, renownRank)
     return (unitName or L"") .. L" (" .. levelText .. L")"
 end
 
+local function PaintTargetHudName(hud, unitName, unitLevel, iconNum, renownRank)
+    local nameText = FormatHudName(unitName, unitLevel, iconNum, renownRank)
+    local nameColor = TargetInfo:UnitRelationshipColor(hud.unitId)
+    local labelName = hud.windowName .. "TargetName"
+    WindowSetShowing(labelName, true)
+    LabelSetText(labelName, nameText)
+    LabelSetTextColor(labelName, nameColor.r, nameColor.g, nameColor.b)
+end
+
 -- Other players: LibQuery (cached / async). Self: local GameData.Player.Renown.
 -- Request only when the bound entity changes so HP ticks do not stack waiters.
 local function ResolveHudRenownRank(hud, entityId, rawName)
@@ -389,6 +398,9 @@ local function ResolveHudRenownRank(hud, entityId, rawName)
             and type(Lookup.Request) == "function"
             and not (type(Lookup.IsRecentMiss) == "function" and Lookup.IsRecentMiss(queryName))
         then
+            -- Stays true until Request returns. LibQuery-absent replies are
+            -- synchronous; this refresh paints the name after that return.
+            local syncReply = true
             Lookup.Request(hud.unitId, entityId, rawName, function(rank, meta)
                 if meta == nil then
                     return
@@ -397,10 +409,25 @@ local function ResolveHudRenownRank(hud, entityId, rawName)
                     return
                 end
                 hud.renownRank = rank
-                if m_enabled then
-                    RefreshTargetHUDFromCache(hud)
+                if syncReply or not m_enabled then
+                    return
                 end
+                -- Not a target event. Only PLAYER_TARGET_UPDATED may re-attach;
+                -- a late reply must not show a HUD the player just dropped.
+                if not hud.worldBound or hud.attachedId ~= meta.entityId then
+                    return
+                end
+                local sideSettings = CustomUI.TargetHUD.GetSideSettings(hud.sideKey)
+                if sideSettings == nil or sideSettings.showHealthBar ~= true then
+                    return
+                end
+                local unitName = TargetInfo:UnitName(hud.unitId)
+                local unitLevel = TargetInfo:UnitLevel(hud.unitId) or 0
+                local careerLine = TargetInfo:UnitCareer(hud.unitId)
+                local iconNum = (careerLine and careerLine ~= 0) and Icons.GetCareerIconIDFromCareerLine(careerLine) or nil
+                PaintTargetHudName(hud, unitName, unitLevel, iconNum, rank)
             end)
+            syncReply = false
         end
     elseif hud.renownRank == nil and queryName and type(Lookup.GetCachedRank) == "function" then
         local cached = Lookup.GetCachedRank(queryName)
@@ -515,13 +542,7 @@ function RefreshTargetHUDFromCache(hud)
         local iconNum    = (careerLine and careerLine ~= 0) and Icons.GetCareerIconIDFromCareerLine(careerLine) or nil
 
         local renownRank = ResolveHudRenownRank(hud, entityId, unitName)
-        local nameText = FormatHudName(unitName, unitLevel, iconNum, renownRank)
-
-        local nameColor = TargetInfo:UnitRelationshipColor(hud.unitId)
-        local labelName = windowName .. "TargetName"
-        WindowSetShowing(labelName, true)
-        LabelSetText(labelName, nameText)
-        LabelSetTextColor(labelName, nameColor.r, nameColor.g, nameColor.b)
+        PaintTargetHudName(hud, unitName, unitLevel, iconNum, renownRank)
     end
 
     hud.attachedId = AttachHUDToEntity(hud, windowName, entityId)

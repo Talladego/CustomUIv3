@@ -2519,11 +2519,35 @@ IsScenarioContext = function()
     return false
 end
 
+local m_scenarioStatsHeld = false
+
 local function WantScenarioThreatStream()
     if type(CustomUI.IsComponentEnabled) == "function" and not CustomUI.IsComponentEnabled("GroupIcons") then
         return false
     end
     return EnsureSettings().showScenarioThreat == true and IsScenarioContext() == true
+end
+
+local function HoldScenarioStatsStream(want)
+    want = want == true
+    if want == m_scenarioStatsHeld then
+        return
+    end
+    if want then
+        if type(ScenarioStats.Acquire) == "function" then
+            ScenarioStats.Acquire()
+        elseif type(ScenarioStats.Start) == "function" then
+            ScenarioStats.Start()
+        end
+        m_scenarioStatsHeld = true
+    else
+        if type(ScenarioStats.Release) == "function" then
+            ScenarioStats.Release()
+        elseif type(ScenarioStats.Stop) == "function" then
+            ScenarioStats.Stop()
+        end
+        m_scenarioStatsHeld = false
+    end
 end
 
 SyncScenarioStatsStream = function()
@@ -2533,20 +2557,21 @@ SyncScenarioStatsStream = function()
                 ScenarioStats.MarkStopped()
             end
             if WantScenarioThreatStream() then
-                ScenarioStats.Start()
+                -- Stock STOP cleared the engine stream; re-acquire if we still hold it.
+                if m_scenarioStatsHeld and type(ScenarioStats.Start) == "function" then
+                    ScenarioStats.Start()
+                elseif not m_scenarioStatsHeld then
+                    HoldScenarioStatsStream(true)
+                end
             end
         end)
     end
     if WantScenarioThreatStream() then
-        if type(ScenarioStats.Start) == "function" then
-            ScenarioStats.Start()
-        end
+        HoldScenarioStatsStream(true)
         RefreshThreatWinnersFromScenarioPlayers()
         ApplyAllLiveIconOverlays(true)
     else
-        if type(ScenarioStats.Stop) == "function" then
-            ScenarioStats.Stop()
-        end
+        HoldScenarioStatsStream(false)
         ClearThreatWinners()
         ApplyAllLiveIconOverlays(true)
     end
@@ -3079,9 +3104,7 @@ function GroupIconsComponent:Disable()
     m_pendingOutsiderHealthRefresh = false
     m_pendingRosterDeathRefresh = false
     m_pendingRosterAttachCheck = false
-    if type(ScenarioStats.Stop) == "function" then
-        ScenarioStats.Stop()
-    end
+    HoldScenarioStatsStream(false)
     ClearThreatWinners()
     m_outsiderDeadWids = {}
     m_deadMotionByWid = {}

@@ -21,7 +21,8 @@ CustomUISettingsWindowTabbed.TABS_SCT		= 7
 CustomUISettingsWindowTabbed.TABS_KILLTRACKER	= 8
 CustomUISettingsWindowTabbed.TABS_AUTOFPS	= 9
 CustomUISettingsWindowTabbed.TABS_QOL	= 10
-CustomUISettingsWindowTabbed.TABS_MAX_NUMBER	= 10
+CustomUISettingsWindowTabbed.TABS_SMARTASSIST	= 11
+CustomUISettingsWindowTabbed.TABS_MAX_NUMBER	= 11
 
 local c_SCT_COLOR_PICKER_DEFAULT_BUTTON = "CustomUISettingsWindowTabbedSctColorPickerHostSctColorPickerDefaultButton"
 
@@ -118,6 +119,9 @@ local function ReapplyComponentsFromSettings()
     if CustomUI.QoL and type(CustomUI.QoL.OnSettingsChanged) == "function" then
         CustomUI.QoL.OnSettingsChanged()
     end
+    if CustomUI.SmartAssist and type(CustomUI.SmartAssist.OnSettingsChanged) == "function" then
+        CustomUI.SmartAssist.OnSettingsChanged()
+    end
     -- SCT reads CustomUI.Settings.SCT; force a settings-changed refresh if available.
     if CustomUI.SCT then
         if type(CustomUI.SCT.NotifySettingsChanged) == "function" then
@@ -151,6 +155,7 @@ CustomUISettingsWindowTabbed.Tabs[ CustomUISettingsWindowTabbed.TABS_SCT        
 CustomUISettingsWindowTabbed.Tabs[ CustomUISettingsWindowTabbed.TABS_KILLTRACKER ] = { window = "SWTabKillTracker", name="CustomUISettingsWindowTabbedTabButtonsKillTracker", label=L"Kills", tabClass=CustomUISettingsWindowTabKillTracker }
 CustomUISettingsWindowTabbed.Tabs[ CustomUISettingsWindowTabbed.TABS_AUTOFPS ] = { window = "SWTabAutoFPS", name="CustomUISettingsWindowTabbedTabButtonsAutoFPS", label=L"FPS", tabClass=CustomUISettingsWindowTabAutoFPS }
 CustomUISettingsWindowTabbed.Tabs[ CustomUISettingsWindowTabbed.TABS_QOL ] = { window = "SWTabQoL", name="CustomUISettingsWindowTabbedTabButtonsQoL", label=L"QoL", tabClass=CustomUISettingsWindowTabQoL }
+CustomUISettingsWindowTabbed.Tabs[ CustomUISettingsWindowTabbed.TABS_SMARTASSIST ] = { window = "SWTabSmartAssist", name="CustomUISettingsWindowTabbedTabButtonsSmartAssist", label=L"Assist", tabClass=CustomUISettingsWindowTabSmartAssist }
 
 
 function CustomUISettingsWindowTabbed.OnShow()

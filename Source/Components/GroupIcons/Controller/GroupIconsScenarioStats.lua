@@ -25,6 +25,8 @@ local ScenarioStats = CustomUI.GroupIcons.ScenarioStats
 
 local m_streaming = false
 local m_summaryHooked = false
+-- Shared consumers (GroupIcons badges, SmartAssist, …). Stop only at zero.
+local m_acquireCount = 0
 
 local function StartEvent()
     return SystemData and SystemData.Events and SystemData.Events.SCENARIO_START_UPDATING_PLAYERS_STATS
@@ -53,7 +55,7 @@ function ScenarioStats.MarkStopped()
     m_streaming = false
 end
 
-function ScenarioStats.Start()
+local function BroadcastStart()
     if m_streaming then
         return
     end
@@ -65,8 +67,7 @@ function ScenarioStats.Start()
     m_streaming = true
 end
 
---- Stop our stream. If the stock scoreboard is open it owns the START; do not STOP it.
-function ScenarioStats.Stop()
+local function BroadcastStop()
     if not m_streaming then
         return
     end
@@ -81,13 +82,64 @@ function ScenarioStats.Stop()
     CustomUI.TryCall("GroupIcons.StopScenarioPlayerStats", BroadcastEvent, ev)
 end
 
-local function RowKillDamage(row)
-    -- Stock ScenarioSummaryWindow maps kill damage from GetScenarioPlayers().renownbonus.
+function ScenarioStats.Start()
+    BroadcastStart()
+end
+
+--- Stop our stream. If the stock scoreboard is open it owns the START; do not STOP it.
+--- Prefer Acquire/Release when multiple features share the stream.
+function ScenarioStats.Stop()
+    if m_acquireCount > 0 then
+        return
+    end
+    BroadcastStop()
+end
+
+--- Take a shared hold on the live stats stream (idempotent Start).
+function ScenarioStats.Acquire()
+    m_acquireCount = m_acquireCount + 1
+    BroadcastStart()
+end
+
+--- Drop a shared hold; STOP only when no consumers remain.
+function ScenarioStats.Release()
+    if m_acquireCount > 0 then
+        m_acquireCount = m_acquireCount - 1
+    end
+    if m_acquireCount <= 0 then
+        m_acquireCount = 0
+        BroadcastStop()
+    end
+end
+
+--- Kill damage from a GetScenarioPlayers() row (stock maps renownbonus → killdamagedealt).
+function ScenarioStats.RowKillDamage(row)
+    if type(row) ~= "table" then
+        return 0
+    end
     local killDamage = tonumber(row.killdamagedealt)
     if killDamage == nil then
         killDamage = tonumber(row.renownbonus)
     end
     return killDamage or 0
+end
+
+function ScenarioStats.RowDeathBlows(row)
+    if type(row) ~= "table" then
+        return 0
+    end
+    return tonumber(row.deathblows) or 0
+end
+
+function ScenarioStats.RowTotalDamage(row)
+    if type(row) ~= "table" then
+        return 0
+    end
+    return tonumber(row.damagedealt) or 0
+end
+
+local function RowKillDamage(row)
+    return ScenarioStats.RowKillDamage(row)
 end
 
 local function RowProtection(row)
@@ -394,17 +446,134 @@ local function PickExclusiveStatWinners(rows, normalizeNameKey)
     return winners
 end
 
+local function FetchScenarioPlayerRows()
+    if type(GameData) ~= "table" or type(GameData.GetScenarioPlayers) ~= "function" then
+        return nil
+    end
+    local ok, list = CustomUI.TryCallQuiet("GroupIcons.GetScenarioPlayers", GameData.GetScenarioPlayers)
+    if not ok or type(list) ~= "table" then
+        return nil
+    end
+    return list
+end
+
+--- Assist ranking: KillDamage, then Deathblows, then Total Damage.
+local function AssistChallengerWins(challenger, incumbent)
+    local akd = ScenarioStats.RowKillDamage(challenger)
+    local bkd = ScenarioStats.RowKillDamage(incumbent)
+    if akd ~= bkd then
+        return akd > bkd
+    end
+    local adb = ScenarioStats.RowDeathBlows(challenger)
+    local bdb = ScenarioStats.RowDeathBlows(incumbent)
+    if adb ~= bdb then
+        return adb > bdb
+    end
+    return ScenarioStats.RowTotalDamage(challenger) > ScenarioStats.RowTotalDamage(incumbent)
+end
+
+function ScenarioStats.RowHasAssistCombatData(row)
+    return ScenarioStats.RowKillDamage(row) > 0
+        or ScenarioStats.RowDeathBlows(row) > 0
+        or ScenarioStats.RowTotalDamage(row) > 0
+end
+
+local function AssistLeadReason(winner, runnerUp)
+    if winner == nil then
+        return "KillDamage"
+    end
+    if runnerUp == nil then
+        if ScenarioStats.RowKillDamage(winner) > 0 then
+            return "KillDamage"
+        end
+        if ScenarioStats.RowDeathBlows(winner) > 0 then
+            return "Deathblows"
+        end
+        return "Total Damage"
+    end
+    if ScenarioStats.RowKillDamage(winner) ~= ScenarioStats.RowKillDamage(runnerUp) then
+        return "KillDamage"
+    end
+    if ScenarioStats.RowDeathBlows(winner) ~= ScenarioStats.RowDeathBlows(runnerUp) then
+        return "Deathblows"
+    end
+    return "Total Damage"
+end
+
+--- Best same-realm scoreboard player for SmartAssist (not exclusive badge tops).
+--- opts.realm (number), opts.normalizeNameKey (fn), opts.excludeKey (optional),
+--- opts.accept (optional fn(key, row) -> bool) for alive/range filters,
+--- opts.requireCombatData (default true): skip until someone has KD/DB/damage > 0.
+--- Returns { key, name, row, killDamage, deathBlows, totalDamage, reason } or nil.
+function ScenarioStats.PickBestAssistCandidate(opts)
+    opts = opts or {}
+    local realm = tonumber(opts.realm)
+    local normalizeNameKey = opts.normalizeNameKey
+    if realm == nil or type(normalizeNameKey) ~= "function" or not IsScoredRealm(realm) then
+        return nil
+    end
+    local list = FetchScenarioPlayerRows()
+    if list == nil then
+        return nil
+    end
+
+    local excludeKey = opts.excludeKey
+    local accept = opts.accept
+    local requireCombatData = opts.requireCombatData ~= false
+    local bestRow, bestKey, bestName = nil, nil, nil
+    local runnerUp = nil
+
+    for _, row in ipairs(list) do
+        if type(row) == "table" and tonumber(row.realm) == realm and row.name ~= nil then
+            local key = normalizeNameKey(row.name)
+            if key ~= nil and key ~= excludeKey then
+                local okAccept = true
+                if requireCombatData and not ScenarioStats.RowHasAssistCombatData(row) then
+                    okAccept = false
+                end
+                if okAccept and type(accept) == "function" then
+                    okAccept = accept(key, row) == true
+                end
+                if okAccept then
+                    if bestRow == nil then
+                        bestRow = row
+                        bestKey = key
+                        bestName = NameForChat(row.name)
+                    elseif AssistChallengerWins(row, bestRow) then
+                        runnerUp = bestRow
+                        bestRow = row
+                        bestKey = key
+                        bestName = NameForChat(row.name)
+                    elseif runnerUp == nil or AssistChallengerWins(row, runnerUp) then
+                        runnerUp = row
+                    end
+                end
+            end
+        end
+    end
+
+    if bestKey == nil or bestRow == nil then
+        return nil
+    end
+    return {
+        key = bestKey,
+        name = bestName,
+        row = bestRow,
+        killDamage = ScenarioStats.RowKillDamage(bestRow),
+        deathBlows = ScenarioStats.RowDeathBlows(bestRow),
+        totalDamage = ScenarioStats.RowTotalDamage(bestRow),
+        reason = AssistLeadReason(bestRow, runnerUp),
+    }
+end
+
 --- Per-realm exclusive scoreboard tops. Returns { [kind] = { [realm] = { key, name } } }.
 function ScenarioStats.PickTopWinners(normalizeNameKey)
     local winners = EmptyStatWinners()
     if type(normalizeNameKey) ~= "function" then
         return winners
     end
-    if type(GameData) ~= "table" or type(GameData.GetScenarioPlayers) ~= "function" then
-        return winners
-    end
-    local ok, list = CustomUI.TryCallQuiet("GroupIcons.GetScenarioPlayers", GameData.GetScenarioPlayers)
-    if not ok or type(list) ~= "table" then
+    local list = FetchScenarioPlayerRows()
+    if list == nil then
         return winners
     end
 

@@ -9,7 +9,7 @@
         <!-- Settings Window -->
         <Window name="CustomUISettingsWindowTabbed" movable="true" savesettings="false" layer="secondary">
             <Size>
-                <AbsPoint x="1300" y="800" />
+                <AbsPoint x="1440" y="800" />
             </Size>
             <Anchors>
                 <Anchor point="center" relativePoint="center" />
@@ -42,7 +42,7 @@
                 <!-- Tabs  -->
                 <Window name="$parentTabButtons">
                     <Size>
-                        <AbsPoint x="1250" y="35" />
+                        <AbsPoint x="1400" y="35" />
                     </Size>
                     <Anchors>
                         <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentTitleBar"/>
@@ -137,10 +137,17 @@
                                 </Anchor>
                             </Anchors>
                         </Button>
+                        <Button name="$parentSmartAssist" inherits="CustomUI_Templates_SettingsWindowTabButton" id="11">
+                            <Anchors>
+                                <Anchor point="right" relativePoint="left" relativeTo="$parentQoL">
+                                    <AbsPoint x="0" y="0" />
+                                </Anchor>
+                            </Anchors>
+                        </Button>
 
 		                <Window name="$parentSeparatorRight" inherits="EA_Window_TabSeparatorRightSide" layer="background" popable="false">
 		                  <Anchors>
-		                    <Anchor point="bottomright" relativePoint="topleft" relativeTo="$parentQoL">
+		                    <Anchor point="bottomright" relativePoint="topleft" relativeTo="$parentSmartAssist">
 		                      <AbsPoint x="0" y="-6" />
 		                    </Anchor>
 		                    <Anchor point="bottomright" relativePoint="bottomright" >
@@ -174,6 +181,7 @@
                 <Window name ="SWTabKillTracker" inherits ="CustomUISettingsWindowTabKillTracker"/>
                 <Window name ="SWTabAutoFPS" inherits ="CustomUISettingsWindowTabAutoFPS"/>
                 <Window name ="SWTabQoL" inherits ="CustomUISettingsWindowTabQoL"/>
+                <Window name ="SWTabSmartAssist" inherits ="CustomUISettingsWindowTabSmartAssist"/>
                 
                 
                 <Button name="$parentOkayButton" inherits="EA_Button_DefaultResizeable" >

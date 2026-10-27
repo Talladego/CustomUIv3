@@ -1,0 +1,269 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../Interface.xsd">
+  <Scripts>
+    <Script file="Source/SettingsWindow/CustomUISettingsWindowTabSmartAssist.lua"/>
+  </Scripts>
+  <Windows>
+
+    <Window name="CustomUISettingsWindowTabSmartAssist" movable="false" >
+      <Anchors>
+        <Anchor point="topleft" relativePoint="topleft" relativeTo="CustomUISettingsWindowTabbedSocket">
+          <AbsPoint x="0" y="0"/>
+        </Anchor>
+        <Anchor point="bottomright" relativePoint="bottomright" relativeTo="CustomUISettingsWindowTabbedSocket">
+          <AbsPoint x="0" y="0"/>
+        </Anchor>
+      </Anchors>
+      <EventHandlers>
+        <EventHandler event="OnInitialize" function="CustomUISettingsWindowTabSmartAssist.Initialize"/>
+      </EventHandlers>
+      <Windows>
+
+        <ScrollWindow name="$parentContents" childscrollwindow="SWTabSmartAssistContentsScrollChild" scrollbar="SWTabSmartAssistContentsScrollbar" lineheight="18" autoHideScrollBar="true">
+            <Anchors>
+                <Anchor point="topleft" relativePoint="topleft" />
+                <Anchor point="bottomright" relativePoint="bottomright" />
+            </Anchors>
+            <Windows>
+                <VerticalScrollbar name="$parentScrollbar" inherits="EA_ScrollBar_DefaultVerticalChain" layer="popup">
+                    <Anchors>
+                        <Anchor point="topright" relativePoint="topright">
+                            <AbsPoint x="0" y="0"/>
+                        </Anchor>
+                        <Anchor point="bottomright" relativePoint="bottomright">
+                            <AbsPoint x="0" y="0"/>
+                        </Anchor>
+                    </Anchors>
+                </VerticalScrollbar>
+
+                <Window name="$parentScrollChild">
+                    <Anchors>
+                        <Anchor point="topleft" relativePoint="topleft">
+                            <AbsPoint x="0" y="0" />
+                        </Anchor>
+                        <Anchor point="topleft" relativePoint="topright" relativeTo="$parentScrollbar">
+                            <AbsPoint x="0" y="0" />
+                        </Anchor>
+                    </Anchors>
+                    <Windows>
+
+                        <Window name="$parentGeneral" >
+                            <Size>
+                                <AbsPoint x="500" y="200" />
+                            </Size>
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft">
+                                  <AbsPoint x="0" y="0"/>
+                                </Anchor>
+                                <Anchor point="topright" relativePoint="topright">
+                                  <AbsPoint x="0" y="0"/>
+                                </Anchor>
+                            </Anchors>
+                            <Windows>
+                                <FullResizeImage name="$parentBackground" inherits="SettingsSectionBackground" />
+                                <Label name="$parentTitle" inherits="EA_Settings_SectionTitle">
+                                    <Size>
+                                        <AbsPoint x="400" y="25" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="10" y="10" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+
+                                <Window name="$parentEnabled" inherits="EA_LabelCheckButtonWide">
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="40" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSmartAssist.OnToggleEnabled" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Label name="$parentInfo" font="font_default_text_small" wordwrap="true" textalign="left" maxchars="512">
+                                    <Size>
+                                        <AbsPoint x="430" y="100" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="80" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+                            </Windows>
+                        </Window>
+
+                        <Window name="$parentRange" >
+                            <Size>
+                                <AbsPoint x="500" y="160" />
+                            </Size>
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft">
+                                    <AbsPoint x="0" y="210"/>
+                                </Anchor>
+                                <Anchor point="topright" relativePoint="topright">
+                                    <AbsPoint x="0" y="210"/>
+                                </Anchor>
+                            </Anchors>
+                            <Windows>
+                                <FullResizeImage name="$parentBackground" inherits="SettingsSectionBackground" />
+                                <Label name="$parentTitle" inherits="EA_Settings_SectionTitle">
+                                    <Size>
+                                        <AbsPoint x="400" y="25" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="10" y="10" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+
+                                <Label name="$parentLabel" font="font_default_text" textalign="left" maxchars="64">
+                                    <Size>
+                                        <AbsPoint x="200" y="24" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="48" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+
+                                <EditBox name="$parentEdit" inherits="EA_EditBox_DefaultFrame" input="numbers" maxchars="4" handleinput="true">
+                                    <Size>
+                                        <AbsPoint x="80" y="28" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="250" y="44" />
+                                        </Anchor>
+                                    </Anchors>
+                                </EditBox>
+
+                                <Label name="$parentInfo" font="font_default_text_small" wordwrap="true" textalign="left" maxchars="256">
+                                    <Size>
+                                        <AbsPoint x="430" y="50" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="90" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+                            </Windows>
+                        </Window>
+
+                        <Window name="$parentAuto" >
+                            <Size>
+                                <AbsPoint x="500" y="180" />
+                            </Size>
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft">
+                                    <AbsPoint x="0" y="380"/>
+                                </Anchor>
+                                <Anchor point="topright" relativePoint="topright">
+                                    <AbsPoint x="0" y="380"/>
+                                </Anchor>
+                            </Anchors>
+                            <Windows>
+                                <FullResizeImage name="$parentBackground" inherits="SettingsSectionBackground" />
+                                <Label name="$parentTitle" inherits="EA_Settings_SectionTitle">
+                                    <Size>
+                                        <AbsPoint x="400" y="25" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="10" y="10" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+
+                                <Window name="$parentEnabled" inherits="EA_LabelCheckButtonWide">
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="40" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSmartAssist.OnToggleAutoAssist" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Label name="$parentInfo" font="font_default_text_small" wordwrap="true" textalign="left" maxchars="512">
+                                    <Size>
+                                        <AbsPoint x="430" y="90" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="80" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+                            </Windows>
+                        </Window>
+
+                        <Window name="$parentNotify" >
+                            <Size>
+                                <AbsPoint x="500" y="160" />
+                            </Size>
+                            <Anchors>
+                                <Anchor point="topleft" relativePoint="topleft">
+                                    <AbsPoint x="0" y="570"/>
+                                </Anchor>
+                                <Anchor point="topright" relativePoint="topright">
+                                    <AbsPoint x="0" y="570"/>
+                                </Anchor>
+                            </Anchors>
+                            <Windows>
+                                <FullResizeImage name="$parentBackground" inherits="SettingsSectionBackground" />
+                                <Label name="$parentTitle" inherits="EA_Settings_SectionTitle">
+                                    <Size>
+                                        <AbsPoint x="400" y="25" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="10" y="10" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+
+                                <Window name="$parentEnabled" inherits="EA_LabelCheckButtonWide">
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="40" />
+                                        </Anchor>
+                                    </Anchors>
+                                    <EventHandlers>
+                                        <EventHandler event="OnInitialize" function="EA_LabelCheckButton.Initialize" />
+                                        <EventHandler event="OnLButtonUp" function="CustomUISettingsWindowTabSmartAssist.OnToggleNotify" />
+                                    </EventHandlers>
+                                </Window>
+
+                                <Label name="$parentInfo" font="font_default_text_small" wordwrap="true" textalign="left" maxchars="512">
+                                    <Size>
+                                        <AbsPoint x="430" y="70" />
+                                    </Size>
+                                    <Anchors>
+                                        <Anchor point="topleft" relativePoint="topleft">
+                                            <AbsPoint x="45" y="80" />
+                                        </Anchor>
+                                    </Anchors>
+                                </Label>
+                            </Windows>
+                        </Window>
+
+                    </Windows>
+                </Window>
+            </Windows>
+        </ScrollWindow>
+
+      </Windows>
+    </Window>
+
+  </Windows>
+</Interface>

@@ -2,6 +2,11 @@
 -- CustomUI.QoL.ActionButtons
 -- Action on down: cast a normal hotbar ability on button down.
 -- One-click ground target: first press shows the template, release places it.
+--
+-- Hotbar /assist macros: the client drops /assist if addon code calls any Lua
+-- function while the click is handled. Foreign buttons (macros, items, etc.)
+-- must leave through a tail call after field reads only — same rule as
+-- GCDsaver / LibSlash / StockPiler Macro.
 ----------------------------------------------------------------
 if not CustomUI then CustomUI = {} end
 CustomUI.QoL = CustomUI.QoL or {}
@@ -45,47 +50,58 @@ local m_orgDown = nil
 local m_orgUp = nil
 local m_down = nil
 local m_up = nil
+-- Cached in Sync so click handlers never call EnsureSettings (assist-safe).
+local m_actionOnDown = false
+local m_oneClickGt = false
 
 local function settings()
 	return CustomUI.QoL.EnsureSettings()
 end
 
-local function isGroundTarget(button)
-	return button
-		and button.m_ActionId
-		and AB.GroundTargets[button.m_ActionId] == true
-end
-
-local function isNormalAbility(button)
-	return button
-		and button.m_ActionId
-		and button.m_ActionId ~= 0
-		and button.m_ActionType == GameData.PlayerActions.DO_ABILITY
-		and not isGroundTarget(button)
+local function cacheFeatureFlags()
+	local s = settings()
+	m_actionOnDown = s.actionOnDown.enabled == true
+	m_oneClickGt = s.oneClickGtAoe.enabled == true
 end
 
 function AB.OnLButtonDown(self, flags, x, y)
+	-- Non-ability / non-game-action: field reads then tail-call stock down.
+	-- Do not call settings() or helpers here — macros share this path.
+	if flags ~= SystemData.ButtonFlags.GAME_ACTION
+		or not self
+		or self.m_ActionType ~= GameData.PlayerActions.DO_ABILITY
+		or not self.m_ActionId
+		or self.m_ActionId == 0
+	then
+		if m_orgDown then
+			return m_orgDown(self, flags, x, y)
+		end
+		return
+	end
+
+	local ground = AB.GroundTargets[self.m_ActionId] == true
 	if m_orgDown then
 		m_orgDown(self, flags, x, y)
 	end
-	if flags ~= SystemData.ButtonFlags.GAME_ACTION then
-		return
-	end
-	local s = settings()
-	if s.oneClickGtAoe.enabled == true and isGroundTarget(self) then
+	if m_oneClickGt == true and ground then
 		WindowGameAction(SystemData.ActiveWindow.name)
 		return
 	end
-	if s.actionOnDown.enabled == true and isNormalAbility(self) then
+	if m_actionOnDown == true and not ground then
 		WindowGameAction(SystemData.ActiveWindow.name)
 	end
 end
 
 function AB.OnLButtonUp(self, flags, x, y)
-	local s = settings()
-	if s.actionOnDown.enabled == true
+	-- Swallow stock up only for normal abilities already fired on down.
+	-- Everything else (including /assist macros) is field reads + tail call.
+	if m_actionOnDown == true
 		and flags == SystemData.ButtonFlags.GAME_ACTION
-		and isNormalAbility(self)
+		and self
+		and self.m_ActionType == GameData.PlayerActions.DO_ABILITY
+		and self.m_ActionId
+		and self.m_ActionId ~= 0
+		and AB.GroundTargets[self.m_ActionId] ~= true
 	then
 		return
 	end
@@ -133,8 +149,8 @@ function AB.Sync()
 	if not m_ready then
 		return
 	end
-	local s = settings()
-	if s.actionOnDown.enabled == true or s.oneClickGtAoe.enabled == true then
+	cacheFeatureFlags()
+	if m_actionOnDown == true or m_oneClickGt == true then
 		AB.InstallHooks()
 	else
 		AB.RemoveHooks()
@@ -151,6 +167,8 @@ function AB.Enable()
 end
 
 function AB.Disable()
+	m_actionOnDown = false
+	m_oneClickGt = false
 	AB.RemoveHooks()
 end
 

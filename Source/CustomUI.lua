@@ -51,7 +51,7 @@ end
 CustomUI.Name = "CustomUI"
 -- Semver (MAJOR.MINOR.PATCH), matching RedAlert / ScenarioBalance / DungeonCoach.
 -- One addon version for the whole modular package; components are toggles, not separately versioned releases.
-CustomUI.Version = "1.4.10"
+CustomUI.Version = "1.4.20"
 CustomUI.SlashCommands = CustomUI.SlashCommands or { "customui", "cui" }
 CustomUI.Components = CustomUI.Components or {}
 CustomUI.ComponentOrder = CustomUI.ComponentOrder or {}
@@ -1290,6 +1290,10 @@ function CustomUI.OnGlobalUpdate(timePassed)
         didWork = true
         CustomUI.TargetHUD.OnGlobalUpdate(timePassed)
     end
+    if type(CustomUI.SmartAssist) == "table"
+        and type(CustomUI.SmartAssist.OnUpdate) == "function" then
+        CustomUI.SmartAssist.OnUpdate(timePassed)
+    end
     if type(CustomUI.TargetWindow) == "table"
         and type(CustomUI.TargetWindow.TryPendingStockRehook) == "function" then
         CustomUI.TargetWindow.TryPendingStockRehook()
@@ -1377,6 +1381,9 @@ function CustomUI.Initialize()
     CustomUI.RegisterFollowLeaderHandlers()
     CustomUI.RefreshFollowLeaderMacro()
     CustomUI.InitializeComponents()
+    if type(CustomUI.SmartAssist) == "table" and type(CustomUI.SmartAssist.Initialize) == "function" then
+        CustomUI.SmartAssist.Initialize()
+    end
     CustomUI.PrintStatusMessage()
 end
 
@@ -1388,6 +1395,9 @@ function CustomUI.Shutdown()
     CustomUI.UnregisterSlashCommands()
     CustomUI.UninstallChatLinkHook()
     CustomUI.UnregisterFollowLeaderHandlers()
+    if type(CustomUI.SmartAssist) == "table" and type(CustomUI.SmartAssist.Shutdown) == "function" then
+        CustomUI.SmartAssist.Shutdown()
+    end
     CustomUI.ShutdownComponents()
     UnhookTargetInfo()
 

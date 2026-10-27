@@ -504,55 +504,77 @@ end
 --- opts.realm (number), opts.normalizeNameKey (fn), opts.excludeKey (optional),
 --- opts.accept (optional fn(key, row) -> bool) for alive/range filters,
 --- opts.requireCombatData (default true): skip until someone has KD/DB/damage > 0.
+--- opts.players (optional): already-fetched GetScenarioPlayers() list. When set, this
+--- does not call the API again. Omit it to fetch here (GroupIcons callers).
+--- opts.rowByKey (optional table): filled with the first same-realm row for each name
+--- key, including rows that lose the rank filters, so a caller can reuse this walk.
 --- Returns { key, name, row, killDamage, deathBlows, totalDamage, reason } or nil.
 function ScenarioStats.PickBestAssistCandidate(opts)
     opts = opts or {}
     local realm = tonumber(opts.realm)
     local normalizeNameKey = opts.normalizeNameKey
-    if realm == nil or type(normalizeNameKey) ~= "function" or not IsScoredRealm(realm) then
+    if realm == nil or type(normalizeNameKey) ~= "function" then
         return nil
     end
-    local list = FetchScenarioPlayerRows()
+    local list = opts.players
     if list == nil then
+        -- Unscored realms never ranked; don't pay for a fetch nobody will use.
+        if not IsScoredRealm(realm) then
+            return nil
+        end
+        list = FetchScenarioPlayerRows()
+    end
+    if type(list) ~= "table" then
         return nil
     end
 
     local excludeKey = opts.excludeKey
     local accept = opts.accept
     local requireCombatData = opts.requireCombatData ~= false
+    local allowRank = IsScoredRealm(realm)
+    local rowByKey = opts.rowByKey
+    if type(rowByKey) ~= "table" then
+        rowByKey = nil
+    end
     local bestRow, bestKey, bestName = nil, nil, nil
     local runnerUp = nil
 
     for _, row in ipairs(list) do
         if type(row) == "table" and tonumber(row.realm) == realm and row.name ~= nil then
             local key = normalizeNameKey(row.name)
-            if key ~= nil and key ~= excludeKey then
-                local okAccept = true
-                if requireCombatData and not ScenarioStats.RowHasAssistCombatData(row) then
-                    okAccept = false
+            if key ~= nil then
+                -- First match wins, same as a forward scan that returns on the first hit.
+                if rowByKey ~= nil and rowByKey[key] == nil then
+                    rowByKey[key] = row
                 end
-                if okAccept and type(accept) == "function" then
-                    okAccept = accept(key, row) == true
-                end
-                if okAccept then
-                    if bestRow == nil then
-                        bestRow = row
-                        bestKey = key
-                        bestName = NameForChat(row.name)
-                    elseif AssistChallengerWins(row, bestRow) then
-                        runnerUp = bestRow
-                        bestRow = row
-                        bestKey = key
-                        bestName = NameForChat(row.name)
-                    elseif runnerUp == nil or AssistChallengerWins(row, runnerUp) then
-                        runnerUp = row
+                if allowRank and key ~= excludeKey then
+                    local okAccept = true
+                    if requireCombatData and not ScenarioStats.RowHasAssistCombatData(row) then
+                        okAccept = false
+                    end
+                    if okAccept and type(accept) == "function" then
+                        okAccept = accept(key, row) == true
+                    end
+                    if okAccept then
+                        if bestRow == nil then
+                            bestRow = row
+                            bestKey = key
+                            bestName = NameForChat(row.name)
+                        elseif AssistChallengerWins(row, bestRow) then
+                            runnerUp = bestRow
+                            bestRow = row
+                            bestKey = key
+                            bestName = NameForChat(row.name)
+                        elseif runnerUp == nil or AssistChallengerWins(row, runnerUp) then
+                            runnerUp = row
+                        end
                     end
                 end
             end
         end
     end
 
-    if bestKey == nil or bestRow == nil then
+    if not allowRank or bestKey == nil or bestRow == nil then
         return nil
     end
     return {

@@ -57,24 +57,48 @@ local m_scanCursor = 1
 local m_updateElapsed = 0
 local m_stickyKey = nil
 local m_stickyHoldLeft = 0
+-- Cached from EnsureSettings / Sync so OnUpdate and events do no settings work.
+local m_enabled = false
+local m_autoAssist = false
+local m_notify = false
+local m_boundSettings = nil
+-- Events set these. OnUpdate is what ranks players and rewrites the macro.
+local m_dirty = false
+local m_refreshNow = false
+local m_targetDirty = false
+local m_assistSuppressed = false
+local m_inScenarioWork = false
+-- Reused across picks so a refresh does not allocate a new index table.
+local m_playerRowByKey = {}
 
 local function ScenarioStats()
     return CustomUI.GroupIcons and CustomUI.GroupIcons.ScenarioStats
 end
 
-local function mergeDefaults(defaults, current)
-    local merged = {}
-    current = type(current) == "table" and current or {}
+local function RememberSettings(settings)
+    m_enabled = settings.enabled == true
+    m_autoAssist = settings.autoAssist == true
+    m_notify = settings.notify == true
+end
+
+--- Fill missing keys on `current`. Does not allocate when every default is already present.
+local function mergeDefaultsInPlace(defaults, current)
     for key, value in pairs(defaults) do
         if type(value) == "table" then
-            merged[key] = mergeDefaults(value, current[key])
+            if type(current[key]) ~= "table" then
+                current[key] = {}
+            end
+            mergeDefaultsInPlace(value, current[key])
         elseif current[key] == nil then
-            merged[key] = value
-        else
-            merged[key] = current[key]
+            current[key] = value
         end
     end
-    return merged
+end
+
+local function AssignIfChanged(settings, key, value)
+    if settings[key] ~= value then
+        settings[key] = value
+    end
 end
 
 function SmartAssist.EnsureSettings()
@@ -82,18 +106,25 @@ function SmartAssist.EnsureSettings()
     if type(CustomUI.Settings.SmartAssist) ~= "table" then
         CustomUI.Settings.SmartAssist = {}
     end
-    CustomUI.Settings.SmartAssist = mergeDefaults(DEFAULT_SETTINGS, CustomUI.Settings.SmartAssist)
-    local range = tonumber(CustomUI.Settings.SmartAssist.range) or SmartAssist.DEFAULT_RANGE
+    local settings = CustomUI.Settings.SmartAssist
+    -- Merge once per table. Saved-variable restore swaps the table; edits do not.
+    if settings ~= m_boundSettings then
+        mergeDefaultsInPlace(DEFAULT_SETTINGS, settings)
+        m_boundSettings = settings
+    end
+    local range = tonumber(settings.range) or SmartAssist.DEFAULT_RANGE
     if range < SmartAssist.RANGE_MIN then
         range = SmartAssist.RANGE_MIN
     elseif range > SmartAssist.RANGE_MAX then
         range = SmartAssist.RANGE_MAX
     end
-    CustomUI.Settings.SmartAssist.range = math.floor(range + 0.5)
-    CustomUI.Settings.SmartAssist.enabled = CustomUI.Settings.SmartAssist.enabled == true
-    CustomUI.Settings.SmartAssist.autoAssist = CustomUI.Settings.SmartAssist.autoAssist == true
-    CustomUI.Settings.SmartAssist.notify = CustomUI.Settings.SmartAssist.notify == true
-    return CustomUI.Settings.SmartAssist
+    range = math.floor(range + 0.5)
+    AssignIfChanged(settings, "range", range)
+    AssignIfChanged(settings, "enabled", settings.enabled == true)
+    AssignIfChanged(settings, "autoAssist", settings.autoAssist == true)
+    AssignIfChanged(settings, "notify", settings.notify == true)
+    RememberSettings(settings)
+    return settings
 end
 
 local function NormalizeNameKey(name)
@@ -426,10 +457,14 @@ local function DetailFromRow(SS, key, row, reason)
     }
 end
 
-local function FindRealmRowByKey(key, realm)
-    if key == nil or realm == nil then
-        return nil
+local function ClearPlayerRowIndex()
+    for key in pairs(m_playerRowByKey) do
+        m_playerRowByKey[key] = nil
     end
+end
+
+--- One scoreboard snapshot per assist pick. PickBestAssistCandidate indexes it.
+local function FetchScenarioPlayerList()
     if type(GameData) ~= "table" or type(GameData.GetScenarioPlayers) ~= "function" then
         return nil
     end
@@ -437,14 +472,7 @@ local function FindRealmRowByKey(key, realm)
     if not ok or type(list) ~= "table" then
         return nil
     end
-    for _, row in ipairs(list) do
-        if type(row) == "table" and tonumber(row.realm) == realm and row.name ~= nil then
-            if NormalizeNameKey(row.name) == key then
-                return row
-            end
-        end
-    end
-    return nil
+    return list
 end
 
 local function StickyStillEligible(SS, key, row, aliveByKey, range)
@@ -502,19 +530,26 @@ function SmartAssist.PickAssistTarget(opts)
     end
 
     local aliveByKey = BuildAliveByKey()
-    local best = SS.PickBestAssistCandidate({
-        realm = realm,
-        normalizeNameKey = NormalizeNameKey,
-        excludeKey = selfKey,
-        requireCombatData = true,
-        accept = function(key, row)
-            if not IsCandidateAlive(key, aliveByKey) then
-                return false
-            end
-            local dist = LookupMapDistance(key, row.name)
-            return IsWithinRange(dist, range)
-        end,
-    })
+    ClearPlayerRowIndex()
+    local playerList = FetchScenarioPlayerList()
+    local best = nil
+    if playerList ~= nil then
+        best = SS.PickBestAssistCandidate({
+            realm = realm,
+            normalizeNameKey = NormalizeNameKey,
+            excludeKey = selfKey,
+            requireCombatData = true,
+            players = playerList,
+            rowByKey = m_playerRowByKey,
+            accept = function(key, row)
+                if not IsCandidateAlive(key, aliveByKey) then
+                    return false
+                end
+                local dist = LookupMapDistance(key, row.name)
+                return IsWithinRange(dist, range)
+            end,
+        })
+    end
 
     local stickyKey = m_stickyKey
     if stickyKey == selfKey then
@@ -526,7 +561,7 @@ function SmartAssist.PickAssistTarget(opts)
 
     local stickyRow = nil
     if stickyKey ~= nil then
-        stickyRow = FindRealmRowByKey(stickyKey, realm)
+        stickyRow = m_playerRowByKey[stickyKey]
     end
     local stickyOk = stickyRow ~= nil and StickyStillEligible(SS, stickyKey, stickyRow, aliveByKey, range)
 
@@ -559,8 +594,8 @@ function SmartAssist.PickAssistTarget(opts)
     return nil
 end
 
-local function FindMacroSlotByName(macroName)
-    local macros = GetMacrosTable()
+local function FindMacroSlotByName(macroName, macros)
+    macros = macros or GetMacrosTable()
     local expected = towstring(macroName)
     for i = 1, #macros do
         if macros[i] and macros[i].name == expected then
@@ -570,8 +605,8 @@ local function FindMacroSlotByName(macroName)
     return nil
 end
 
-local function FindEmptyMacroSlot()
-    local macros = GetMacrosTable()
+local function FindEmptyMacroSlot(macros)
+    macros = macros or GetMacrosTable()
     for i = 1, #macros do
         local row = macros[i]
         if row
@@ -664,9 +699,25 @@ local function WriteMacro(assistName)
     if type(SetMacroData) ~= "function" then
         return false
     end
-    local slot = m_macroSlot or FindMacroSlotByName(SmartAssist.MACRO_NAME)
+    local name = towstring(SmartAssist.MACRO_NAME)
+    local text = L""
+    local icon = SmartAssist.ICON_DISABLED
+    if assistName ~= nil and assistName ~= L"" then
+        text = L"/assist " .. assistName
+        icon = SmartAssist.ICON_ACTIVE
+    end
+
+    -- One macro-table read for the slot search. The equality check below uses
+    -- GetMacrosData when that is a different source than DataUtils.GetMacros,
+    -- matching the previous compare. Steady state (slot already known) is one read.
+    local slot = m_macroSlot
+    local macros = nil
     if slot == nil then
-        slot = FindEmptyMacroSlot()
+        macros = GetMacrosTable()
+        slot = FindMacroSlotByName(SmartAssist.MACRO_NAME, macros)
+        if slot == nil then
+            slot = FindEmptyMacroSlot(macros)
+        end
     end
     if slot == nil then
         if not m_fullSlotsWarned and type(CustomUI.PrintMessage) == "function" then
@@ -678,20 +729,14 @@ local function WriteMacro(assistName)
     m_macroSlot = slot
     m_fullSlotsWarned = false
 
-    local name = towstring(SmartAssist.MACRO_NAME)
-    local text = L""
-    local icon = SmartAssist.ICON_DISABLED
-    if assistName ~= nil and assistName ~= L"" then
-        text = L"/assist " .. assistName
-        icon = SmartAssist.ICON_ACTIVE
+    local dataUtilsMacros = type(DataUtils) == "table" and type(DataUtils.GetMacros) == "function"
+    if type(GetMacrosData) == "function" and (macros == nil or dataUtilsMacros) then
+        macros = GetMacrosData() or {}
     end
-
-    if type(GetMacrosData) == "function" then
-        local macros = GetMacrosData() or {}
-        local row = macros[slot]
-        if row and row.name == name and row.text == text and tonumber(row.iconNum) == icon then
-            return true
-        end
+    macros = macros or {}
+    local row = macros[slot]
+    if row and row.name == name and row.text == text and tonumber(row.iconNum) == icon then
+        return true
     end
 
     SetMacroData(name, text, icon, slot)
@@ -741,8 +786,7 @@ local function HoldStatsStream(want)
 end
 
 local function TryAutoFire(assistName)
-    local settings = SmartAssist.EnsureSettings()
-    if settings.autoAssist ~= true then
+    if m_autoAssist ~= true then
         return
     end
     if assistName == nil or assistName == L"" then
@@ -772,33 +816,57 @@ local function TryAutoFire(assistName)
     end
 end
 
+local function SuppressAssistForHostile()
+    m_assistSuppressed = true
+    ClearSticky()
+    m_lastAssistName = nil
+    m_lastAutoFiredName = nil
+    WriteMacro(nil)
+end
+
+local function ClearAssistOutsideScenario()
+    m_inScenarioWork = false
+    m_assistSuppressed = false
+    m_targetDirty = false
+    m_dirty = false
+    m_updateElapsed = 0
+    HoldStatsStream(false)
+    ClearSticky()
+    m_lastAssistName = nil
+    m_lastAutoFiredName = nil
+    WriteMacro(nil)
+end
+
+local function MarkAssistDirty()
+    m_dirty = true
+end
+
+local function MarkAssistDirtyNow()
+    m_dirty = true
+    m_refreshNow = true
+end
+
 local function RefreshAssist()
-    local settings = SmartAssist.EnsureSettings()
-    if settings.enabled ~= true then
+    if m_enabled ~= true then
         return
     end
 
     if not IsScenarioContext() then
-        HoldStatsStream(false)
-        ClearSticky()
-        m_lastAssistName = nil
-        m_lastAutoFiredName = nil
-        WriteMacro(nil)
+        ClearAssistOutsideScenario()
         return
     end
 
+    m_inScenarioWork = true
     HoldStatsStream(true)
 
     -- Never set (and always clear) assist while you have a living hostile target.
     -- Always WriteMacro(nil) so a stale post-/reload macro cannot linger.
     if HasHostileTarget() then
-        ClearSticky()
-        m_lastAssistName = nil
-        m_lastAutoFiredName = nil
-        WriteMacro(nil)
+        SuppressAssistForHostile()
         return
     end
 
+    m_assistSuppressed = false
     local assistName, picked = SmartAssist.PickAssistTarget()
     local changed = (assistName == nil and m_lastAssistName ~= nil)
         or (assistName ~= nil and (m_lastAssistName == nil or m_lastAssistName ~= assistName))
@@ -807,7 +875,7 @@ local function RefreshAssist()
     m_lastAssistName = assistName
 
     if changed and assistName ~= nil then
-        if settings.notify == true and type(CustomUI.PrintMessage) == "function" then
+        if m_notify == true and type(CustomUI.PrintMessage) == "function" then
             CustomUI.PrintMessage(FormatAssistNotifyLine(assistName, picked))
         end
         TryAutoFire(assistName)
@@ -874,64 +942,129 @@ local function RegisterHandlers()
 end
 
 function SmartAssist.OnScenarioStatsUpdated()
-    if SmartAssist.EnsureSettings().enabled == true then
-        RefreshAssist()
+    if m_enabled ~= true or not IsScenarioContext() then
+        return
     end
+    -- Scoreboard updates are folded into the next assist tick.
+    MarkAssistDirty()
 end
 
 function SmartAssist.OnScenarioBegin()
     ClearSticky()
     m_lastAssistName = nil
     m_lastAutoFiredName = nil
-    if SmartAssist.EnsureSettings().enabled == true then
-        RefreshAssist()
+    m_assistSuppressed = false
+    if m_enabled ~= true then
+        return
     end
+    if not IsScenarioContext() then
+        -- Begin can beat isInScenario. Blank a stale /assist now; rank once context is up.
+        HoldStatsStream(false)
+        WriteMacro(nil)
+    end
+    -- OnUpdate does the player walk. Left set if context is still false so the first
+    -- in-scenario tick does not wait out the full interval.
+    MarkAssistDirtyNow()
 end
 
 function SmartAssist.OnScenarioEnd()
     ClearSticky()
-    if SmartAssist.EnsureSettings().enabled == true then
-        HoldStatsStream(false)
-        m_lastAssistName = nil
-        m_lastAutoFiredName = nil
-        WriteMacro(nil)
+    m_refreshNow = false
+    m_targetDirty = false
+    m_dirty = false
+    if m_enabled ~= true then
+        return
     end
+    -- Leaving a scenario still drops the stats hold and blanks the macro.
+    -- Other handlers no-op outside scenarios; this is the transition itself.
+    ClearAssistOutsideScenario()
 end
 
 function SmartAssist.OnLoadingEnd()
-    if SmartAssist.EnsureSettings().enabled == true then
-        RefreshAssist()
+    if m_enabled ~= true or not IsScenarioContext() then
+        return
     end
+    MarkAssistDirtyNow()
 end
 
 function SmartAssist.OnMacrosLoaded()
-    local settings = SmartAssist.EnsureSettings()
-    if settings.enabled == true then
-        m_macroSlot = FindMacroSlotByName(SmartAssist.MACRO_NAME)
-        RefreshAssist()
+    if m_enabled ~= true then
+        return
     end
+    -- Slot indexes move when macros reload. Drop the cache; the next write rescans.
+    m_macroSlot = nil
+    if not IsScenarioContext() then
+        -- Keep the managed macro seated and empty. No player list, no ranking.
+        WriteMacro(nil)
+        return
+    end
+    MarkAssistDirtyNow()
 end
 
 function SmartAssist.OnPlayerTargetUpdated()
-    if SmartAssist.EnsureSettings().enabled == true then
-        RefreshAssist()
+    if m_enabled ~= true or not IsScenarioContext() then
+        return
     end
+    -- OnUpdate applies this. Ranking stays on the tick; a hostile clear does not walk players.
+    m_targetDirty = true
 end
 
---- Periodic distance refresh while enabled in scenario.
+--- Sticky hold ticks every frame while enabled. Ranking stays on c_REFRESH_INTERVAL.
+--- Disabled: return before any settings read or allocation.
 function SmartAssist.OnUpdate(timePassed)
+    if m_enabled ~= true then
+        return
+    end
+
     local dt = tonumber(timePassed) or 0
     if m_stickyHoldLeft > 0 then
         m_stickyHoldLeft = math.max(0, m_stickyHoldLeft - dt)
     end
-    local settings = SmartAssist.EnsureSettings()
-    if settings.enabled ~= true or not IsScenarioContext() then
+
+    if not IsScenarioContext() then
+        m_targetDirty = false
+        if m_inScenarioWork then
+            -- refreshNow is left alone so a scenario-begin that raced the flag still applies.
+            ClearAssistOutsideScenario()
+        end
         return
     end
+
+    m_inScenarioWork = true
     m_updateElapsed = m_updateElapsed + dt
-    if m_updateElapsed < c_REFRESH_INTERVAL then
+
+    if m_targetDirty then
+        m_targetDirty = false
+        if HasHostileTarget() then
+            -- Clear on this update so the macro does not keep /assist through a target swap.
+            -- Later target events while the hostile is still up do not touch the macro.
+            if not m_assistSuppressed then
+                SuppressAssistForHostile()
+            end
+        elseif m_assistSuppressed then
+            -- Dropped the hostile: rank once on this update, then the normal interval resumes.
+            m_assistSuppressed = false
+            MarkAssistDirtyNow()
+        end
+    end
+
+    if m_refreshNow then
+        m_refreshNow = false
+        m_dirty = true
+        if m_updateElapsed < c_REFRESH_INTERVAL then
+            m_updateElapsed = c_REFRESH_INTERVAL
+        end
+    end
+
+    -- Distance keeps moving with no event, so the interval itself counts as dirty.
+    if m_updateElapsed >= c_REFRESH_INTERVAL then
+        m_dirty = true
+    end
+    if not m_dirty or m_updateElapsed < c_REFRESH_INTERVAL then
         return
     end
+
+    m_dirty = false
     m_updateElapsed = 0
     RefreshAssist()
 end
@@ -939,7 +1072,14 @@ end
 function SmartAssist.Enable()
     local settings = SmartAssist.EnsureSettings()
     settings.enabled = true
+    RememberSettings(settings)
     ClearSticky()
+    m_assistSuppressed = false
+    m_inScenarioWork = false
+    m_dirty = false
+    m_refreshNow = false
+    m_targetDirty = false
+    m_updateElapsed = 0
     RegisterHandlers()
     m_macroSlot = FindMacroSlotByName(SmartAssist.MACRO_NAME)
     WriteMacro(nil)
@@ -947,30 +1087,51 @@ function SmartAssist.Enable()
 end
 
 function SmartAssist.Disable()
+    local settings = SmartAssist.EnsureSettings()
+    settings.enabled = false
+    RememberSettings(settings)
     UnregisterHandlers()
+    m_targetDirty = false
+    m_dirty = false
+    m_refreshNow = false
+    m_assistSuppressed = false
+    m_inScenarioWork = false
+    m_updateElapsed = 0
     HoldStatsStream(false)
     ClearSticky()
     DeleteMacroAndClearBars()
-    local settings = SmartAssist.EnsureSettings()
-    settings.enabled = false
 end
 
 function SmartAssist.Sync()
     local settings = SmartAssist.EnsureSettings()
     if settings.enabled == true then
         RegisterHandlers()
-        m_macroSlot = FindMacroSlotByName(SmartAssist.MACRO_NAME) or m_macroSlot
-        if m_macroSlot == nil or FindMacroSlotByName(SmartAssist.MACRO_NAME) == nil then
+        local slot = FindMacroSlotByName(SmartAssist.MACRO_NAME)
+        m_macroSlot = slot or m_macroSlot
+        if slot == nil then
             WriteMacro(nil)
         end
+        m_updateElapsed = 0
         RefreshAssist()
     else
         UnregisterHandlers()
+        m_targetDirty = false
+        m_dirty = false
+        m_refreshNow = false
+        m_assistSuppressed = false
+        m_inScenarioWork = false
+        m_updateElapsed = 0
         HoldStatsStream(false)
         ClearSticky()
         m_lastAssistName = nil
         m_lastAutoFiredName = nil
-        if FindMacroSlotByName(SmartAssist.MACRO_NAME) ~= nil or m_macroSlot ~= nil then
+        -- Prefer the cached slot, same as before, so a stale index is what Disable clears.
+        -- One name lookup: Delete uses m_macroSlot and does not scan again.
+        local found = FindMacroSlotByName(SmartAssist.MACRO_NAME)
+        if m_macroSlot == nil then
+            m_macroSlot = found
+        end
+        if m_macroSlot ~= nil then
             DeleteMacroAndClearBars()
         end
     end
@@ -986,6 +1147,13 @@ function SmartAssist.Initialize()
 end
 
 function SmartAssist.Shutdown()
+    -- Session flag only. Saved enabled is unchanged; Initialize reads it again.
+    -- Stops the tick from acquiring the stats stream again during teardown.
+    m_enabled = false
+    m_refreshNow = false
+    m_targetDirty = false
+    m_dirty = false
+    m_inScenarioWork = false
     UnregisterHandlers()
     HoldStatsStream(false)
     -- Leave macro in place on reload shutdown; only Disable deletes.

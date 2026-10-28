@@ -160,6 +160,24 @@ function GroupStats.Clear()
     m_byCharId = {}
 end
 
+--- Drop rows whose normalized name is not on the current party/warband roster.
+--- rosterKeys is nameKey -> present (any non-nil value). Dead members stay;
+--- names missing from the roster are removed. No-op when rosterKeys is nil.
+function GroupStats.PruneToRoster(rosterKeys)
+    if type(rosterKeys) ~= "table" then
+        return
+    end
+    for charId, row in pairs(m_byCharId) do
+        local key = nil
+        if type(row) == "table" then
+            key = row.key or NormalizeNameKey(row.name)
+        end
+        if key == nil or rosterKeys[key] == nil then
+            m_byCharId[charId] = nil
+        end
+    end
+end
+
 function GroupStats.Count()
     local n = 0
     for _ in pairs(m_byCharId) do

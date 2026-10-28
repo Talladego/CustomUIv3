@@ -224,6 +224,11 @@ local function IsAssistContext()
     return IsScenarioContext() or IsPartyOrWarband()
 end
 
+--- Open-world party/warband. Scenario scoreboards are a different roster.
+local function IsOpenWorldGroup()
+    return not IsScenarioContext() and IsPartyOrWarband()
+end
+
 --- Active scoreboard for the current context (scenario vs party/warband GRP_STATS).
 local function AssistStats()
     if IsScenarioContext() then
@@ -321,9 +326,12 @@ local function NoteAlive(alive, name, healthValue)
     alive[key] = hp > 0
 end
 
---- Returns map nameKey -> isAlive. Empty map means "no HP data yet".
+--- Returns map nameKey -> isAlive, and whether an open-world roster named anyone.
+--- Scenario: an empty map means "no HP data yet".
+--- Open-world: a missing key means that name is not on the current party/warband roster.
 local function BuildAliveByKey()
     local alive = {}
+    local openWorldRosterReady = false
 
     if IsScenarioContext()
         and type(GameData) == "table"
@@ -394,20 +402,46 @@ local function BuildAliveByKey()
         end
     end
 
-    return alive
+    -- At least one named member: safe to drop cache rows that are not in this set.
+    -- An empty table (roster API lag) must not wipe everyone still in the group.
+    if IsOpenWorldGroup() and next(alive) ~= nil then
+        openWorldRosterReady = true
+    end
+
+    return alive, openWorldRosterReady
+end
+
+--- Drop GRP_STATS rows for names no longer on the open-world party/warband roster.
+--- No-op in a scenario, while solo, or when the roster has not named anyone yet.
+local function PruneDepartedGroupStats()
+    if not IsOpenWorldGroup() then
+        return
+    end
+    local aliveByKey, rosterReady = BuildAliveByKey()
+    if rosterReady ~= true then
+        return
+    end
+    local GS = GroupStats()
+    if GS ~= nil and type(GS.PruneToRoster) == "function" then
+        GS.PruneToRoster(aliveByKey)
+    end
 end
 
 local function IsCandidateAlive(key, aliveByKey)
     if key == nil then
         return false
     end
-    -- No roster HP yet: do not filter everyone out (scoreboard often arrives first).
+    -- Departed members are absent (nil). Nil must not count as alive.
+    if IsOpenWorldGroup() then
+        return aliveByKey[key] == true
+    end
+    -- Scenario: no roster HP yet means don't filter everyone out
+    -- (scoreboard often arrives first). Missing from groups: allow until proven dead.
     if next(aliveByKey) == nil then
         return true
     end
     local flag = aliveByKey[key]
     if flag == nil then
-        -- On scoreboard but missing from groups: allow until proven dead.
         return true
     end
     return flag == true
@@ -576,8 +610,14 @@ local function StickyStillEligible(SS, key, row, aliveByKey, range)
     if type(SS.RowHasAssistCombatData) == "function" and not SS.RowHasAssistCombatData(row) then
         return false
     end
-    -- Only drop when groups explicitly mark them dead (unknown = keep).
-    if aliveByKey[key] == false then
+    -- Open-world: sticky must still be on the roster and alive. A departed
+    -- member's key is nil, which used to keep the lock.
+    -- Scenario: only drop when groups explicitly mark them dead (unknown = keep).
+    if IsOpenWorldGroup() then
+        if aliveByKey[key] ~= true then
+            return false
+        end
+    elseif aliveByKey[key] == false then
         return false
     end
     local dist = LookupMapDistance(key, row.name)
@@ -966,6 +1006,9 @@ local function RefreshAssist()
         if GS ~= nil and type(GS.Clear) == "function" then
             GS.Clear()
         end
+    elseif IsOpenWorldGroup() then
+        -- Leaving one member must drop their row even though the player is still grouped.
+        PruneDepartedGroupStats()
     end
 
     -- Never set (and always clear) assist while you have a living hostile target.
@@ -1118,6 +1161,9 @@ function SmartAssist.OnGroupUpdated()
     if m_enabled ~= true then
         return
     end
+    -- GROUP_UPDATED / BATTLEGROUP_UPDATED (and member-status updates on this
+    -- handler). RefreshAssist prunes again before the next pick.
+    PruneDepartedGroupStats()
     MarkAssistDirty()
 end
 

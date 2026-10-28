@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ModuleFile xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-    <UiMod name="CustomUI" version="1.4.20" date="2026-10-27">
+    <UiMod name="CustomUI" version="1.4.23" date="2026-10-28">
         <Author name="Talladego" email="" />
         <Description text="Modular Return of Reckoning UI replacement with built-in settings window (/cui), component toggles, and shared systems." />
         <VersionSettings gameVersion="1.4.8" windowsVersion="1.0" savedVariablesVersion="1.0" />
@@ -108,8 +108,9 @@
             <File name="Source/Components/GroupIcons/Controller/GroupIconsScenarioStats.lua" />
             <File name="Source/Components/GroupIcons/Controller/GroupIconsController.lua" />
             <File name="Source/Components/GroupIcons/View/GroupIcons.xml" />
-            <!-- SmartAssist (scenario macro; uses ScenarioStats stream) -->
+            <!-- SmartAssist (scenario + party/warband /assist macro) -->
             <File name="Source/Components/SmartAssist/View/SmartAssistIcons.xml" />
+            <File name="Source/Components/SmartAssist/Controller/SmartAssistGroupStats.lua" />
             <File name="Source/Components/SmartAssist/Controller/SmartAssistController.lua" />
             <!-- SCT component (v2 load order) -->
             <File name="Source/Components/SCT/Controller/SCTSettings.lua" />

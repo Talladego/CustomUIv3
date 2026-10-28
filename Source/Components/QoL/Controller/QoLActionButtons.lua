@@ -45,6 +45,7 @@ AB.GroundTargets = {
 }
 
 local m_ready = false
+local m_componentEnabled = false
 local m_hooked = false
 local m_orgDown = nil
 local m_orgUp = nil
@@ -149,6 +150,16 @@ function AB.Sync()
 	if not m_ready then
 		return
 	end
+	-- Initialize runs for a disabled QoL component and still registers
+	-- ALL_MODULES_INITIALIZED. Feature checkboxes must not hook the hotbar
+	-- unless QoL itself is enabled. Click handlers read the cached flags,
+	-- so a disabled component clears those too.
+	if not m_componentEnabled then
+		m_actionOnDown = false
+		m_oneClickGt = false
+		AB.RemoveHooks()
+		return
+	end
 	cacheFeatureFlags()
 	if m_actionOnDown == true or m_oneClickGt == true then
 		AB.InstallHooks()
@@ -163,10 +174,12 @@ function AB.OnModulesInitialized()
 end
 
 function AB.Enable()
+	m_componentEnabled = true
 	AB.Sync()
 end
 
 function AB.Disable()
+	m_componentEnabled = false
 	m_actionOnDown = false
 	m_oneClickGt = false
 	AB.RemoveHooks()

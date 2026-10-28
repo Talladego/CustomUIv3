@@ -1,11 +1,13 @@
 ----------------------------------------------------------------
 -- CustomUI.SmartAssist
--- Scenario smart assist: one managed hotbar macro "/assist <player>".
--- Picks the alive same-realm ally within range with best
+-- Managed hotbar macro "/assist <player>" for scenarios and open-world
+-- party/warband. Picks the alive ally within range with best
 -- KillDamage → Deathblows → Total Damage. Never assists self.
+-- Scenario rows: GroupIcons ScenarioStats / GetScenarioPlayers.
+-- Party/warband: GRP_STATS packets (SmartAssist.GroupStats; not RoRGroupScoreboard).
 -- Only sets an assist when you have no hostile target; clears the macro while you do.
 -- Enable creates the macro; disable deletes it and clears bar slots.
--- Optional auto-assist is best-effort (RoR often ignores /assist from addon Lua).
+-- Bind and press the macro yourself — RoR ignores /assist from SendChatText.
 ----------------------------------------------------------------
 
 if not CustomUI then
@@ -42,7 +44,6 @@ local c_REFRESH_INTERVAL = 0.5
 local DEFAULT_SETTINGS = {
     enabled = false,
     range = SmartAssist.DEFAULT_RANGE,
-    autoAssist = false,
     notify = false,
 }
 
@@ -50,7 +51,6 @@ local m_handlersRegistered = false
 local m_statsHeld = false
 local m_macroSlot = nil
 local m_lastAssistName = nil -- wstring or nil
-local m_lastAutoFiredName = nil
 local m_fullSlotsWarned = false
 local m_distCache = {} -- [nameKey] = { index, rawName, distance }
 local m_scanCursor = 1
@@ -59,7 +59,6 @@ local m_stickyKey = nil
 local m_stickyHoldLeft = 0
 -- Cached from EnsureSettings / Sync so OnUpdate and events do no settings work.
 local m_enabled = false
-local m_autoAssist = false
 local m_notify = false
 local m_boundSettings = nil
 -- Events set these. OnUpdate is what ranks players and rewrites the macro.
@@ -67,7 +66,7 @@ local m_dirty = false
 local m_refreshNow = false
 local m_targetDirty = false
 local m_assistSuppressed = false
-local m_inScenarioWork = false
+local m_inAssistWork = false
 -- Reused across picks so a refresh does not allocate a new index table.
 local m_playerRowByKey = {}
 
@@ -75,9 +74,12 @@ local function ScenarioStats()
     return CustomUI.GroupIcons and CustomUI.GroupIcons.ScenarioStats
 end
 
+local function GroupStats()
+    return CustomUI.SmartAssist and CustomUI.SmartAssist.GroupStats
+end
+
 local function RememberSettings(settings)
     m_enabled = settings.enabled == true
-    m_autoAssist = settings.autoAssist == true
     m_notify = settings.notify == true
 end
 
@@ -121,8 +123,8 @@ function SmartAssist.EnsureSettings()
     range = math.floor(range + 0.5)
     AssignIfChanged(settings, "range", range)
     AssignIfChanged(settings, "enabled", settings.enabled == true)
-    AssignIfChanged(settings, "autoAssist", settings.autoAssist == true)
     AssignIfChanged(settings, "notify", settings.notify == true)
+    settings.autoAssist = nil -- removed; RoR ignores /assist via SendChatText
     RememberSettings(settings)
     return settings
 end
@@ -207,6 +209,40 @@ local function IsScenarioContext()
     return false
 end
 
+local function IsPartyOrWarband()
+    if type(IsWarBandActive) == "function" and IsWarBandActive() then
+        return true
+    end
+    if type(PartyUtils) == "table" and type(PartyUtils.IsPartyActive) == "function" then
+        return PartyUtils.IsPartyActive() == true
+    end
+    return false
+end
+
+--- Scenario/siege or open-world party/warband.
+local function IsAssistContext()
+    return IsScenarioContext() or IsPartyOrWarband()
+end
+
+--- Active scoreboard for the current context (scenario vs party/warband GRP_STATS).
+local function AssistStats()
+    if IsScenarioContext() then
+        local SS = ScenarioStats()
+        if SS ~= nil and type(SS.PickBestAssistCandidate) == "function" then
+            return SS, "scenario"
+        end
+        return nil, "scenario"
+    end
+    if IsPartyOrWarband() then
+        local GS = GroupStats()
+        if GS ~= nil and type(GS.PickBestAssistCandidate) == "function" then
+            return GS, "group"
+        end
+        return nil, "group"
+    end
+    return nil, nil
+end
+
 local c_HOSTILE_UNIT_ID = (TargetInfo and TargetInfo.HOSTILE_TARGET) or "selfhostiletarget"
 
 --- Hostile healthPercent from TargetInfo unit table.
@@ -273,33 +309,91 @@ local function HasHostileTarget()
     return hp > 0
 end
 
---- Flat player list from GetScenarioPlayerGroups (same shape GroupIcons uses).
+local function NoteAlive(alive, name, healthValue)
+    local key = NormalizeNameKey(name)
+    if key == nil then
+        return
+    end
+    local hp = tonumber(healthValue) or 0
+    if hp > 0 and hp < 1 then
+        hp = 0
+    end
+    alive[key] = hp > 0
+end
+
 --- Returns map nameKey -> isAlive. Empty map means "no HP data yet".
 local function BuildAliveByKey()
     local alive = {}
-    if type(GameData) ~= "table" or type(GameData.GetScenarioPlayerGroups) ~= "function" then
-        return alive
-    end
-    local ok, groups = CustomUI.TryCallQuiet("SmartAssist.GetScenarioPlayerGroups", GameData.GetScenarioPlayerGroups)
-    if not ok or type(groups) ~= "table" then
-        return alive
-    end
-    for _, player in ipairs(groups) do
-        if type(player) == "table" and player.name ~= nil then
-            local key = NormalizeNameKey(player.name)
-            if key ~= nil then
-                local hp = tonumber(player.health)
-                if hp == nil then
-                    hp = tonumber(player.healthPercent)
+
+    if IsScenarioContext()
+        and type(GameData) == "table"
+        and type(GameData.GetScenarioPlayerGroups) == "function"
+    then
+        local ok, groups = CustomUI.TryCallQuiet("SmartAssist.GetScenarioPlayerGroups", GameData.GetScenarioPlayerGroups)
+        if ok and type(groups) == "table" then
+            for _, player in ipairs(groups) do
+                if type(player) == "table" and player.name ~= nil then
+                    local hp = player.health
+                    if hp == nil then
+                        hp = player.healthPercent
+                    end
+                    NoteAlive(alive, player.name, hp)
                 end
-                hp = hp or 0
-                if hp > 0 and hp < 1 then
-                    hp = 0
-                end
-                alive[key] = hp > 0
             end
         end
     end
+
+    if type(IsWarBandActive) == "function" and IsWarBandActive() then
+        local parties = nil
+        if type(GetBattlegroupMemberData) == "function" then
+            parties = GetBattlegroupMemberData()
+        end
+        if type(parties) == "table" then
+            for p = 1, #parties do
+                local party = parties[p]
+                local players = party and party.players
+                if type(players) == "table" then
+                    for m = 1, #players do
+                        local member = players[m]
+                        -- PartyUtils.GetWarbandMember crashes on empty slots (nil member).
+                        if type(member) == "table" and member.name ~= nil then
+                            if type(PartyUtils) == "table" and type(PartyUtils.GetWarbandMember) == "function" then
+                                local okHydrate, hydrated = pcall(PartyUtils.GetWarbandMember, p, m)
+                                if okHydrate and type(hydrated) == "table" then
+                                    member = hydrated
+                                end
+                            end
+                            if type(member) == "table" and member.name ~= nil then
+                                NoteAlive(alive, member.name, member.healthPercent or member.health)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    elseif type(PartyUtils) == "table" and type(PartyUtils.IsPartyActive) == "function" and PartyUtils.IsPartyActive() then
+        local data = nil
+        if type(PartyUtils.GetPartyData) == "function" then
+            data = PartyUtils.GetPartyData()
+        elseif type(GetGroupData) == "function" then
+            data = GetGroupData()
+        end
+        if type(data) == "table" then
+            local maxMembers = tonumber(PartyUtils.PLAYERS_PER_PARTY) or 6
+            for m = 1, maxMembers do
+                local member = nil
+                if type(PartyUtils.GetPartyMember) == "function" then
+                    member = PartyUtils.GetPartyMember(m)
+                else
+                    member = data[m]
+                end
+                if type(member) == "table" and member.name ~= nil then
+                    NoteAlive(alive, member.name, member.healthPercent or member.health)
+                end
+            end
+        end
+    end
+
     return alive
 end
 
@@ -514,7 +608,7 @@ local function CommitSticky(key, hold)
 end
 
 --- Returns assist display name (wstring) or nil; second return is pick detail table.
---- Ranking comes from GroupIcons ScenarioStats (KillDamage → Deathblows → Total Damage).
+--- Ranking: KillDamage → Deathblows → Total Damage (scenario or GRP_STATS).
 --- No pick until someone has real KD/DB/damage. Sticky + hysteresis dampens flicker.
 --- opts.dryRun = true: rank only; do not mutate sticky/hold state (for DebugStatus).
 function SmartAssist.PickAssistTarget(opts)
@@ -524,30 +618,42 @@ function SmartAssist.PickAssistTarget(opts)
     local range = tonumber(settings.range) or SmartAssist.DEFAULT_RANGE
     local selfKey = SelfNameKey()
     local realm = SelfRealm()
-    local SS = ScenarioStats()
+    local SS = AssistStats()
     if realm == nil or SS == nil or type(SS.PickBestAssistCandidate) ~= "function" then
         return nil
     end
 
     local aliveByKey = BuildAliveByKey()
     ClearPlayerRowIndex()
-    local playerList = FetchScenarioPlayerList()
     local best = nil
-    if playerList ~= nil then
+    local accept = function(key, row)
+        if not IsCandidateAlive(key, aliveByKey) then
+            return false
+        end
+        local dist = LookupMapDistance(key, row.name)
+        return IsWithinRange(dist, range)
+    end
+
+    if IsScenarioContext() then
+        local playerList = FetchScenarioPlayerList()
+        if playerList ~= nil then
+            best = SS.PickBestAssistCandidate({
+                realm = realm,
+                normalizeNameKey = NormalizeNameKey,
+                excludeKey = selfKey,
+                requireCombatData = true,
+                players = playerList,
+                rowByKey = m_playerRowByKey,
+                accept = accept,
+            })
+        end
+    else
         best = SS.PickBestAssistCandidate({
             realm = realm,
             normalizeNameKey = NormalizeNameKey,
             excludeKey = selfKey,
             requireCombatData = true,
-            players = playerList,
-            rowByKey = m_playerRowByKey,
-            accept = function(key, row)
-                if not IsCandidateAlive(key, aliveByKey) then
-                    return false
-                end
-                local dist = LookupMapDistance(key, row.name)
-                return IsWithinRange(dist, range)
-            end,
+            accept = accept,
         })
     end
 
@@ -561,7 +667,11 @@ function SmartAssist.PickAssistTarget(opts)
 
     local stickyRow = nil
     if stickyKey ~= nil then
-        stickyRow = m_playerRowByKey[stickyKey]
+        if type(SS.GetRowByKey) == "function" then
+            stickyRow = SS.GetRowByKey(stickyKey)
+        else
+            stickyRow = m_playerRowByKey[stickyKey]
+        end
     end
     local stickyOk = stickyRow ~= nil and StickyStillEligible(SS, stickyKey, stickyRow, aliveByKey, range)
 
@@ -639,13 +749,21 @@ function SmartAssist.DebugStatus()
         nPlayers = #list
     end
     local pick, picked = SmartAssist.PickAssistTarget({ dryRun = true })
-    local SS = ScenarioStats()
+    local SS, statsSource = AssistStats()
+    local GS = GroupStats()
+    local groupCount = 0
+    if GS ~= nil and type(GS.Count) == "function" then
+        groupCount = GS.Count() or 0
+    end
     return {
         enabled = settings.enabled == true,
         range = settings.range,
-        autoAssist = settings.autoAssist == true,
         notify = settings.notify == true,
         inScenario = IsScenarioContext(),
+        inPartyOrWarband = IsPartyOrWarband(),
+        assistContext = IsAssistContext(),
+        statsSource = statsSource,
+        groupStatsCount = groupCount,
         realm = SelfRealm(),
         macroSlot = slot,
         macroIcon = row and row.iconNum or nil,
@@ -753,7 +871,6 @@ local function DeleteMacroAndClearBars()
     end
     m_macroSlot = nil
     m_lastAssistName = nil
-    m_lastAutoFiredName = nil
 end
 
 local function HoldStatsStream(want)
@@ -785,47 +902,15 @@ local function HoldStatsStream(want)
     end
 end
 
-local function TryAutoFire(assistName)
-    if m_autoAssist ~= true then
-        return
-    end
-    if assistName == nil or assistName == L"" then
-        return
-    end
-    if m_lastAutoFiredName ~= nil and m_lastAutoFiredName == assistName then
-        return
-    end
-    m_lastAutoFiredName = assistName
-
-    local fired = false
-    local slot = m_macroSlot
-    if slot ~= nil then
-        ForEachMacroActionButton(slot, function(button)
-            if button.m_Name and type(WindowGameAction) == "function" then
-                local actionWin = button.m_Name .. "Action"
-                if DoesWindowExist(actionWin) then
-                    CustomUI.TryCallQuiet("SmartAssist.WindowGameAction", WindowGameAction, actionWin)
-                    fired = true
-                end
-            end
-        end)
-    end
-    if not fired and type(SendChatText) == "function" then
-        -- Best-effort; RoR often ignores /assist from addon Lua.
-        CustomUI.TryCallQuiet("SmartAssist.SendChatText", SendChatText, L"/assist " .. assistName, L"")
-    end
-end
-
 local function SuppressAssistForHostile()
     m_assistSuppressed = true
     ClearSticky()
     m_lastAssistName = nil
-    m_lastAutoFiredName = nil
     WriteMacro(nil)
 end
 
-local function ClearAssistOutsideScenario()
-    m_inScenarioWork = false
+local function ClearAssistOutsideContext()
+    m_inAssistWork = false
     m_assistSuppressed = false
     m_targetDirty = false
     m_dirty = false
@@ -833,8 +918,24 @@ local function ClearAssistOutsideScenario()
     HoldStatsStream(false)
     ClearSticky()
     m_lastAssistName = nil
-    m_lastAutoFiredName = nil
     WriteMacro(nil)
+    local GS = GroupStats()
+    if GS ~= nil and type(GS.Clear) == "function" and not IsPartyOrWarband() then
+        GS.Clear()
+    end
+end
+
+local function EnsureGroupStatsListening()
+    local GS = GroupStats()
+    if GS == nil then
+        return
+    end
+    if type(GS.Initialize) == "function" then
+        GS.Initialize()
+    end
+    if type(GS.TryBootstrap) == "function" and type(GS.Count) == "function" and GS.Count() == 0 then
+        GS.TryBootstrap()
+    end
 end
 
 local function MarkAssistDirty()
@@ -851,13 +952,21 @@ local function RefreshAssist()
         return
     end
 
-    if not IsScenarioContext() then
-        ClearAssistOutsideScenario()
+    if not IsAssistContext() then
+        ClearAssistOutsideContext()
         return
     end
 
-    m_inScenarioWork = true
-    HoldStatsStream(true)
+    m_inAssistWork = true
+    EnsureGroupStatsListening()
+    -- Scenario scoreboard stream only; party/warband uses GRP_STATS packets.
+    HoldStatsStream(IsScenarioContext())
+    if IsScenarioContext() and not IsPartyOrWarband() then
+        local GS = GroupStats()
+        if GS ~= nil and type(GS.Clear) == "function" then
+            GS.Clear()
+        end
+    end
 
     -- Never set (and always clear) assist while you have a living hostile target.
     -- Always WriteMacro(nil) so a stale post-/reload macro cannot linger.
@@ -878,9 +987,6 @@ local function RefreshAssist()
         if m_notify == true and type(CustomUI.PrintMessage) == "function" then
             CustomUI.PrintMessage(FormatAssistNotifyLine(assistName, picked))
         end
-        TryAutoFire(assistName)
-    elseif assistName == nil then
-        m_lastAutoFiredName = nil
     end
 end
 
@@ -907,6 +1013,18 @@ local function UnregisterHandlers()
         end
         if E.PLAYER_TARGET_UPDATED then
             UnregisterEventHandler(E.PLAYER_TARGET_UPDATED, "CustomUI.SmartAssist.OnPlayerTargetUpdated")
+        end
+        if E.GROUP_UPDATED then
+            UnregisterEventHandler(E.GROUP_UPDATED, "CustomUI.SmartAssist.OnGroupUpdated")
+        end
+        if E.BATTLEGROUP_UPDATED then
+            UnregisterEventHandler(E.BATTLEGROUP_UPDATED, "CustomUI.SmartAssist.OnGroupUpdated")
+        end
+        if E.GROUP_STATUS_UPDATED then
+            UnregisterEventHandler(E.GROUP_STATUS_UPDATED, "CustomUI.SmartAssist.OnGroupUpdated")
+        end
+        if E.BATTLEGROUP_MEMBER_UPDATED then
+            UnregisterEventHandler(E.BATTLEGROUP_MEMBER_UPDATED, "CustomUI.SmartAssist.OnGroupUpdated")
         end
     end
     m_handlersRegistered = false
@@ -938,6 +1056,18 @@ local function RegisterHandlers()
     if E.PLAYER_TARGET_UPDATED then
         RegisterEventHandler(E.PLAYER_TARGET_UPDATED, "CustomUI.SmartAssist.OnPlayerTargetUpdated")
     end
+    if E.GROUP_UPDATED then
+        RegisterEventHandler(E.GROUP_UPDATED, "CustomUI.SmartAssist.OnGroupUpdated")
+    end
+    if E.BATTLEGROUP_UPDATED then
+        RegisterEventHandler(E.BATTLEGROUP_UPDATED, "CustomUI.SmartAssist.OnGroupUpdated")
+    end
+    if E.GROUP_STATUS_UPDATED then
+        RegisterEventHandler(E.GROUP_STATUS_UPDATED, "CustomUI.SmartAssist.OnGroupUpdated")
+    end
+    if E.BATTLEGROUP_MEMBER_UPDATED then
+        RegisterEventHandler(E.BATTLEGROUP_MEMBER_UPDATED, "CustomUI.SmartAssist.OnGroupUpdated")
+    end
     m_handlersRegistered = true
 end
 
@@ -952,7 +1082,6 @@ end
 function SmartAssist.OnScenarioBegin()
     ClearSticky()
     m_lastAssistName = nil
-    m_lastAutoFiredName = nil
     m_assistSuppressed = false
     if m_enabled ~= true then
         return
@@ -969,19 +1098,38 @@ end
 
 function SmartAssist.OnScenarioEnd()
     ClearSticky()
-    m_refreshNow = false
-    m_targetDirty = false
-    m_dirty = false
+    m_lastAssistName = nil
+    HoldStatsStream(false)
     if m_enabled ~= true then
         return
     end
-    -- Leaving a scenario still drops the stats hold and blanks the macro.
-    -- Other handlers no-op outside scenarios; this is the transition itself.
-    ClearAssistOutsideScenario()
+    -- May still be in an open-world party/warband; re-evaluate on the next tick.
+    if IsPartyOrWarband() then
+        MarkAssistDirtyNow()
+        return
+    end
+    m_refreshNow = false
+    m_targetDirty = false
+    m_dirty = false
+    ClearAssistOutsideContext()
+end
+
+function SmartAssist.OnGroupUpdated()
+    if m_enabled ~= true then
+        return
+    end
+    MarkAssistDirty()
+end
+
+function SmartAssist.OnGroupStatsUpdated()
+    if m_enabled ~= true or IsScenarioContext() then
+        return
+    end
+    MarkAssistDirty()
 end
 
 function SmartAssist.OnLoadingEnd()
-    if m_enabled ~= true or not IsScenarioContext() then
+    if m_enabled ~= true or not IsAssistContext() then
         return
     end
     MarkAssistDirtyNow()
@@ -993,7 +1141,7 @@ function SmartAssist.OnMacrosLoaded()
     end
     -- Slot indexes move when macros reload. Drop the cache; the next write rescans.
     m_macroSlot = nil
-    if not IsScenarioContext() then
+    if not IsAssistContext() then
         -- Keep the managed macro seated and empty. No player list, no ranking.
         WriteMacro(nil)
         return
@@ -1002,7 +1150,7 @@ function SmartAssist.OnMacrosLoaded()
 end
 
 function SmartAssist.OnPlayerTargetUpdated()
-    if m_enabled ~= true or not IsScenarioContext() then
+    if m_enabled ~= true or not IsAssistContext() then
         return
     end
     -- OnUpdate applies this. Ranking stays on the tick; a hostile clear does not walk players.
@@ -1021,16 +1169,16 @@ function SmartAssist.OnUpdate(timePassed)
         m_stickyHoldLeft = math.max(0, m_stickyHoldLeft - dt)
     end
 
-    if not IsScenarioContext() then
+    if not IsAssistContext() then
         m_targetDirty = false
-        if m_inScenarioWork then
+        if m_inAssistWork then
             -- refreshNow is left alone so a scenario-begin that raced the flag still applies.
-            ClearAssistOutsideScenario()
+            ClearAssistOutsideContext()
         end
         return
     end
 
-    m_inScenarioWork = true
+    m_inAssistWork = true
     m_updateElapsed = m_updateElapsed + dt
 
     if m_targetDirty then
@@ -1075,7 +1223,7 @@ function SmartAssist.Enable()
     RememberSettings(settings)
     ClearSticky()
     m_assistSuppressed = false
-    m_inScenarioWork = false
+    m_inAssistWork = false
     m_dirty = false
     m_refreshNow = false
     m_targetDirty = false
@@ -1095,7 +1243,7 @@ function SmartAssist.Disable()
     m_dirty = false
     m_refreshNow = false
     m_assistSuppressed = false
-    m_inScenarioWork = false
+    m_inAssistWork = false
     m_updateElapsed = 0
     HoldStatsStream(false)
     ClearSticky()
@@ -1119,12 +1267,11 @@ function SmartAssist.Sync()
         m_dirty = false
         m_refreshNow = false
         m_assistSuppressed = false
-        m_inScenarioWork = false
+        m_inAssistWork = false
         m_updateElapsed = 0
         HoldStatsStream(false)
         ClearSticky()
         m_lastAssistName = nil
-        m_lastAutoFiredName = nil
         -- Prefer the cached slot, same as before, so a stale index is what Disable clears.
         -- One name lookup: Delete uses m_macroSlot and does not scan again.
         local found = FindMacroSlotByName(SmartAssist.MACRO_NAME)
@@ -1143,6 +1290,10 @@ end
 
 function SmartAssist.Initialize()
     SmartAssist.EnsureSettings()
+    local GS = GroupStats()
+    if GS ~= nil and type(GS.Initialize) == "function" then
+        GS.Initialize()
+    end
     SmartAssist.Sync()
 end
 
@@ -1153,8 +1304,12 @@ function SmartAssist.Shutdown()
     m_refreshNow = false
     m_targetDirty = false
     m_dirty = false
-    m_inScenarioWork = false
+    m_inAssistWork = false
     UnregisterHandlers()
     HoldStatsStream(false)
+    local GS = GroupStats()
+    if GS ~= nil and type(GS.Shutdown) == "function" then
+        GS.Shutdown()
+    end
     -- Leave macro in place on reload shutdown; only Disable deletes.
 end

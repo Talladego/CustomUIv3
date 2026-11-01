@@ -309,8 +309,13 @@ function CustomUI.SCT.EventEntry:Create(windowName, parentWindow, animationData)
 end
 
 function CustomUI.SCT.EventEntry:SetVisualOffset(x, y)
-    self.m_VisualOffsetX = x or 0
-    self.m_VisualOffsetY = y or 0
+    x = x or 0
+    y = y or 0
+    if self.m_VisualOffsetX == x and self.m_VisualOffsetY == y then
+        return
+    end
+    self.m_VisualOffsetX = x
+    self.m_VisualOffsetY = y
     SctAnchorLabelToHolder(self:GetName(), self.m_HolderWindow, self.m_VisualOffsetX, self.m_VisualOffsetY)
     self:UpdateAbilityIconPosition()
 end
@@ -496,6 +501,7 @@ function CustomUI.SCT.EventEntry:SetupText(hitTargetObjectNumber, hitAmount, tex
     end
 
     self.m_CritT = 0
+    self.m_CritFxDone = false
     CustomUI.Perf.End("SCT.SetupText")
 end
 
@@ -503,6 +509,9 @@ function CustomUI.SCT.EventEntry:Update(elapsedTime, simulationSpeed)
     local lifeElapsed = SctUpdateEntryPosition(self, elapsedTime, simulationSpeed)
 
     if self.m_IsCrit then
+        if self.m_CritFxDone then
+            return lifeElapsed
+        end
         local shake = CustomUI.SCT._frameCritShake
         local pulse = CustomUI.SCT._frameCritPulse
         local flash = CustomUI.SCT._frameCritFlash
@@ -515,14 +524,36 @@ function CustomUI.SCT.EventEntry:Update(elapsedTime, simulationSpeed)
                 local simulationTime = elapsedTime * (simulationSpeed or 1)
                 self.m_CritT = (self.m_CritT or 0) + simulationTime
                 local t = self.m_CritT
-                if shake and effects.Shake then effects.Shake.Apply(self, t) end
-                if pulse and effects.Pulse then effects.Pulse.Apply(self, t) end
-                if flash and effects.ColorFlash then
-                    effects.ColorFlash.Apply(self, t, self.m_TargetR, self.m_TargetG, self.m_TargetB)
+                local anim = CustomUI.SCT._SctAnim
+                local critDur = 0.75
+                if anim then
+                    local sd = anim.SHAKE_DUR or 0
+                    local pd = anim.PULSE_DUR or 0
+                    local fd = anim.FLASH_DUR or 0
+                    critDur = sd
+                    if pd > critDur then critDur = pd end
+                    if fd > critDur then critDur = fd end
+                    if critDur <= 0 then critDur = 0.75 end
+                end
+                if t >= critDur then
+                    -- One-shot rest state, then stop crit FX work for this float.
+                    if shake and effects.Shake then effects.Shake.Apply(self, critDur) end
+                    if pulse and effects.Pulse then effects.Pulse.Apply(self, critDur) end
+                    if flash and effects.ColorFlash then
+                        effects.ColorFlash.Apply(self, critDur, self.m_TargetR, self.m_TargetG, self.m_TargetB)
+                    end
+                    self.m_CritFxDone = true
+                else
+                    if shake and effects.Shake then effects.Shake.Apply(self, t) end
+                    if pulse and effects.Pulse then effects.Pulse.Apply(self, t) end
+                    if flash and effects.ColorFlash then
+                        effects.ColorFlash.Apply(self, t, self.m_TargetR, self.m_TargetG, self.m_TargetB)
+                    end
                 end
             end
         else
             self:SetVisualOffset(0, 0)
+            self.m_CritFxDone = true
         end
     else
         self:SetVisualOffset(0, 0)

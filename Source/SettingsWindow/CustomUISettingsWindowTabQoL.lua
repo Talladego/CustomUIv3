@@ -134,6 +134,12 @@ function CustomUISettingsWindowTabQoL.Initialize()
     LabelSetText(c .. "BattleFatigueHealTitle", L"Auto Heal Fatigue")
     LabelSetText(c .. "BattleFatigueHealEnabledLabel", L"Enabled")
     LabelSetText(c .. "BattleFatigueHealInfo", L"Automatically clears battle penalties when you visit a healer.")
+    LabelSetText(c .. "TravelTitle", L"Travel")
+    LabelSetText(c .. "TravelEnabledLabel", L"Enabled")
+    LabelSetText(
+        c .. "TravelInfo",
+        L"Compact flight-master destination list (pairing tabs). Disable the standalone TravelAddon addon while enabled. /cuitravel"
+    )
     LabelSetText(c .. "AltTrackerTitle", L"Alt Tracker")
     LabelSetText(c .. "AltTrackerEnabledLabel", L"Enabled")
     LabelSetText(c .. "AltTrackerTrackGoldLabel", L"Track gold (backpack hover)")
@@ -178,6 +184,7 @@ function CustomUISettingsWindowTabQoL.UpdateSettings()
     ButtonSetPressedFlag(c .. "RezzAcceptEnabledButton", s.rezzAccept.enabled == true)
     ButtonSetPressedFlag(c .. "AutoSellTrashEnabledButton", s.autoSellTrash.enabled == true)
     ButtonSetPressedFlag(c .. "BattleFatigueHealEnabledButton", s.battleFatigueHeal.enabled == true)
+    ButtonSetPressedFlag(c .. "TravelEnabledButton", s.travel.enabled == true)
     ButtonSetPressedFlag(c .. "AltTrackerEnabledButton", s.altTracker.enabled == true)
     ButtonSetPressedFlag(c .. "AltTrackerTrackGoldButton", s.altTracker.trackGold == true)
     ButtonSetPressedFlag(c .. "AltTrackerIncludeBankButton", s.altTracker.includeBank == true)
@@ -210,6 +217,8 @@ function CustomUISettingsWindowTabQoL.ApplyCurrent()
     s.autoSellTrash.enabled = ButtonGetPressedFlag(c .. "AutoSellTrashEnabledButton") == true
     s.battleFatigueHeal = s.battleFatigueHeal or {}
     s.battleFatigueHeal.enabled = ButtonGetPressedFlag(c .. "BattleFatigueHealEnabledButton") == true
+    s.travel = s.travel or {}
+    s.travel.enabled = ButtonGetPressedFlag(c .. "TravelEnabledButton") == true
     s.altTracker.enabled = ButtonGetPressedFlag(c .. "AltTrackerEnabledButton") == true
     s.altTracker.trackGold = ButtonGetPressedFlag(c .. "AltTrackerTrackGoldButton") == true
     s.altTracker.includeBank = ButtonGetPressedFlag(c .. "AltTrackerIncludeBankButton") == true
@@ -261,6 +270,10 @@ function CustomUISettingsWindowTabQoL.OnToggleAutoSellTrashEnabled()
 end
 
 function CustomUISettingsWindowTabQoL.OnToggleBattleFatigueHealEnabled()
+    EA_LabelCheckButton.Toggle()
+end
+
+function CustomUISettingsWindowTabQoL.OnToggleTravelEnabled()
     EA_LabelCheckButton.Toggle()
 end
 

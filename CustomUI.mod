@@ -147,11 +147,13 @@
             <File name="Source/Components/QoL/Controller/QoLRezzAccept.lua" />
             <File name="Source/Components/QoL/Controller/QoLAutoSellTrash.lua" />
             <File name="Source/Components/QoL/Controller/QoLBattleFatigueHeal.lua" />
+            <File name="Source/Components/QoL/Controller/QoLTravel.lua" />
             <File name="Source/Components/QoL/Controller/QoLRedAlert.lua" />
             <File name="Source/Components/QoL/Controller/QoLAutoSurrender.lua" />
             <File name="Source/Components/QoL/Controller/QoLActionButtons.lua" />
             <File name="Source/Components/QoL/Controller/QoLButtonClickSound.lua" />
             <File name="Source/Components/QoL/Controller/QoLController.lua" />
+            <File name="Source/Components/QoL/View/QoLTravel.xml" />
             <File name="Source/Components/QoL/View/QoLRedAlert.xml" />
             <File name="Source/Components/QoL/View/QoLDriver.xml" />
             <!-- MacroWindow component -->

@@ -53,7 +53,7 @@ Optional: enable **LibPerf** for frametime hitch breadcrumbs (`/libperf CustomUI
 | `SCT` | `easystem_eventtext` combat/point-gain floating text | ✅ Complete, `DefaultEnabled = false` |
 | `KillTracker` | — (RvR Order/Destruction kill feed) | ✅ Implemented, `DefaultEnabled = false`; `/cui` → **Kills** tab |
 | `SmartAssist` | — (scenario + party/warband `/assist` macro by KillDamage → Deathblows → Total Damage) | ✅ Implemented; `/cui` → **Assist** tab — enable creates macro, disable removes it from bars; party/warband uses GRP_STATS (own cache, not RoRGroupScoreboard) |
-| `QoL` | — (RedAlert, AutoSurrender, RezzAccept, AltTracker, mute button click sound, cast on button down, one-click ground targets) | ✅ Implemented, `DefaultEnabled = false`; `/cui` → **QoL** tab |
+| `QoL` | — (RedAlert, AutoSurrender, RezzAccept, AutoSellTrash, BattleFatigueHeal, Travel, AltTracker, mute button click sound, cast on button down, one-click ground targets) | ✅ Implemented, `DefaultEnabled = false`; `/cui` → **QoL** tab |
 | `AutoFPS` | — (dynamic FPS / graphics helpers) | ✅ Implemented, `DefaultEnabled = false`; `/cui` → **AutoFPS** tab |
 | `MacroWindow` | `EA_Window_Macro` | ✅ Implemented, `DefaultEnabled = false`; `/cui` → **QoL** tab — larger movable editor, paged icons (~25k, scanned across frames), Delete clears via `SetMacroData`; disable `bigger_macrowindow` / `MacroIcons` while enabled |
 
@@ -79,6 +79,10 @@ Live-event **unclaimed** = threshold met and no `purchased` record; NPC open is 
 ### QoL (AutoSurrender)
 
 Scenario auto-surrender: server rejects votes on a **lead or tie** (“winning”). AutoSurrender treats score `>=` as winning and only resumes deferred attempts when **strictly behind**. Kill-leader rule cannot start a vote while tied/ahead. Settings: enable, status chat, kill rule, score deficit, pre-start retry.
+
+### QoL (Travel)
+
+Compact flight-master destination list with pairing tabs (GvD / EvC / HEvDE / LotD), contested coloring, and cost. Opt-in under `/cui` → **QoL** → Travel; replaces the stock parchment map while enabled. Disable the standalone **TravelAddon** addon to avoid a double hook. Slash: `/cuitravel`.
 
 ### KillTracker (RvR kill feed)
 
@@ -345,12 +349,14 @@ CustomUI/
 					QoLAutoSurrender.lua
 					QoLRedAlert.lua
 					QoLRezzAccept.lua
+					QoLTravel.lua
 					QoLButtonClickSound.lua
 					QoLAltTracker.lua
 					QoLAltTrackerData.lua
 					QoLAltTrackerTooltips.lua
 				View/
 					QoLDriver.xml
+					QoLTravel.xml
 					QoLRedAlert.xml
 					QoLAltTracker.xml
 					QoLAltTrackerGoldPanel.xml

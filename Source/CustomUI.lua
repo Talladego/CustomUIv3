@@ -1268,6 +1268,7 @@ local ROOT_WINDOW_NAMES = {
     "CustomUIKillTrackerScoreWindow",
     "CustomUIAutoFPSDriver",
     "CustomUIQoLDriver",
+    "CustomUIQoLTravelWindow",
     "CustomUIMacroWindow",
     "CustomUIMacroIconSelectionWindow",
     "CustomUIGlobalUpdateDriver",
@@ -1301,6 +1302,10 @@ function CustomUI.OnGlobalUpdate(timePassed)
     if type(CustomUI.PlayerStatusWindow) == "table"
         and type(CustomUI.PlayerStatusWindow.TryPendingStockRehook) == "function" then
         CustomUI.PlayerStatusWindow.TryPendingStockRehook()
+    end
+    if type(CustomUI.PlayerPetWindow) == "table"
+        and type(CustomUI.PlayerPetWindow.OnGlobalUpdate) == "function" then
+        CustomUI.PlayerPetWindow.OnGlobalUpdate(timePassed)
     end
     if didWork then
         CustomUI.Perf.Mark("CUI.Global")

@@ -96,6 +96,9 @@ local function RegisterHandlers()
     WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.CITY_SCENARIO_BEGIN, "CustomUI.GroupWindow.OnScenarioBegin")
     WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.SCENARIO_END, "CustomUI.GroupWindow.OnScenarioEnd")
     WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.CITY_SCENARIO_END, "CustomUI.GroupWindow.OnScenarioEnd")
+    -- Stock GroupWindow normally owns these; we unhook it, so keep inScenarioGroup fresh for PlayerStatusWindow menus.
+    WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.SCENARIO_GROUP_JOIN, "CustomUI.GroupWindow.OnScenarioGroupJoin")
+    WindowRegisterEventHandler(c_WINDOW_NAME, SystemData.Events.SCENARIO_GROUP_LEAVE, "CustomUI.GroupWindow.OnScenarioGroupLeave")
     m_handlersRegistered = true
 end
 
@@ -113,6 +116,8 @@ local function UnregisterHandlers()
     WindowUnregisterEventHandler(c_WINDOW_NAME, e.CITY_SCENARIO_BEGIN)
     WindowUnregisterEventHandler(c_WINDOW_NAME, e.SCENARIO_END)
     WindowUnregisterEventHandler(c_WINDOW_NAME, e.CITY_SCENARIO_END)
+    WindowUnregisterEventHandler(c_WINDOW_NAME, e.SCENARIO_GROUP_JOIN)
+    WindowUnregisterEventHandler(c_WINDOW_NAME, e.SCENARIO_GROUP_LEAVE)
     m_handlersRegistered = false
 end
 
@@ -1197,6 +1202,19 @@ end
 RefreshGroupState = function()
     m_groupData = PartyUtils.GetPartyData()
     m_hasWorldGroup = IsMemberValid(1)
+
+    -- Keep stock GroupWindow flags alive for other CustomUI menus (PlayerStatusWindow, etc.).
+    -- Stock UpdateGroupMembers no longer runs while we have its event handlers unhooked.
+    if type(GroupWindow) == "table" then
+        GroupWindow.inWorldGroup = m_hasWorldGroup
+        if (GameData.Player.isInScenario or GameData.Player.isInSiege)
+            and GroupWindow.inScenarioGroup ~= true
+        then
+            GroupWindow.inWorldGroup = false
+        end
+        -- Prefer live roster for GroupWindow.ShowMenu / GetMainAssist consumers.
+        GroupWindow.groupData = m_groupData
+    end
 end
 
 local function ShouldShowContainer()
@@ -1358,8 +1376,9 @@ function CustomUI.GroupWindow.OnStatusUpdated(groupMemberIndex)
     RefreshGroupState()
 
     if groupMemberIndex ~= nil and ShouldShowContainer() then
-        RefreshMemberStatus(groupMemberIndex)
-        UpdateMemberRows()
+        if RefreshMemberStatus(groupMemberIndex) then
+            UpdateMemberRow(groupMemberIndex)
+        end
     else
         RefreshAllMemberStatuses()
         UpdateContainerVisibility()
@@ -1387,8 +1406,31 @@ function CustomUI.GroupWindow.OnScenarioBegin()
 end
 
 function CustomUI.GroupWindow.OnScenarioEnd()
+    if type(GroupWindow) == "table" then
+        GroupWindow.inScenarioGroup = false
+    end
     RefreshAllMemberStatuses()
     UpdateContainerVisibility()
+end
+
+function CustomUI.GroupWindow.OnScenarioGroupJoin()
+    if GameData.Player.isInScenario or GameData.Player.isInSiege then
+        if type(GroupWindow) == "table" then
+            GroupWindow.inScenarioGroup = true
+        end
+        RefreshAllMemberStatuses()
+        UpdateContainerVisibility()
+    end
+end
+
+function CustomUI.GroupWindow.OnScenarioGroupLeave()
+    if GameData.Player.isInScenario or GameData.Player.isInSiege then
+        if type(GroupWindow) == "table" then
+            GroupWindow.inScenarioGroup = false
+        end
+        RefreshAllMemberStatuses()
+        UpdateContainerVisibility()
+    end
 end
 
 function CustomUI.GroupWindow.Update(elapsedTime)
@@ -1412,8 +1454,9 @@ function CustomUI.GroupWindow.Update(elapsedTime)
     m_statusPollElapsed = m_statusPollElapsed + (elapsedTime or 0)
     if m_statusPollElapsed >= c_STATUS_POLL_INTERVAL then
         m_statusPollElapsed = 0
-        RefreshAllMemberStatuses()
-        UpdateMemberRows()
+        if RefreshAllMemberStatuses() then
+            UpdateMemberRows()
+        end
     end
 
     for index = 1, c_MAX_GROUP_MEMBERS do

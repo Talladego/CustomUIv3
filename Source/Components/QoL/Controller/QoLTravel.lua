@@ -1,6 +1,6 @@
 ----------------------------------------------------------------
--- CustomUI.QoL.Travel — compact flight-master list (from TravelAddon)
--- Opt-in via /cui → QoL. Replaces EA_InteractionFlightMasterWindow while enabled.
+-- CustomUI.QoL.Travel - compact flight-master list (from TravelAddon)
+-- Opt-in via /cui -> QoL. Replaces EA_InteractionFlightMasterWindow while enabled.
 -- Disable the standalone TravelAddon addon to avoid a double hook.
 ----------------------------------------------------------------
 if not CustomUI then CustomUI = {} end
@@ -21,6 +21,7 @@ local WINDOW_WIDTH = 420
 local LIST_WIDTH = 380
 local HEADER_HEIGHT = 118
 local BOTTOM_PAD = 18
+local VISIBLE_ROWS = 10
 
 local COLOR_DEFAULT = { r = 235, g = 235, b = 200 }
 local COLOR_ORDER = { r = 107, g = 191, b = 255 }
@@ -77,6 +78,9 @@ local m_stockFlightShow = nil
 local m_eventsRegistered = false
 local m_slashRegistered = false
 local m_uiSeeded = false
+-- True only after the flight-master Show hook opens the window. Slash and row
+-- clicks stay inert otherwise so a later GetFlightMasterData() cannot be stale.
+local m_openedByFlightMaster = false
 
 local function getSettings()
 	return CustomUI.QoL.EnsureSettings().travel
@@ -142,11 +146,17 @@ local function RegisterSlash()
 		return
 	end
 	LibSlash.RegisterSlashCmd(c_SLASH, function()
-		if isFeatureEnabled() then
-			Travel.Toggle()
-		elseif type(CustomUI.PrintMessage) == "function" then
-			CustomUI.PrintMessage(L"Travel: enable under /cui → QoL.")
+		if not m_enabled or not isFeatureEnabled() then
+			if type(CustomUI.PrintMessage) == "function" then
+				CustomUI.PrintMessage(L"Travel: enable under /cui -> QoL.")
+			end
+			return
 		end
+		-- Do not open or refresh from slash unless the flight master just showed us.
+		if not m_openedByFlightMaster then
+			return
+		end
+		Travel.Toggle()
 	end)
 	m_slashRegistered = true
 end
@@ -168,8 +178,11 @@ local function RegisterEvents()
 	if type(e) ~= "table" then
 		return
 	end
-	RegisterEventHandler(e.LOADING_END, "CustomUI.QoL.Travel.Hide")
-	RegisterEventHandler(e.RELOAD_INTERFACE, "CustomUI.QoL.Travel.Hide")
+	RegisterEventHandler(e.LOADING_END, "CustomUI.QoL.Travel.OnSessionEnd")
+	RegisterEventHandler(e.RELOAD_INTERFACE, "CustomUI.QoL.Travel.OnSessionEnd")
+	if e.INTERACT_DONE ~= nil then
+		RegisterEventHandler(e.INTERACT_DONE, "CustomUI.QoL.Travel.OnSessionEnd")
+	end
 	m_eventsRegistered = true
 end
 
@@ -180,8 +193,11 @@ local function UnregisterEvents()
 	end
 	local e = SystemData and SystemData.Events
 	if type(e) == "table" then
-		UnregisterEventHandler(e.LOADING_END, "CustomUI.QoL.Travel.Hide")
-		UnregisterEventHandler(e.RELOAD_INTERFACE, "CustomUI.QoL.Travel.Hide")
+		UnregisterEventHandler(e.LOADING_END, "CustomUI.QoL.Travel.OnSessionEnd")
+		UnregisterEventHandler(e.RELOAD_INTERFACE, "CustomUI.QoL.Travel.OnSessionEnd")
+		if e.INTERACT_DONE ~= nil then
+			UnregisterEventHandler(e.INTERACT_DONE, "CustomUI.QoL.Travel.OnSessionEnd")
+		end
 	end
 	m_eventsRegistered = false
 end
@@ -236,6 +252,9 @@ function Travel.OnHidden()
 end
 
 function Travel.Show()
+	if not m_enabled or not m_openedByFlightMaster then
+		return
+	end
 	if not EnsureWindow() then
 		return
 	end
@@ -251,6 +270,9 @@ function Travel.Hide()
 end
 
 function Travel.Toggle()
+	if not m_enabled or not m_openedByFlightMaster then
+		return
+	end
 	if not EnsureWindow() then
 		return
 	end
@@ -261,13 +283,14 @@ function Travel.Toggle()
 	end
 end
 
-function Travel.OnFlightMasterShow()
-	if not isFeatureEnabled() then
+function Travel.OnFlightMasterShow(...)
+	if not m_enabled then
 		if m_stockFlightShow then
-			m_stockFlightShow()
+			return m_stockFlightShow(...)
 		end
 		return
 	end
+	m_openedByFlightMaster = true
 	Travel.selectedPairing = GetZonePairing() or Travel.selectedPairing
 	Travel.UpdateTabs()
 	Travel.Show()
@@ -295,11 +318,21 @@ function Travel.UpdateTabs()
 	end
 end
 
+function Travel.OnSessionEnd()
+	m_openedByFlightMaster = false
+	Travel.Hide()
+end
+
 function Travel.FitWindowToRows(count)
 	if not EnsureWindow() then
 		return
 	end
-	local rows = math.max(count, 1)
+	local rows = count or 0
+	if rows < 1 then
+		rows = 1
+	elseif rows > VISIBLE_ROWS then
+		rows = VISIBLE_ROWS
+	end
 	local listHeight = (rows * ROW_HEIGHT) + (math.max(rows - 1, 0) * ROW_SPACING)
 	local windowHeight = HEADER_HEIGHT + listHeight + BOTTOM_PAD
 
@@ -312,6 +345,9 @@ function Travel.FitWindowToRows(count)
 end
 
 function Travel.RefreshList()
+	if not m_enabled or not m_openedByFlightMaster then
+		return
+	end
 	if not EnsureWindow() then
 		return
 	end
@@ -401,6 +437,9 @@ function Travel.PopulateList()
 end
 
 function Travel.OnDestinationClick()
+	if not m_enabled or not m_openedByFlightMaster then
+		return
+	end
 	local rowWindow = SystemData.ActiveWindow.name
 	if ButtonGetDisabledFlag(rowWindow) then
 		return
@@ -443,6 +482,7 @@ end
 
 function Travel.Disable()
 	m_enabled = false
+	m_openedByFlightMaster = false
 	Travel.Hide()
 	RestoreFlightMasterHook()
 	UnregisterEvents()

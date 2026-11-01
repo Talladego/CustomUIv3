@@ -867,6 +867,49 @@ function CustomUI.PlayerStatusWindow.UpdateCrown()
     WindowSetShowing( c_WARBAND_LEADER_CROWN_WINDOW, wbLeader )
 end
 
+--- Live party/warband membership — do not rely only on GroupWindow.inWorldGroup (stale while CustomUI unhooks stock).
+local function PlayerHasWorldGroupOrWarband()
+    if type( IsWarBandActive ) == "function" and IsWarBandActive() then
+        return true
+    end
+    if type( PartyUtils ) == "table" and type( PartyUtils.GetPartyMember ) == "function" then
+        local member = PartyUtils.GetPartyMember( 1 )
+        if member ~= nil and member.name ~= nil and member.name ~= L"" then
+            return true
+        end
+    end
+    if type( GroupWindow ) == "table" and GroupWindow.inWorldGroup == true then
+        return true
+    end
+    return false
+end
+
+local function ResolveCurrentMainAssistName()
+    if type( GroupWindow ) == "table" and type( GroupWindow.GetMainAssist ) == "function"
+        and type( GroupWindow.groupData ) == "table"
+    then
+        local name = GroupWindow.GetMainAssist()
+        if name ~= nil and name ~= L"" then
+            return name
+        end
+    end
+    if type( PartyUtils ) == "table" and type( PartyUtils.GetPartyData ) == "function" then
+        local data = PartyUtils.GetPartyData()
+        if type( data ) == "table" then
+            for index = 1, 5 do
+                local member = data[ index ]
+                if member ~= nil and member.isMainAssist == true and member.name ~= nil and member.name ~= L"" then
+                    return member.name
+                end
+            end
+        end
+    end
+    if type( IsPlayerMainAssist ) == "function" and IsPlayerMainAssist() == 1 then
+        return GameData.Player.name
+    end
+    return nil
+end
+
 function CustomUI.PlayerStatusWindow.ShowMenu()
     local disableUnflag = true
     if ( GameData.Player.rvrZoneFlagged == false and GameData.Player.rvrPermaFlagged == true ) then
@@ -884,16 +927,51 @@ function CustomUI.PlayerStatusWindow.ShowMenu()
     end
     EA_Window_ContextMenu.AddMenuItem( fadeMenuLabel, CustomUI.PlayerStatusWindow.OnMenuClickToggleHealthBarFade, false, true )
 
-    if ( ( GroupWindow.inWorldGroup or IsWarBandActive() ) and not GameData.Player.isInScenario and not GameData.Player.isInSiege ) then
-        EA_Window_ContextMenu.AddMenuItem( GetString( StringTables.Default.LABEL_GROUP_OPTIONS ),                  EA_Window_OpenParty.OpenToManageTab,                       false, true, EA_Window_ContextMenu.CONTEXT_MENU_1 )
-        EA_Window_ContextMenu.AddMenuItem( GetStringFromTable( "HUDStrings", StringTables.HUD.LABEL_LEAVE_GROUP ), CustomUI.PlayerStatusWindow.OnMenuClickLeaveGroup,         false, true )
-        if ( GameData.Player.isGroupLeader ) then
-            SystemData.UserInput.selectedGroupMember = GameData.Player.name
-            EA_Window_ContextMenu.AddMenuItem( GetString( StringTables.Default.LABEL_MAKE_MAIN_ASSIST ), GroupWindow.OnMakeMainAssist, playerIsMainAssist, true, EA_Window_ContextMenu.CONTEXT_MENU_1 )
+    local inScenarioOrSiege = GameData.Player.isInScenario or GameData.Player.isInSiege
+    local inWarband = type( IsWarBandActive ) == "function" and IsWarBandActive() == true and not inScenarioOrSiege
+    local inWorldGroup = PlayerHasWorldGroupOrWarband()
+
+    -- Mirror GroupWindow.ShowMenu party controls on self (leader-gated where stock is).
+    if inWorldGroup and not inScenarioOrSiege then
+        local isNotLeader = GameData.Player.isGroupLeader ~= true
+        EA_Window_ContextMenu.AddMenuItem( GetString( StringTables.Default.LABEL_GROUP_OPTIONS ), EA_Window_OpenParty.OpenToManageTab, false, true, EA_Window_ContextMenu.CONTEXT_MENU_1 )
+
+        -- Form Warband: party only; disabled when not leader (same as GroupWindow).
+        if not inWarband then
+            EA_Window_ContextMenu.AddMenuItem(
+                GetString( StringTables.Default.LABEL_PARTY_FORM_WARPARTY ),
+                GroupWindow.OnFormWarparty,
+                isNotLeader,
+                true,
+                EA_Window_ContextMenu.CONTEXT_MENU_1
+            )
+        end
+
+        EA_Window_ContextMenu.AddMenuItem(
+            GetStringFromTable( "HUDStrings", StringTables.HUD.LABEL_LEAVE_GROUP ),
+            CustomUI.PlayerStatusWindow.OnMenuClickLeaveGroup,
+            false,
+            true
+        )
+
+        -- Make Main Assist: leader or current main assist may assign (GroupWindow rules); disabled if already self.
+        SystemData.UserInput.selectedGroupMember = GameData.Player.name
+        local currentMainAssist = ResolveCurrentMainAssistName()
+        local canOfferMainAssist = ( GameData.Player.isGroupLeader == true )
+            or ( currentMainAssist ~= nil and currentMainAssist == GameData.Player.name )
+        if canOfferMainAssist then
+            local disableMainAssist = ( currentMainAssist == GameData.Player.name )
+            EA_Window_ContextMenu.AddMenuItem(
+                GetString( StringTables.Default.LABEL_MAKE_MAIN_ASSIST ),
+                GroupWindow.OnMakeMainAssist,
+                disableMainAssist,
+                true,
+                EA_Window_ContextMenu.CONTEXT_MENU_1
+            )
         end
     end
 
-    if ( GroupWindow.inScenarioGroup ) then
+    if type( GroupWindow ) == "table" and GroupWindow.inScenarioGroup == true then
         EA_Window_ContextMenu.AddMenuItem( GetStringFromTable( "HUDStrings", StringTables.HUD.LABEL_LEAVE_SCENARIO_GROUP ), CustomUI.PlayerStatusWindow.OnMenuClickLeaveScenarioGroup, false, true )
     end
 

@@ -298,11 +298,8 @@ local function RefreshBuffTrackerAfterAttach(hud, entityId, hadPreviousAttach)
     SyncBuffContainerVisibility(hud)
     if entityId ~= hadPreviousAttach then
         hud.buffTracker:Clear()
+        -- Refresh(true) rebuilds immediately; do not bypass BuffTracker coalesce elsewhere.
         hud.buffTracker:Refresh(true)
-        if hud.buffTracker.m_rebuildPending then
-            hud.buffTracker.m_rebuildPending = false
-            hud.buffTracker:OnBuffsChanged()
-        end
     end
 end
 
@@ -960,10 +957,7 @@ function CustomUI.TargetHUD.OnHostileEffectsUpdated(updateType, updatedEffects, 
     end
     hud.buffTracker:UpdateBuffs(updatedEffects, isFullList)
     SyncBuffContainerVisibility(hud)
-    if hud.buffTracker.m_rebuildPending then
-        hud.buffTracker.m_rebuildPending = false
-        hud.buffTracker:OnBuffsChanged()
-    end
+    -- Let BuffTracker 100ms coalesce flush via tracker:Update — do not force OnBuffsChanged.
 end
 
 function CustomUI.TargetHUD.OnFriendlyEffectsUpdated(updateType, updatedEffects, isFullList)
@@ -981,10 +975,6 @@ function CustomUI.TargetHUD.OnFriendlyEffectsUpdated(updateType, updatedEffects,
     end
     hud.buffTracker:UpdateBuffs(updatedEffects, isFullList)
     SyncBuffContainerVisibility(hud)
-    if hud.buffTracker.m_rebuildPending then
-        hud.buffTracker.m_rebuildPending = false
-        hud.buffTracker:OnBuffsChanged()
-    end
 end
 
 function CustomUI.TargetHUD.OnUpdate(timePassed)
@@ -1024,10 +1014,6 @@ function CustomUI.TargetHUD.OnSelfEffectsUpdated(updatedEffects, isFullList)
     if hud and hud.buffTracker and sideSettings.showBuffTracker == true then
         hud.buffTracker:UpdateBuffs(updatedEffects, isFullList)
         SyncBuffContainerVisibility(hud)
-        if hud.buffTracker.m_rebuildPending then
-            hud.buffTracker.m_rebuildPending = false
-            hud.buffTracker:OnBuffsChanged()
-        end
     end
 end
 

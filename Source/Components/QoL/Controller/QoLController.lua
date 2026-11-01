@@ -35,6 +35,10 @@ local DEFAULT_SETTINGS = {
 		-- Opt-in: clears healer penalties when visiting a healer.
 		enabled = false,
 	},
+	travel = {
+		-- Opt-in: compact flight-master list (replaces parchment map).
+		enabled = false,
+	},
 	actionOnDown = {
 		-- Opt-in: cast normal hotbar abilities on button down.
 		enabled = false,
@@ -61,6 +65,7 @@ local FEATURE_LABELS = {
 	rezzAccept = L"RezzAccept",
 	autoSellTrash = L"AutoSellTrash",
 	battleFatigueHeal = L"BattleFatigueHeal",
+	travel = L"Travel",
 	altTracker = L"AltTracker",
 	actionOnDown = L"Action on down",
 	oneClickGtAoe = L"One-click ground target",
@@ -72,6 +77,7 @@ local m_lastFeatureState = {
 	rezzAccept = nil,
 	autoSellTrash = nil,
 	battleFatigueHeal = nil,
+	travel = nil,
 	altTracker = nil,
 	actionOnDown = nil,
 	oneClickGtAoe = nil,
@@ -100,6 +106,7 @@ local function seedFeatureState(settings)
 	m_lastFeatureState.rezzAccept = settings.rezzAccept.enabled == true
 	m_lastFeatureState.autoSellTrash = settings.autoSellTrash.enabled == true
 	m_lastFeatureState.battleFatigueHeal = settings.battleFatigueHeal.enabled == true
+	m_lastFeatureState.travel = settings.travel.enabled == true
 	m_lastFeatureState.altTracker = settings.altTracker.enabled == true
 	m_lastFeatureState.actionOnDown = settings.actionOnDown.enabled == true
 	m_lastFeatureState.oneClickGtAoe = settings.oneClickGtAoe.enabled == true
@@ -171,6 +178,7 @@ function QoL.SyncSubFeatures(announceChanges)
 	local RZ = CustomUI.QoL.RezzAccept
 	local AST = CustomUI.QoL.AutoSellTrash
 	local BF = CustomUI.QoL.BattleFatigueHeal
+	local TR = CustomUI.QoL.Travel
 	local ALT = CustomUI.QoL.AltTracker
 	local BCS = CustomUI.QoL.ButtonClickSound
 	local ACT = CustomUI.QoL.ActionButtons
@@ -221,6 +229,17 @@ function QoL.SyncSubFeatures(announceChanges)
 		end
 		if announceChanges == true then
 			announceFeatureStateIfChanged("battleFatigueHeal", s.battleFatigueHeal.enabled == true)
+		end
+	end
+
+	if TR then
+		if s.travel.enabled then
+			TR.Enable()
+		else
+			TR.Disable()
+		end
+		if announceChanges == true then
+			announceFeatureStateIfChanged("travel", s.travel.enabled == true)
 		end
 	end
 
@@ -278,6 +297,7 @@ function QoL.InitializeSubModules()
 	if CustomUI.QoL.RezzAccept then CustomUI.QoL.RezzAccept.Initialize() end
 	if CustomUI.QoL.AutoSellTrash then CustomUI.QoL.AutoSellTrash.Initialize() end
 	if CustomUI.QoL.BattleFatigueHeal then CustomUI.QoL.BattleFatigueHeal.Initialize() end
+	if CustomUI.QoL.Travel then CustomUI.QoL.Travel.Initialize() end
 	if CustomUI.QoL.AltTracker then CustomUI.QoL.AltTracker.Initialize() end
 	if CustomUI.QoL.ButtonClickSound then CustomUI.QoL.ButtonClickSound.Initialize() end
 	if CustomUI.QoL.ActionButtons then CustomUI.QoL.ActionButtons.Initialize() end
@@ -300,6 +320,7 @@ function QoL.DisableSubModules()
 	if CustomUI.QoL.RezzAccept then CustomUI.QoL.RezzAccept.Disable() end
 	if CustomUI.QoL.AutoSellTrash then CustomUI.QoL.AutoSellTrash.Disable() end
 	if CustomUI.QoL.BattleFatigueHeal then CustomUI.QoL.BattleFatigueHeal.Disable() end
+	if CustomUI.QoL.Travel then CustomUI.QoL.Travel.Disable() end
 	if CustomUI.QoL.AltTracker then CustomUI.QoL.AltTracker.Disable() end
 	if CustomUI.QoL.ButtonClickSound then CustomUI.QoL.ButtonClickSound.Disable() end
 	if CustomUI.QoL.ActionButtons then CustomUI.QoL.ActionButtons.Disable() end
@@ -308,6 +329,7 @@ function QoL.DisableSubModules()
 	m_lastFeatureState.rezzAccept = false
 	m_lastFeatureState.autoSellTrash = false
 	m_lastFeatureState.battleFatigueHeal = false
+	m_lastFeatureState.travel = false
 	m_lastFeatureState.altTracker = false
 	m_lastFeatureState.actionOnDown = false
 	m_lastFeatureState.oneClickGtAoe = false
@@ -320,6 +342,7 @@ function QoL.ShutdownSubModules()
 	if CustomUI.QoL.RezzAccept then CustomUI.QoL.RezzAccept.Shutdown() end
 	if CustomUI.QoL.AutoSellTrash then CustomUI.QoL.AutoSellTrash.Shutdown() end
 	if CustomUI.QoL.BattleFatigueHeal then CustomUI.QoL.BattleFatigueHeal.Shutdown() end
+	if CustomUI.QoL.Travel then CustomUI.QoL.Travel.Shutdown() end
 	if CustomUI.QoL.AltTracker then CustomUI.QoL.AltTracker.Shutdown() end
 	if CustomUI.QoL.ButtonClickSound then CustomUI.QoL.ButtonClickSound.Shutdown() end
 	if CustomUI.QoL.ActionButtons then CustomUI.QoL.ActionButtons.Shutdown() end

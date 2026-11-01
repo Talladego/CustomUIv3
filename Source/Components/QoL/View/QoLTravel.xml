@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <Windows>
+
+        <Button name="CustomUIQoLTravel_RowTemplate" inherits="EA_Button_ListSort" font="font_chat_text" textalign="leftcenter" textAutoFitMinScale="0.5">
+            <Size>
+                <AbsPoint x="360" y="31" />
+            </Size>
+            <EventHandlers>
+                <EventHandler event="OnLButtonUp" function="CustomUI.QoL.Travel.OnDestinationClick" />
+            </EventHandlers>
+            <Windows>
+                <Label name="$parentName" font="font_chat_text" textalign="leftcenter" handleinput="false" wordwrap="false" warnOnTextCropped="false">
+                    <Size>
+                        <AbsPoint x="230" y="28" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="left" relativePoint="left">
+                            <AbsPoint x="10" y="0" />
+                        </Anchor>
+                    </Anchors>
+                    <Color r="235" g="235" b="200" />
+                </Label>
+
+                <Window name="$parentCost" inherits="MoneyFrame" handleinput="false">
+                    <Size>
+                        <AbsPoint x="110" y="20" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="right" relativePoint="right">
+                            <AbsPoint x="-8" y="0" />
+                        </Anchor>
+                    </Anchors>
+                </Window>
+            </Windows>
+        </Button>
+
+        <Window name="CustomUIQoLTravelWindow" inherits="EA_Window_Default" movable="true" layer="secondary">
+            <Size>
+                <AbsPoint x="420" y="500" />
+            </Size>
+            <Anchors>
+                <Anchor point="center" relativePoint="center" relativeTo="">
+                    <AbsPoint x="0" y="0" />
+                </Anchor>
+            </Anchors>
+            <EventHandlers>
+                <EventHandler event="OnShown" function="CustomUI.QoL.Travel.OnShown" />
+                <EventHandler event="OnHidden" function="CustomUI.QoL.Travel.OnHidden" />
+            </EventHandlers>
+            <Windows>
+                <Window name="$parentBackground" inherits="EA_Window_DefaultBackgroundFrame" />
+                <Window name="$parentTitleBar" inherits="EA_TitleBar_Default" />
+                <Button name="$parentClose" inherits="EA_Button_DefaultWindowClose">
+                    <EventHandlers>
+                        <EventHandler event="OnLButtonUp" function="CustomUI.QoL.Travel.Hide" />
+                    </EventHandlers>
+                </Button>
+
+                <Label name="$parentStatus" inherits="EA_Label_ChatText" textalign="center" wordwrap="false" handleinput="false">
+                    <Size>
+                        <AbsPoint x="380" y="22" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="bottom" relativePoint="top" relativeTo="$parentTitleBar">
+                            <AbsPoint x="0" y="2" />
+                        </Anchor>
+                    </Anchors>
+                    <Color r="235" g="235" b="235" />
+                </Label>
+
+                <Button name="$parentTab1" inherits="EA_Button_Tab">
+                    <Size>
+                        <AbsPoint x="90" y="28" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentStatus">
+                            <AbsPoint x="10" y="4" />
+                        </Anchor>
+                    </Anchors>
+                    <EventHandlers>
+                        <EventHandler event="OnLButtonUp" function="CustomUI.QoL.Travel.OnTabClick" />
+                    </EventHandlers>
+                </Button>
+
+                <Button name="$parentTab2" inherits="EA_Button_Tab">
+                    <Size>
+                        <AbsPoint x="90" y="28" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="right" relativePoint="left" relativeTo="$parentTab1">
+                            <AbsPoint x="4" y="0" />
+                        </Anchor>
+                    </Anchors>
+                    <EventHandlers>
+                        <EventHandler event="OnLButtonUp" function="CustomUI.QoL.Travel.OnTabClick" />
+                    </EventHandlers>
+                </Button>
+
+                <Button name="$parentTab3" inherits="EA_Button_Tab">
+                    <Size>
+                        <AbsPoint x="90" y="28" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="right" relativePoint="left" relativeTo="$parentTab2">
+                            <AbsPoint x="4" y="0" />
+                        </Anchor>
+                    </Anchors>
+                    <EventHandlers>
+                        <EventHandler event="OnLButtonUp" function="CustomUI.QoL.Travel.OnTabClick" />
+                    </EventHandlers>
+                </Button>
+
+                <Button name="$parentTab4" inherits="EA_Button_Tab">
+                    <Size>
+                        <AbsPoint x="90" y="28" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="right" relativePoint="left" relativeTo="$parentTab3">
+                            <AbsPoint x="4" y="0" />
+                        </Anchor>
+                    </Anchors>
+                    <EventHandlers>
+                        <EventHandler event="OnLButtonUp" function="CustomUI.QoL.Travel.OnTabClick" />
+                    </EventHandlers>
+                </Button>
+
+                <ListBox name="$parentList" rowdef="CustomUIQoLTravel_RowTemplate" scrollbar="" visiblerows="10" rowcount="64" rowspacing="4">
+                    <Size>
+                        <AbsPoint x="380" y="346" />
+                    </Size>
+                    <Anchors>
+                        <Anchor point="bottomleft" relativePoint="topleft" relativeTo="$parentTab1">
+                            <AbsPoint x="5" y="6" />
+                        </Anchor>
+                    </Anchors>
+                    <ListData table="CustomUIQoLTravelListData" populationfunction="CustomUI.QoL.Travel.PopulateList">
+                        <ListColumns>
+                        </ListColumns>
+                    </ListData>
+                </ListBox>
+            </Windows>
+        </Window>
+
+    </Windows>
+</Interface>

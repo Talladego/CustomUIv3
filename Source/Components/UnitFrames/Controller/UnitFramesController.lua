@@ -297,6 +297,7 @@ end
 
 local m_enabled = false
 local m_windowsInitialized = false
+local m_applyModeDirty = false
 local SafeLayoutUserShow
 local SafeLayoutUserHide
 local m_stockOnOpacitySlide = nil
@@ -1160,11 +1161,48 @@ local function SetScenarioCareerIcon(memberWindow, player)
     ApplyUnitFramesCareerIconTexture(memberWindow, iconTexture, iconX, iconY, ringLine, player.name)
 end
 
+--- Local player: PartyUtils / GROUP_STATUS healthPercent often lags GameData.Player by one or more ticks.
+--- Scenario path already paints self from hitPoints; party/warband must too or the self row sticks until the next status event.
+local function TryGetSelfResourcePercents()
+    local p = GameData and GameData.Player
+    if p == nil then
+        return nil
+    end
+    local hpCur = tonumber(p.hitPoints and p.hitPoints.current)
+    local hpMax = tonumber(p.hitPoints and p.hitPoints.maximum)
+    if hpCur == nil or hpMax == nil or hpMax < 1 then
+        return nil
+    end
+    local apCur = tonumber(p.actionPoints and p.actionPoints.current) or 0
+    local apMax = tonumber(p.actionPoints and p.actionPoints.maximum) or 1
+    if apMax < 1 then
+        apMax = 1
+    end
+    return {
+        hpPct = 100 * hpCur / hpMax,
+        apPct = 100 * apCur / apMax,
+        dead = hpCur <= 0,
+    }
+end
+
 local function SetMemberBars(memberWindow, member)
     local isSelfRow = GameData and GameData.Player and member and member.name
         and NamesMatch(member.name, GameData.Player.name)
-    local hp = RoundHpPercentForDisplay(member.healthPercent, not isSelfRow)
-    local ap = RoundApPercentForDisplay(member.actionPointPercent)
+    local hp
+    local ap
+    if isSelfRow then
+        local selfRes = TryGetSelfResourcePercents()
+        if selfRes ~= nil then
+            hp = RoundHpPercentForDisplay(selfRes.hpPct, false)
+            ap = RoundApPercentForDisplay(selfRes.apPct)
+        else
+            hp = RoundHpPercentForDisplay(member.healthPercent, false)
+            ap = RoundApPercentForDisplay(member.actionPointPercent)
+        end
+    else
+        hp = RoundHpPercentForDisplay(member.healthPercent, true)
+        ap = RoundApPercentForDisplay(member.actionPointPercent)
+    end
 
     if hp < 0 then hp = 0 end
     if hp > 100 then hp = 100 end
@@ -1433,6 +1471,42 @@ TryGetPartyFrameMember = function(groupIndex, memberIndex)
     return GetPartySlotMemberForUnitFrames(memberIndex, nil)
 end
 
+--- Member data for the painted row at (groupIndex, memberIndex). Must follow
+--- GetActiveUnitFramesDisplayMode — never prefer raw warband slots while party
+--- (or scenario) layout is showing, or career-icon tooltips / menus mismatch names.
+local function ResolveDisplayedMember(groupIndex, memberIndex)
+    if groupIndex == nil or memberIndex == nil then
+        return nil
+    end
+    local mode = GetActiveUnitFramesDisplayMode()
+    if mode == "party" then
+        return TryGetPartyFrameMember(groupIndex, memberIndex)
+    end
+    if mode == "scenario" then
+        local groups = BuildScenarioGroupMap()
+        local player = select(1, TryGetScenarioDisplayRow(groupIndex, memberIndex, groups))
+        player = player ~= nil and ResolveScenarioPlayer(player) or nil
+        if player == nil or not MemberHasDisplayName(player) then
+            return nil
+        end
+        local line = ScenarioCareerLineFromScenarioPlayer(player)
+        return {
+            name = player.name,
+            level = tonumber(player.rank) or tonumber(player.level) or 0,
+            battleLevel = tonumber(player.battleRank) or tonumber(player.battleLevel) or 0,
+            zoneNum = nil,
+            isRVRFlagged = false,
+            online = true,
+            careerLine = line,
+            careerName = (line ~= nil and GetCareerLine(line, nil)) or L"",
+        }
+    end
+    if mode == "warband" or mode == "warband_party1" then
+        return TryGetWarbandMember(groupIndex, memberIndex)
+    end
+    return nil
+end
+
 GetGroupMemberIndicesFromWindowName = function(windowName)
     local narrow = NarrowWindowName(windowName)
     local groupIndex, memberIndex = string.match(narrow or "", "^CustomUIUnitFramesGroup(%d+)WindowMember(%d+)")
@@ -1609,13 +1683,24 @@ local function SetMemberTextAndState(memberWindow, member)
 
     local isSelfRow = GameData and GameData.Player and member and member.name
         and NamesMatch(member.name, GameData.Player.name)
-    local hpRounded = RoundHpPercentForDisplay(member.healthPercent, not isSelfRow)
+    local hpSource = member.healthPercent
+    local selfRes = nil
+    if isSelfRow then
+        selfRes = TryGetSelfResourcePercents()
+        if selfRes ~= nil then
+            hpSource = selfRes.hpPct
+        end
+    end
+    local hpRounded = RoundHpPercentForDisplay(hpSource, not isSelfRow)
 
     local healthText = towstring(hpRounded) .. L"%"
-    local hpRaw = tonumber(member.healthPercent) or 0
+    local hpRaw = tonumber(hpSource) or 0
 
     -- Dead before distant so skull + corpse styling win when both apply.
     local isDead = hpRaw <= 0 and member.online == true
+    if isSelfRow and selfRes ~= nil then
+        isDead = selfRes.dead == true and member.online == true
+    end
 
     local careerLine = member and member.careerLine
     local playerName = member and member.name
@@ -2026,7 +2111,13 @@ ShowScenarioDualModeWindows = function()
     end
 end
 
+--- Coalesce HideAll+Show* rebuilds: multiple roster/visibility events often fire in one frame.
+local function RequestApplyModeVisibility()
+    m_applyModeDirty = true
+end
+
 local function ApplyModeVisibility()
+    m_applyModeDirty = false
     if not m_enabled or not m_windowsInitialized then
         if m_enabled and not m_windowsInitialized then
             DebugLog("ApplyModeVisibility: enabled but not initialized; skipping")
@@ -2078,6 +2169,40 @@ local function ApplyModeVisibility()
     RefreshTargetBorders()
     RefreshMouseOverBorders()
     CustomUI.Perf.End("UF.ApplyMode")
+end
+
+--- In-place row repaint (no HideAll/stock churn). Used for GRP_STATS tint and HP status paths.
+local function RefreshVisibleUnitFramesRows()
+    if not m_enabled or not m_windowsInitialized then
+        return
+    end
+
+    local mode = GetActiveUnitFramesDisplayMode()
+    local didWork = false
+    if mode == "party" then
+        CustomUI.Perf.Begin("UF.Status")
+        ShowPartyDualModeWindows()
+        didWork = true
+    elseif mode == "warband" then
+        CustomUI.Perf.Begin("UF.Status")
+        ShowWarbandDualModeWindows()
+        didWork = true
+    elseif mode == "warband_party1" then
+        CustomUI.Perf.Begin("UF.Status")
+        ShowWarbandParty1DualModeWindows()
+        didWork = true
+    elseif mode == "scenario" then
+        CustomUI.Perf.Begin("UF.Status")
+        ShowScenarioDualModeWindows()
+        didWork = true
+    else
+        return
+    end
+    RefreshTargetBorders()
+    RefreshMouseOverBorders()
+    if didWork then
+        CustomUI.Perf.End("UF.Status")
+    end
 end
 
 local function HideCustomShowStock()
@@ -2191,7 +2316,7 @@ function UnitFrames.OnScenarioLifecycleRefresh()
     ClearScenarioHitHpOverrides()
     InvalidateScenarioGroupMapCache()
     KickScenarioDistanceScan()
-    ApplyModeVisibility()
+    RequestApplyModeVisibility()
 end
 
 function UnitFrames.OnVisibilityStateChanged()
@@ -2199,7 +2324,7 @@ function UnitFrames.OnVisibilityStateChanged()
         UnitFramesArchetypes.SyncCacheFromScoreboard()
     end
     InvalidateScenarioGroupMapCache()
-    ApplyModeVisibility()
+    RequestApplyModeVisibility()
 end
 
 --- GROUP_STATUS_UPDATED is the party HP/AP heartbeat — refresh bars in place, never a full mode rebuild.
@@ -2233,7 +2358,7 @@ function UnitFrames.OnScenarioRosterOrSlotsUpdated()
     ClearScenarioHitHpOverrides()
     InvalidateScenarioGroupMapCache()
     KickScenarioDistanceScan()
-    ApplyModeVisibility()
+    RequestApplyModeVisibility()
 end
 
 function UnitFrames.OnWarbandMemberUpdated()
@@ -2267,7 +2392,7 @@ function UnitFrames.OnGroupsSettingsChanged()
     if not m_enabled or not m_windowsInitialized then
         return
     end
-    ApplyModeVisibility()
+    RequestApplyModeVisibility()
 end
 
 --- Settings snapshot for CustomUISettingsWindow / tooling (same table as CustomUI.Settings.UnitFrames once ensured).
@@ -2306,12 +2431,7 @@ function UnitFrames.OnPlayerSelfResourcesUpdated()
         local maxGroups = (mode == "warband") and c_WARBAND_GROUPS or 1
         for gi = 1, maxGroups do
             for memberIndex = 1, c_GROUP_MEMBERS do
-                local member = nil
-                if mode == "party" then
-                    member = TryGetPartyFrameMember(gi, memberIndex)
-                else
-                    member = TryGetWarbandMember(gi, memberIndex)
-                end
+                local member = ResolveDisplayedMember(gi, memberIndex)
                 if member ~= nil and NamesMatch(member.name, GameData.Player.name) then
                     local memberWindow = MemberWindowName(gi, memberIndex)
                     if DoesWindowExist(memberWindow) then
@@ -2340,28 +2460,7 @@ function UnitFrames.OnMouseOverCareerIcon()
         return
     end
 
-    local mode = GetActiveUnitFramesDisplayMode()
-    local member = TryGetWarbandMember(groupIndex, memberIndex)
-    if member == nil and mode == "party" then
-        member = TryGetPartyFrameMember(groupIndex, memberIndex)
-    end
-    if member == nil and mode == "scenario" then
-        local groups = BuildScenarioGroupMap()
-        local player = select(1, TryGetScenarioDisplayRow(groupIndex, memberIndex, groups))
-        player = player ~= nil and ResolveScenarioPlayer(player) or nil
-        if player ~= nil then
-            local line = ScenarioCareerLineFromScenarioPlayer(player)
-            member = {
-                name = player.name,
-                level = tonumber(player.rank) or tonumber(player.level) or 0,
-                battleLevel = tonumber(player.battleRank) or tonumber(player.battleLevel) or 0,
-                zoneNum = nil,
-                isRVRFlagged = false,
-                careerName = (line ~= nil and GetCareerLine(line, nil)) or L"",
-            }
-        end
-    end
-
+    local member = ResolveDisplayedMember(groupIndex, memberIndex)
     if member == nil then
         return
     end
@@ -2409,17 +2508,7 @@ function UnitFrames.OnMemberRightClick()
         return
     end
 
-    local member = TryGetWarbandMember(groupIndex, memberIndex)
-    if member == nil and GetActiveUnitFramesDisplayMode() == "party" then
-        member = TryGetPartyFrameMember(groupIndex, memberIndex)
-    end
-    if member == nil and GetActiveUnitFramesDisplayMode() == "scenario" then
-        local groups = BuildScenarioGroupMap()
-        local player = select(1, TryGetScenarioDisplayRow(groupIndex, memberIndex, groups))
-        if MemberHasDisplayName(player) then
-            member = { name = player.name, online = true }
-        end
-    end
+    local member = ResolveDisplayedMember(groupIndex, memberIndex)
     local memberName = ToWString(member and member.name)
     if member == nil or memberName == nil or memberName == L"" then
         return
@@ -2469,13 +2558,14 @@ end
 
 local function RefreshUnitFramesArchetypeColors()
     -- Re-render visible rows when GRP_STATS / alt-spec data arrives or updates.
+    -- Tint/role data only — avoid HideAll + stock churn of ApplyModeVisibility.
     if not m_windowsInitialized or not m_enabled then
         return
     end
     if type(UnitFramesArchetypes.SyncCacheFromScoreboard) == "function" then
         UnitFramesArchetypes.SyncCacheFromScoreboard()
     end
-    ApplyModeVisibility()
+    RefreshVisibleUnitFramesRows()
 end
 
 local function OnGrpStatsPacket(text)
@@ -2633,6 +2723,10 @@ function UnitFrames.Update(elapsedTime)
         UnitFrames.InitializeWindow()
     end
 
+    if m_applyModeDirty then
+        ApplyModeVisibility()
+    end
+
     if GetActiveUnitFramesDisplayMode() == "scenario" then
         if not m_wasScenarioDistanceMode then
             KickScenarioDistanceScan()
@@ -2740,6 +2834,7 @@ end
 function UnitFrames.Disable()
     ClearScenarioHitHpOverrides()
     m_enabled = false
+    m_applyModeDirty = false
     m_wasScenarioDistanceMode = false
     m_scenarioDistanceByKey = {}
     if type(UnitFramesScenario.ResetDistanceScan) == "function" then
@@ -2837,6 +2932,7 @@ function UnitFramesComponent:ResetToDefaults()
     SetStockWarbandBackgroundAlpha(c_DEFAULT_BACKGROUND_ALPHA)
 
     if m_enabled and m_windowsInitialized then
+        m_applyModeDirty = false
         ApplyModeVisibility()
         SetUnitFramesBackgroundAlpha(c_DEFAULT_BACKGROUND_ALPHA)
     end

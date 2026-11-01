@@ -928,7 +928,7 @@ function CustomUI.PlayerStatusWindow.ShowMenu()
     EA_Window_ContextMenu.AddMenuItem( fadeMenuLabel, CustomUI.PlayerStatusWindow.OnMenuClickToggleHealthBarFade, false, true )
 
     local inScenarioOrSiege = GameData.Player.isInScenario or GameData.Player.isInSiege
-    local inWarband = type( IsWarBandActive ) == "function" and IsWarBandActive() == true and not inScenarioOrSiege
+    local inWarband = type( IsWarBandActive ) == "function" and IsWarBandActive() and not inScenarioOrSiege
     local inWorldGroup = PlayerHasWorldGroupOrWarband()
 
     -- Mirror GroupWindow.ShowMenu party controls on self (leader-gated where stock is).

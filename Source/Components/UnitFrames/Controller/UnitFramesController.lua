@@ -1163,6 +1163,9 @@ end
 
 --- Local player: PartyUtils / GROUP_STATUS healthPercent often lags GameData.Player by one or more ticks.
 --- Scenario path already paints self from hitPoints; party/warband must too or the self row sticks until the next status event.
+--- One reused table: callers must read the fields before the next call.
+local m_selfResourcePercents = { hpPct = 0, apPct = 0, dead = false }
+
 local function TryGetSelfResourcePercents()
     local p = GameData and GameData.Player
     if p == nil then
@@ -1178,11 +1181,10 @@ local function TryGetSelfResourcePercents()
     if apMax < 1 then
         apMax = 1
     end
-    return {
-        hpPct = 100 * hpCur / hpMax,
-        apPct = 100 * apCur / apMax,
-        dead = hpCur <= 0,
-    }
+    m_selfResourcePercents.hpPct = 100 * hpCur / hpMax
+    m_selfResourcePercents.apPct = 100 * apCur / apMax
+    m_selfResourcePercents.dead = hpCur <= 0
+    return m_selfResourcePercents
 end
 
 local function SetMemberBars(memberWindow, member)
@@ -1193,8 +1195,10 @@ local function SetMemberBars(memberWindow, member)
     if isSelfRow then
         local selfRes = TryGetSelfResourcePercents()
         if selfRes ~= nil then
-            hp = RoundHpPercentForDisplay(selfRes.hpPct, false)
-            ap = RoundApPercentForDisplay(selfRes.apPct)
+            local hpPct = selfRes.hpPct
+            local apPct = selfRes.apPct
+            hp = RoundHpPercentForDisplay(hpPct, false)
+            ap = RoundApPercentForDisplay(apPct)
         else
             hp = RoundHpPercentForDisplay(member.healthPercent, false)
             ap = RoundApPercentForDisplay(member.actionPointPercent)
@@ -1684,11 +1688,13 @@ local function SetMemberTextAndState(memberWindow, member)
     local isSelfRow = GameData and GameData.Player and member and member.name
         and NamesMatch(member.name, GameData.Player.name)
     local hpSource = member.healthPercent
-    local selfRes = nil
+    local selfDead = nil
     if isSelfRow then
-        selfRes = TryGetSelfResourcePercents()
+        local selfRes = TryGetSelfResourcePercents()
         if selfRes ~= nil then
+            -- Copy out now: the helper reuses one table on the next call.
             hpSource = selfRes.hpPct
+            selfDead = selfRes.dead == true
         end
     end
     local hpRounded = RoundHpPercentForDisplay(hpSource, not isSelfRow)
@@ -1698,8 +1704,8 @@ local function SetMemberTextAndState(memberWindow, member)
 
     -- Dead before distant so skull + corpse styling win when both apply.
     local isDead = hpRaw <= 0 and member.online == true
-    if isSelfRow and selfRes ~= nil then
-        isDead = selfRes.dead == true and member.online == true
+    if selfDead ~= nil then
+        isDead = selfDead and member.online == true
     end
 
     local careerLine = member and member.careerLine

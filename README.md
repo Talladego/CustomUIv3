@@ -2,7 +2,15 @@
 
 CustomUI is a modular Return of Reckoning addon that replaces and enhances stock UI components behind a single settings surface and slash-command workflow.
 
-**Version:** CustomUI `1.4.23` (see `CustomUI.Version` / `CustomUI.mod`). One addon-level semver (not per-component); the active profile also stores `CustomUI.Settings.version` on init. Settings UI is included in the same AddOn (`Source/SettingsWindow/`).
+**Version:** CustomUI `1.4.24` (see `CustomUI.Version` / `CustomUI.mod`). One addon-level semver (not per-component); the active profile also stores `CustomUI.Settings.version` on init. Settings UI is included in the same AddOn (`Source/SettingsWindow/`).
+
+**1.4.24**
+
+- SmartAssist is smoother in a full warband fight. Someone who leaves your party or warband is no longer kept as the assist target, and turning SmartAssist off does not stop other addons that show group combat stats.
+- Travel is a compact flight-master list with pairing tabs. Turn it on under /cui, QoL. /cuitravel only opens while you are talking to a flight master.
+- Right-click your portrait in a party to form a warband, leave the group, or make yourself the main assist.
+- Your health on party and warband frames stays in step with your character, instead of lagging behind the rest of the group.
+- Reloading the UI brings your pet's ability bar back when you have a pet out and the pet frame is turned on.
 
 ## Documentation
 

@@ -91,8 +91,10 @@ end
 
 --- Stock PetWindow:UpdatePet only FadeIn's m_Actionbar when the career window was hidden.
 --- After /reload the bar can remain Show(false) while a pet is out — force it visible.
+--- Only while this component is enabled. DefaultEnabled is false; a disabled component
+--- must not override a player who hid the bar.
 local function EnsurePetActionBarVisible()
-    if m_resyncing or not PlayerHasPet() then
+    if not m_enabled or m_resyncing or not PlayerHasPet() then
         return
     end
     m_resyncing = true
@@ -132,6 +134,10 @@ local function EnsurePetActionBarVisible()
 end
 
 local function ScheduleReloadPetResync()
+    if not m_enabled then
+        m_reloadResyncRemaining = 0
+        return
+    end
     m_reloadResyncRemaining = c_RELOAD_RESYNC_ATTEMPTS
     m_reloadResyncElapsed = 0
     EnsurePetActionBarVisible()
@@ -254,6 +260,10 @@ function CustomUI.PlayerPetWindow.OnGlobalUpdate(timePassed)
     if m_reloadResyncRemaining <= 0 then
         return
     end
+    if not m_enabled then
+        m_reloadResyncRemaining = 0
+        return
+    end
     m_reloadResyncElapsed = m_reloadResyncElapsed + (timePassed or 0)
     if m_reloadResyncElapsed < c_RELOAD_RESYNC_INTERVAL then
         return
@@ -271,10 +281,10 @@ end
 
 function CustomUI.PlayerPetWindow.OnPetUpdated()
     HideCustomPetFrame()
-    EnsurePetActionBarVisible()
     if not m_enabled then
         return
     end
+    EnsurePetActionBarVisible()
     -- Re-apply stock hide each time a pet appears because PetWindow:UpdatePet()
     -- calls FadeInComponent(m_UnitFrame) which un-hides PetHealthWindow.
     SuppressStockPetHealth()
@@ -308,6 +318,7 @@ end
 
 function PlayerPetWindowComponent:Disable()
     m_enabled = false
+    m_reloadResyncRemaining = 0
     RestorePetProxyHook()
     LayoutEditor.UserHide( self.WindowName )
     HideCustomPetFrame()

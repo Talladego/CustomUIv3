@@ -39,7 +39,7 @@ function CustomUISettingsWindowTabSmartAssist.Initialize()
     LabelSetText(c .. "GeneralEnabledLabel", L"Enable SmartAssist")
     LabelSetText(
         c .. "GeneralInfo",
-        L"Creates one hotbar macro (CustomUI SmartAssist) that assists the best nearby ally by KillDamage, then Deathblows, then Total Damage. Works in scenarios and open-world party/warband. Never assists yourself. Sets an assist only with no hostile target; clears the macro while you have one. Bind the macro and press it yourself — RoR ignores /assist sent from addons. Disable deletes the macro and clears it from action bars."
+        L"Creates one hotbar macro (CustomUI SmartAssist) that assists the best nearby ally by KillDamage, then Deathblows, then Total Damage. Works in scenarios and open-world party/warband. Never assists yourself. Sets an assist only with no hostile target; clears the macro while you have one. Bind the macro and press it yourself - RoR ignores /assist sent from addons. Disable deletes the macro and clears it from action bars."
     )
     LabelSetText(c .. "RangeTitle", L"Range")
     LabelSetText(c .. "RangeLabel", L"Assist range (ft)")

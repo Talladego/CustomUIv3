@@ -69,6 +69,9 @@ local m_assistSuppressed = false
 local m_inAssistWork = false
 -- Reused across picks so a refresh does not allocate a new index table.
 local m_playerRowByKey = {}
+-- Reused alive map and accept callback so a pick does not allocate each tick.
+local m_aliveByKey = {}
+local m_acceptRange = SmartAssist.DEFAULT_RANGE
 
 local function ScenarioStats()
     return CustomUI.GroupIcons and CustomUI.GroupIcons.ScenarioStats
@@ -330,28 +333,30 @@ end
 --- Scenario: an empty map means "no HP data yet".
 --- Open-world: a missing key means that name is not on the current party/warband roster.
 local function BuildAliveByKey()
-    local alive = {}
+    local alive = m_aliveByKey
+    for key in pairs(alive) do
+        alive[key] = nil
+    end
     local openWorldRosterReady = false
 
-    if IsScenarioContext()
-        and type(GameData) == "table"
-        and type(GameData.GetScenarioPlayerGroups) == "function"
-    then
-        local ok, groups = CustomUI.TryCallQuiet("SmartAssist.GetScenarioPlayerGroups", GameData.GetScenarioPlayerGroups)
-        if ok and type(groups) == "table" then
-            for _, player in ipairs(groups) do
-                if type(player) == "table" and player.name ~= nil then
-                    local hp = player.health
-                    if hp == nil then
-                        hp = player.healthPercent
+    -- Scenario HP comes from the scenario groups. A warband roster walk (and
+    -- per-member hydration) is not used for the scenario pick.
+    if IsScenarioContext() then
+        if type(GameData) == "table" and type(GameData.GetScenarioPlayerGroups) == "function" then
+            local ok, groups = CustomUI.TryCallQuiet("SmartAssist.GetScenarioPlayerGroups", GameData.GetScenarioPlayerGroups)
+            if ok and type(groups) == "table" then
+                for _, player in ipairs(groups) do
+                    if type(player) == "table" and player.name ~= nil then
+                        local hp = player.health
+                        if hp == nil then
+                            hp = player.healthPercent
+                        end
+                        NoteAlive(alive, player.name, hp)
                     end
-                    NoteAlive(alive, player.name, hp)
                 end
             end
         end
-    end
-
-    if type(IsWarBandActive) == "function" and IsWarBandActive() then
+    elseif type(IsWarBandActive) == "function" and IsWarBandActive() then
         local parties = nil
         if type(GetBattlegroupMemberData) == "function" then
             parties = GetBattlegroupMemberData()
@@ -647,13 +652,21 @@ local function CommitSticky(key, hold)
     end
 end
 
+--- One accept callback for every pick. Reads the reused alive map and range.
+local function AcceptAssistCandidate(key, row)
+    if not IsCandidateAlive(key, m_aliveByKey) then
+        return false
+    end
+    local dist = LookupMapDistance(key, row.name)
+    return IsWithinRange(dist, m_acceptRange)
+end
+
 --- Returns assist display name (wstring) or nil; second return is pick detail table.
 --- Ranking: KillDamage → Deathblows → Total Damage (scenario or GRP_STATS).
 --- No pick until someone has real KD/DB/damage. Sticky + hysteresis dampens flicker.
 --- opts.dryRun = true: rank only; do not mutate sticky/hold state (for DebugStatus).
 function SmartAssist.PickAssistTarget(opts)
-    opts = opts or {}
-    local dryRun = opts.dryRun == true
+    local dryRun = type(opts) == "table" and opts.dryRun == true
     local settings = SmartAssist.EnsureSettings()
     local range = tonumber(settings.range) or SmartAssist.DEFAULT_RANGE
     local selfKey = SelfNameKey()
@@ -664,15 +677,9 @@ function SmartAssist.PickAssistTarget(opts)
     end
 
     local aliveByKey = BuildAliveByKey()
+    m_acceptRange = range
     ClearPlayerRowIndex()
     local best = nil
-    local accept = function(key, row)
-        if not IsCandidateAlive(key, aliveByKey) then
-            return false
-        end
-        local dist = LookupMapDistance(key, row.name)
-        return IsWithinRange(dist, range)
-    end
 
     if IsScenarioContext() then
         local playerList = FetchScenarioPlayerList()
@@ -684,7 +691,7 @@ function SmartAssist.PickAssistTarget(opts)
                 requireCombatData = true,
                 players = playerList,
                 rowByKey = m_playerRowByKey,
-                accept = accept,
+                accept = AcceptAssistCandidate,
             })
         end
     else
@@ -693,7 +700,7 @@ function SmartAssist.PickAssistTarget(opts)
             normalizeNameKey = NormalizeNameKey,
             excludeKey = selfKey,
             requireCombatData = true,
-            accept = accept,
+            accept = AcceptAssistCandidate,
         })
     end
 
@@ -978,6 +985,13 @@ local function EnsureGroupStatsListening()
     end
 end
 
+local function StopGroupStatsListening()
+    local GS = GroupStats()
+    if GS ~= nil and type(GS.Shutdown) == "function" then
+        GS.Shutdown()
+    end
+end
+
 local function MarkAssistDirty()
     m_dirty = true
 end
@@ -1161,9 +1175,10 @@ function SmartAssist.OnGroupUpdated()
     if m_enabled ~= true then
         return
     end
-    -- GROUP_UPDATED / BATTLEGROUP_UPDATED (and member-status updates on this
-    -- handler). RefreshAssist prunes again before the next pick.
-    PruneDepartedGroupStats()
+    -- GROUP_UPDATED, BATTLEGROUP_UPDATED, GROUP_STATUS_UPDATED, and
+    -- BATTLEGROUP_MEMBER_UPDATED. Status events fire many times a second in a
+    -- warband. Do not walk the roster here. RefreshAssist prunes on the 0.5s
+    -- tick before the next pick.
     MarkAssistDirty()
 end
 
@@ -1277,6 +1292,7 @@ function SmartAssist.Enable()
     RegisterHandlers()
     m_macroSlot = FindMacroSlotByName(SmartAssist.MACRO_NAME)
     WriteMacro(nil)
+    EnsureGroupStatsListening()
     RefreshAssist()
 end
 
@@ -1294,6 +1310,7 @@ function SmartAssist.Disable()
     HoldStatsStream(false)
     ClearSticky()
     DeleteMacroAndClearBars()
+    StopGroupStatsListening()
 end
 
 function SmartAssist.Sync()
@@ -1306,6 +1323,7 @@ function SmartAssist.Sync()
             WriteMacro(nil)
         end
         m_updateElapsed = 0
+        EnsureGroupStatsListening()
         RefreshAssist()
     else
         UnregisterHandlers()
@@ -1327,6 +1345,7 @@ function SmartAssist.Sync()
         if m_macroSlot ~= nil then
             DeleteMacroAndClearBars()
         end
+        StopGroupStatsListening()
     end
 end
 
@@ -1336,10 +1355,8 @@ end
 
 function SmartAssist.Initialize()
     SmartAssist.EnsureSettings()
-    local GS = GroupStats()
-    if GS ~= nil and type(GS.Initialize) == "function" then
-        GS.Initialize()
-    end
+    -- GRP_STATS starts from Sync only while SmartAssist is enabled. The
+    -- component is not in the registry; this runs on every UI load.
     SmartAssist.Sync()
 end
 
@@ -1353,9 +1370,6 @@ function SmartAssist.Shutdown()
     m_inAssistWork = false
     UnregisterHandlers()
     HoldStatsStream(false)
-    local GS = GroupStats()
-    if GS ~= nil and type(GS.Shutdown) == "function" then
-        GS.Shutdown()
-    end
+    StopGroupStatsListening()
     -- Leave macro in place on reload shutdown; only Disable deletes.
 end

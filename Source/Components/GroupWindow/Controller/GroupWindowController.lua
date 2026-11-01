@@ -513,6 +513,11 @@ local function BuildMemberStatusSnapshot(member)
         tostring(member.isDistant),
         tostring(member.isInSameRegion),
         tostring(member.isRVRFlagged == true),
+        tostring(member.isGroupLeader == true),
+        tostring(member.isWarbandLeader == true),
+        tostring(member.isMainAssist == true),
+        tostring(member.careerLine),
+        tostring(member.zoneNum),
     }, "|")
 end
 
@@ -1100,6 +1105,10 @@ local function UpdateMemberRow(index)
     LayoutMemberLeaderCrowns(index)
     WindowSetShowing(groupLeaderCrown, member.isGroupLeader == true)
     WindowSetShowing(warbandLeaderCrown, member.isWarbandLeader == true)
+    local mainAssistCrown = MemberRowName(index) .. "MainAssistCrown"
+    if DoesWindowExist(mainAssistCrown) then
+        WindowSetShowing(mainAssistCrown, member.isMainAssist == true)
+    end
     SetMemberRvrIndicatorShowing(index, ResolveMemberIsRvrFlagged(member))
 
     local Badge = CustomUI.PortraitCareerBadge

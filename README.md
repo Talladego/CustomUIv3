@@ -2,7 +2,11 @@
 
 CustomUI is a modular Return of Reckoning addon that replaces and enhances stock UI components behind a single settings surface and slash-command workflow.
 
-**Version:** CustomUI `1.4.24` (see `CustomUI.Version` / `CustomUI.mod`). One addon-level semver (not per-component); the active profile also stores `CustomUI.Settings.version` on init. Settings UI is included in the same AddOn (`Source/SettingsWindow/`).
+**Version:** CustomUI `1.4.25` (see `CustomUI.Version` / `CustomUI.mod`). One addon-level semver (not per-component); the active profile also stores `CustomUI.Settings.version` on init. Settings UI is included in the same AddOn (`Source/SettingsWindow/`).
+
+**1.4.25**
+
+- Licensing cleanup: an unused image that shipped with the addon was removed. The game image on the SmartAssist button belongs to its owners and is not part of this addon's license.
 
 **1.4.24**
 
@@ -11,6 +15,14 @@ CustomUI is a modular Return of Reckoning addon that replaces and enhances stock
 - Right-click your portrait in a party to form a warband, leave the group, or make yourself the main assist.
 - Your health on party and warband frames stays in step with your character, instead of lagging behind the rest of the group.
 - Reloading the UI brings your pet's ability bar back when you have a pet out and the pet frame is turned on.
+
+## License
+
+CustomUI is released under the MIT license. Copyright (c) 2026 Talladego. See [LICENSE](LICENSE).
+
+Game-client assets are the property of their owners and are not covered by that license. This addon includes one:
+
+- `Source/Components/SmartAssist/media/archetype_rangeddpsbow_unshakablefocus_disabled.dds` (the grey SmartAssist button image)
 
 ## Documentation
 

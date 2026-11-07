@@ -2,7 +2,9 @@
 <Interface xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
    xsi:noNamespaceSchemaLocation="../../../../Interface.xsd">
   <Assets>
-    <!-- Disabled Unshakable Focus for cleared SmartAssist macro (active uses stock icon 23166). -->
+    <!-- Grey Unshakable Focus for a cleared SmartAssist macro (active uses stock icon 23166).
+         Game-client file archetype_rangeddpsbow_unshakablefocus_disabled.dds.
+         It belongs to its owners and is not covered by the MIT license. -->
     <Icon id="91010"
           texture="Source/Components/SmartAssist/media/archetype_rangeddpsbow_unshakablefocus_disabled.dds"
           name="CustomUI SmartAssist (disabled)" />
